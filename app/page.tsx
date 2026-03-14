@@ -6,7 +6,8 @@ import {
   UploadCloud, Settings, ChevronDown, ChevronUp, 
   AlertCircle, CheckCircle2, BarChart3, Info, 
   DownloadCloud, Search, Filter, Columns, 
-  Maximize, Minimize, LayoutList
+  Maximize, Minimize, LayoutList,
+  ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 import { 
   TextInput, ActionIcon, Group, Tooltip, 
@@ -41,7 +42,23 @@ export default function ProductionForecaster() {
   // Toolbar States
   const [searchQuery, setSearchQuery] = useState('');
   const [density, setDensity] = useState<'xs' | 'sm' | 'md'>('sm');
+  const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
   const { toggle: toggleFullscreen, fullscreen, ref: tableRef } = useFullscreen<HTMLDivElement>();
+
+  const requestSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const getSortIcon = (key: string) => {
+    if (sortConfig?.key !== key) return <ArrowUpDown size={14} className="ml-2 opacity-30 group-hover/header:opacity-100 transition-opacity" />;
+    return sortConfig.direction === 'asc' 
+      ? <ArrowUp size={14} className="ml-2 text-indigo-600 dark:text-indigo-400" /> 
+      : <ArrowDown size={14} className="ml-2 text-indigo-600 dark:text-indigo-400" />;
+  };
 
   const getPartNumberKey = (keys: string[]) => {
     return keys.find(k => k.toLowerCase().replace(/[^a-z0-9]/g, '') === 'partnumber') || keys[0];
@@ -339,8 +356,33 @@ export default function ProductionForecaster() {
       );
     }
 
+    // Apply Sorting
+    if (sortConfig) {
+      results.sort((a, b) => {
+        let aValue: any;
+        let bValue: any;
+
+        if (sortConfig.key.startsWith('day_')) {
+          const day = parseInt(sortConfig.key.replace('day_', ''));
+          aValue = a.dayMetrics[day]?.expected ?? 0;
+          bValue = b.dayMetrics[day]?.expected ?? 0;
+        } else {
+          aValue = (a as any)[sortConfig.key];
+          bValue = (b as any)[sortConfig.key];
+        }
+
+        if (aValue < bValue) {
+          return sortConfig.direction === 'asc' ? -1 : 1;
+        }
+        if (aValue > bValue) {
+          return sortConfig.direction === 'asc' ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+
     return { results, dayColumns };
-  }, [forecastGenerated, pipelineData, dailyRateData, locators, locatorMapping, searchQuery]);
+  }, [forecastGenerated, pipelineData, dailyRateData, locators, locatorMapping, searchQuery, sortConfig]);
 
   const summary = useMemo(() => {
     if (!processedData) return null;
@@ -617,9 +659,33 @@ export default function ProductionForecaster() {
                 <table className="w-full text-sm text-left border-collapse">
                   <thead className="text-xs text-slate-600 dark:text-slate-400 uppercase bg-slate-50 dark:bg-slate-800/80">
                     <tr>
-                      <th className="px-4 py-3 sticky top-0 left-0 bg-slate-50 dark:bg-slate-800 z-30 border-r border-b border-slate-200 dark:border-slate-700 min-w-[140px] shadow-[1px_0_0_0_#e2e8f0] dark:shadow-[1px_0_0_0_#1e293b]">Part Number</th>
-                      <th className="px-4 py-3 sticky top-0 left-[140px] bg-slate-50 dark:bg-slate-800 z-30 border-r border-b border-slate-200 dark:border-slate-700 min-w-[100px] shadow-[1px_0_0_0_#e2e8f0] dark:shadow-[1px_0_0_0_#1e293b]">Daily Rate</th>
-                      <th className="px-4 py-3 sticky top-0 left-[240px] bg-slate-50 dark:bg-slate-800 z-30 border-r border-b border-slate-200 dark:border-slate-700 min-w-[120px] shadow-[1px_0_0_0_#e2e8f0] dark:shadow-[1px_0_0_0_#1e293b]">Pipeline DOI</th>
+                      <th 
+                        onClick={() => requestSort('partNumber')}
+                        className="px-4 py-3 sticky top-0 left-0 bg-slate-50 dark:bg-slate-800 z-30 border-r border-b border-slate-200 dark:border-slate-700 min-w-[140px] shadow-[1px_0_0_0_#e2e8f0] dark:shadow-[1px_0_0_0_#1e293b] cursor-pointer group/header select-none hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                      >
+                        <div className="flex items-center">
+                          Part Number
+                          {getSortIcon('partNumber')}
+                        </div>
+                      </th>
+                      <th 
+                        onClick={() => requestSort('dailyRate')}
+                        className="px-4 py-3 sticky top-0 left-[140px] bg-slate-50 dark:bg-slate-800 z-30 border-r border-b border-slate-200 dark:border-slate-700 min-w-[100px] shadow-[1px_0_0_0_#e2e8f0] dark:shadow-[1px_0_0_0_#1e293b] cursor-pointer group/header select-none hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                      >
+                        <div className="flex items-center">
+                          Daily Rate
+                          {getSortIcon('dailyRate')}
+                        </div>
+                      </th>
+                      <th 
+                        onClick={() => requestSort('totalPipelineDOI')}
+                        className="px-4 py-3 sticky top-0 left-[240px] bg-slate-50 dark:bg-slate-800 z-30 border-r border-b border-slate-200 dark:border-slate-700 min-w-[120px] shadow-[1px_0_0_0_#e2e8f0] dark:shadow-[1px_0_0_0_#1e293b] cursor-pointer group/header select-none hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                      >
+                        <div className="flex items-center">
+                          Pipeline DOI
+                          {getSortIcon('totalPipelineDOI')}
+                        </div>
+                      </th>
                       {processedData.dayColumns.map(day => {
                         const date = new Date();
                         date.setDate(date.getDate() + day);
@@ -631,7 +697,11 @@ export default function ProductionForecaster() {
                           .map(([loc]) => loc);
 
                         return (
-                          <th key={day} className="px-4 py-3 text-center sticky top-0 bg-slate-50 dark:bg-slate-800 z-20 border-b border-slate-200 dark:border-slate-700 min-w-[100px]">
+                          <th 
+                            key={day} 
+                            onClick={() => requestSort(`day_${day}`)}
+                            className="px-4 py-3 text-center sticky top-0 bg-slate-50 dark:bg-slate-800 z-20 border-b border-slate-200 dark:border-slate-700 min-w-[100px] cursor-pointer group/header select-none hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                          >
                             <Tooltip 
                               label={
                                 <Stack gap={4}>
@@ -650,9 +720,14 @@ export default function ProductionForecaster() {
                               portalProps={{ target: fullscreen ? '#fullscreen-table-container' : undefined }}
                             >
                               <div className="cursor-help inline-block w-full">
-                                <div className="text-xs font-bold dark:text-slate-200">Day {day}</div>
-                                <div className="text-[10px] font-normal text-slate-400 dark:text-slate-500 normal-case">
-                                  {dayName}, {dateStr}
+                                <div className="flex flex-col items-center">
+                                  <div className="flex items-center justify-center">
+                                    <span className="text-xs font-bold dark:text-slate-200">Day {day}</span>
+                                    {getSortIcon(`day_${day}`)}
+                                  </div>
+                                  <div className="text-[10px] font-normal text-slate-400 dark:text-slate-500 normal-case">
+                                    {dayName}, {dateStr}
+                                  </div>
                                 </div>
                               </div>
                             </Tooltip>
