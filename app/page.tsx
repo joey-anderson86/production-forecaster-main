@@ -533,9 +533,44 @@ export default function ProductionForecaster() {
                       <th className="px-4 py-3 sticky left-0 bg-slate-50 z-20 border-r border-b border-slate-200 min-w-[140px] shadow-[1px_0_0_0_#e2e8f0]">Part Number</th>
                       <th className="px-4 py-3 sticky left-[140px] bg-slate-50 z-20 border-r border-b border-slate-200 min-w-[100px] shadow-[1px_0_0_0_#e2e8f0]">Daily Rate</th>
                       <th className="px-4 py-3 sticky left-[240px] bg-slate-50 z-20 border-r border-b border-slate-200 min-w-[120px] shadow-[1px_0_0_0_#e2e8f0]">Pipeline DOI</th>
-                      {processedData.dayColumns.map(day => (
-                        <th key={day} className="px-4 py-3 text-center border-b border-slate-200 min-w-[100px]">Day {day}</th>
-                      ))}
+                      {processedData.dayColumns.map(day => {
+                        const date = new Date();
+                        date.setDate(date.getDate() + day);
+                        const dateStr = date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
+                        const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+                        
+                        const mappedLocators = Object.entries(locatorMapping)
+                          .filter(([_, d]) => d === day)
+                          .map(([loc]) => loc);
+
+                        return (
+                          <th key={day} className="px-4 py-3 text-center border-b border-slate-200 min-w-[100px]">
+                            <Tooltip 
+                              label={
+                                <Stack gap={4}>
+                                  <Text size="xs" fw={700} c="white">Locators in this bucket:</Text>
+                                  {mappedLocators.length > 0 ? (
+                                    mappedLocators.map(loc => <Text key={loc} size="xs" c="white">{loc}</Text>)
+                                  ) : (
+                                    <Text size="xs" c="indigo.1">No locators mapped</Text>
+                                  )}
+                                </Stack>
+                              }
+                              withArrow
+                              position="top"
+                              multiline
+                              w={200}
+                            >
+                              <div className="cursor-help inline-block w-full">
+                                <div className="text-xs font-bold">Day {day}</div>
+                                <div className="text-[10px] font-normal text-slate-400 normal-case">
+                                  {dayName}, {dateStr}
+                                </div>
+                              </div>
+                            </Tooltip>
+                          </th>
+                        );
+                      })}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
