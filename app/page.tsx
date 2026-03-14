@@ -146,6 +146,62 @@ export default function ProductionForecaster() {
     });
     e.target.value = '';
   };
+ 
+  const handleExportForecast = async () => {
+    if (!processedData) return;
+
+    const headers = [
+      'Part Number',
+      'Daily Rate',
+      'Pipeline DOI',
+      ...processedData.dayColumns.map(d => `Day ${d}`)
+    ];
+
+    const data = processedData.results.map(row => {
+      const rowData: Record<string, any> = {
+        'Part Number': row.partNumber,
+        'Daily Rate': row.dailyRate,
+        'Pipeline DOI': row.totalPipelineDOI.toFixed(2),
+      };
+
+      processedData.dayColumns.forEach(d => {
+        rowData[`Day ${d}`] = row.dayMetrics[d]?.expected || 0;
+      });
+
+      return rowData;
+    });
+
+    const csv = Papa.unparse({ fields: headers, data });
+
+    try {
+      // @ts-ignore
+      if (window.__TAURI_INTERNALS__) {
+        const { save } = await import('@tauri-apps/plugin-dialog');
+        const { writeTextFile } = await import('@tauri-apps/plugin-fs');
+
+        const filePath = await save({
+          filters: [{ name: 'CSV', extensions: ['csv'] }],
+          defaultPath: 'production_forecast.csv'
+        });
+
+        if (filePath) {
+          await writeTextFile(filePath, csv);
+          return;
+        }
+      }
+    } catch (error) {
+      console.error('Tauri export failed:', error);
+    }
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'production_forecast.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const processedData = useMemo(() => {
     if (!forecastGenerated || pipelineData.length === 0 || dailyRateData.length === 0) return null;
@@ -479,6 +535,16 @@ export default function ProductionForecaster() {
                     size="sm"
                     className="flex-1 max-w-sm"
                   />
+
+                  <Button 
+                    variant="light" 
+                    color="indigo" 
+                    leftSection={<DownloadCloud size={16} />}
+                    onClick={handleExportForecast}
+                    size="sm"
+                  >
+                    Export CSV
+                  </Button>
                   
                   <Group gap="xs">
                     <Tooltip label="Filters">
