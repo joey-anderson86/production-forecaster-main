@@ -12,6 +12,7 @@ import {
   TextInput, ActionIcon, Group, Tooltip, 
   Menu, Button, Stack, Text, Box
 } from '@mantine/core';
+import { ColorSchemeToggle } from '@/components/ColorSchemeToggle';
 import { useFullscreen } from '@mantine/hooks';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -374,31 +375,34 @@ export default function ProductionForecaster() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans p-4 md:p-8">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans p-4 md:p-8 transition-colors duration-300">
       <div className="max-w-7xl mx-auto space-y-6">
-        <header className="flex items-center justify-between pb-4 border-b border-slate-200">
+        <header className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Production Forecaster</h1>
-            <p className="text-slate-500 text-sm mt-1">Map WIP locators to forecast shipment readiness.</p>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50 tracking-tight">Production Forecaster</h1>
+            <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Map WIP locators to forecast shipment readiness.</p>
           </div>
-          <BarChart3 className="w-8 h-8 text-indigo-600" />
+          <Group align="center" gap="md">
+            <ColorSchemeToggle />
+            <BarChart3 className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
+          </Group>
         </header>
 
         {/* Configuration Panel */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
           <button 
             onClick={() => setIsConfigOpen(!isConfigOpen)}
-            className="w-full flex items-center justify-between p-4 md:p-6 bg-white hover:bg-slate-50 transition-colors"
+            className="w-full flex items-center justify-between p-4 md:p-6 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
           >
             <div className="flex items-center gap-3">
-              <Settings className="w-5 h-5 text-indigo-600" />
-              <h2 className="text-lg font-semibold text-slate-800">Configuration & Data Upload</h2>
+              <Settings className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+              <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200">Configuration & Data Upload</h2>
             </div>
             {isConfigOpen ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
           </button>
           
           {isConfigOpen && (
-            <div className="p-4 md:p-6 border-t border-slate-100 space-y-8">
+            <div className="p-4 md:p-6 border-t border-slate-100 dark:border-slate-800 space-y-8">
               <div className="grid md:grid-cols-2 gap-6">
                 <FileDropzone 
                   label="Upload Pipeline CSV" 
@@ -418,7 +422,7 @@ export default function ProductionForecaster() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <h3 className="text-md font-semibold text-slate-800">Locator Mapping</h3>
+                      <h3 className="text-md font-semibold text-slate-800 dark:text-slate-200">Locator Mapping</h3>
                       <div className="group relative">
                         <Info className="w-4 h-4 text-slate-400 cursor-help" />
                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-2 bg-slate-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
@@ -436,13 +440,13 @@ export default function ProductionForecaster() {
                       />
                       <label 
                         htmlFor="mapping-upload" 
-                        className="cursor-pointer px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-xs font-medium rounded hover:bg-slate-50 transition-colors flex items-center gap-1 shadow-sm"
+                        className="cursor-pointer px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-medium rounded hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-1 shadow-sm"
                       >
                         <UploadCloud className="w-3 h-3" /> Import
                       </label>
                       <button 
                         onClick={handleExportMapping}
-                        className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-xs font-medium rounded hover:bg-slate-50 transition-colors flex items-center gap-1 shadow-sm"
+                        className="px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-medium rounded hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-1 shadow-sm"
                       >
                         <DownloadCloud className="w-3 h-3" /> Export
                       </button>
@@ -450,13 +454,13 @@ export default function ProductionForecaster() {
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                     {locators.map(loc => (
-                      <div key={loc} className="bg-slate-50 p-3 rounded-lg border border-slate-200 flex flex-col gap-2">
-                        <label className="text-xs font-medium text-slate-600 truncate" title={loc}>{loc}</label>
+                      <div key={loc} className="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-lg border border-slate-200 dark:border-slate-700 flex flex-col gap-2">
+                        <label className="text-xs font-medium text-slate-600 dark:text-slate-400 truncate" title={loc}>{loc}</label>
                         <input 
                           type="number" 
                           value={locatorMapping[loc]} 
                           onChange={(e) => handleMappingChange(loc, parseInt(e.target.value) || 0)}
-                          className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          className="w-full px-3 py-1.5 text-sm border border-slate-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                         />
                       </div>
                     ))}
@@ -464,7 +468,7 @@ export default function ProductionForecaster() {
                 </div>
               )}
 
-              <div className="flex justify-end pt-4 border-t border-slate-100">
+              <div className="flex justify-end pt-4 border-t border-slate-100 dark:border-slate-800">
                 <button 
                   onClick={handleGenerate}
                   disabled={!pipelineFile || !dailyRateFile}
@@ -472,7 +476,7 @@ export default function ProductionForecaster() {
                     "px-6 py-2.5 rounded-lg font-medium text-sm transition-all shadow-sm",
                     pipelineFile && dailyRateFile 
                       ? "bg-indigo-600 text-white hover:bg-indigo-700 hover:shadow-md" 
-                      : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed"
                   )}
                 >
                   Generate Forecast
@@ -488,28 +492,28 @@ export default function ProductionForecaster() {
             
             {/* Summary Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-1">
-                <span className="text-sm font-medium text-slate-500">Total Parts Starving Today</span>
+              <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col gap-1">
+                <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Total Parts Starving Today</span>
                 <div className="flex items-baseline gap-2">
-                  <span className={cn("text-3xl font-bold tracking-tight", summary.starvingToday > 0 ? "text-red-600" : "text-emerald-600")}>
+                  <span className={cn("text-3xl font-bold tracking-tight", summary.starvingToday > 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400")}>
                     {summary.starvingToday}
                   </span>
                   <span className="text-sm text-slate-400">parts</span>
                 </div>
               </div>
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-1">
-                <span className="text-sm font-medium text-slate-500">Average Pipeline DOI</span>
+              <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col gap-1">
+                <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Average Pipeline DOI</span>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-bold tracking-tight text-slate-800">
+                  <span className="text-3xl font-bold tracking-tight text-slate-800 dark:text-slate-100">
                     {summary.avgDOI.toFixed(2)}
                   </span>
                   <span className="text-sm text-slate-400">days</span>
                 </div>
               </div>
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-1">
-                <span className="text-sm font-medium text-slate-500">Filtered Parts</span>
+              <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col gap-1">
+                <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Filtered Parts</span>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-bold tracking-tight text-slate-800">
+                  <span className="text-3xl font-bold tracking-tight text-slate-800 dark:text-slate-100">
                     {processedData.results.length}
                   </span>
                   <span className="text-sm text-slate-400">parts</span>
@@ -521,11 +525,11 @@ export default function ProductionForecaster() {
           <div 
             ref={tableRef}
             className={cn(
-                "bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col",
+                "bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col",
                 fullscreen && "p-8 overflow-auto h-screen w-screen"
               )}
             >
-              <div className="p-4 border-b border-slate-100 bg-white">
+              <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900">
                 <Group justify="space-between" align="center" gap="md">
                   <TextInput
                     placeholder="Search Part Number..."
@@ -595,24 +599,24 @@ export default function ProductionForecaster() {
                 </Group>
               </div>
 
-              <div className="p-2 bg-slate-50/50 border-b border-slate-100 flex items-center justify-end gap-4 text-[10px] font-medium uppercase tracking-wider text-slate-400">
+              <div className="p-2 bg-slate-50/50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800 flex items-center justify-end gap-4 text-[10px] font-medium uppercase tracking-wider text-slate-400 dark:text-slate-500">
                 <div className="flex items-center gap-1.5">
-                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-100 border border-emerald-200"></div>
+                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800"></div>
                   <span>Healthy</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <div className="w-2.5 h-2.5 rounded-full bg-red-100 border border-red-200"></div>
+                  <div className="w-2.5 h-2.5 rounded-full bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-800"></div>
                   <span>Shortage</span>
                 </div>
               </div>
 
               <div className="overflow-x-auto relative flex-1">
                 <table className="w-full text-sm text-left border-collapse">
-                  <thead className="text-xs text-slate-600 uppercase bg-slate-50">
+                  <thead className="text-xs text-slate-600 dark:text-slate-400 uppercase bg-slate-50 dark:bg-slate-800/80">
                     <tr>
-                      <th className="px-4 py-3 sticky top-0 left-0 bg-slate-50 z-30 border-r border-b border-slate-200 min-w-[140px] shadow-[1px_0_0_0_#e2e8f0]">Part Number</th>
-                      <th className="px-4 py-3 sticky top-0 left-[140px] bg-slate-50 z-30 border-r border-b border-slate-200 min-w-[100px] shadow-[1px_0_0_0_#e2e8f0]">Daily Rate</th>
-                      <th className="px-4 py-3 sticky top-0 left-[240px] bg-slate-50 z-30 border-r border-b border-slate-200 min-w-[120px] shadow-[1px_0_0_0_#e2e8f0]">Pipeline DOI</th>
+                      <th className="px-4 py-3 sticky top-0 left-0 bg-slate-50 dark:bg-slate-800 z-30 border-r border-b border-slate-200 dark:border-slate-700 min-w-[140px] shadow-[1px_0_0_0_#e2e8f0] dark:shadow-[1px_0_0_0_#1e293b]">Part Number</th>
+                      <th className="px-4 py-3 sticky top-0 left-[140px] bg-slate-50 dark:bg-slate-800 z-30 border-r border-b border-slate-200 dark:border-slate-700 min-w-[100px] shadow-[1px_0_0_0_#e2e8f0] dark:shadow-[1px_0_0_0_#1e293b]">Daily Rate</th>
+                      <th className="px-4 py-3 sticky top-0 left-[240px] bg-slate-50 dark:bg-slate-800 z-30 border-r border-b border-slate-200 dark:border-slate-700 min-w-[120px] shadow-[1px_0_0_0_#e2e8f0] dark:shadow-[1px_0_0_0_#1e293b]">Pipeline DOI</th>
                       {processedData.dayColumns.map(day => {
                         const date = new Date();
                         date.setDate(date.getDate() + day);
@@ -624,7 +628,7 @@ export default function ProductionForecaster() {
                           .map(([loc]) => loc);
 
                         return (
-                          <th key={day} className="px-4 py-3 text-center sticky top-0 bg-slate-50 z-20 border-b border-slate-200 min-w-[100px]">
+                          <th key={day} className="px-4 py-3 text-center sticky top-0 bg-slate-50 dark:bg-slate-800 z-20 border-b border-slate-200 dark:border-slate-700 min-w-[100px]">
                             <Tooltip 
                               label={
                                 <Stack gap={4}>
@@ -642,8 +646,8 @@ export default function ProductionForecaster() {
                               w={200}
                             >
                               <div className="cursor-help inline-block w-full">
-                                <div className="text-xs font-bold">Day {day}</div>
-                                <div className="text-[10px] font-normal text-slate-400 normal-case">
+                                <div className="text-xs font-bold dark:text-slate-200">Day {day}</div>
+                                <div className="text-[10px] font-normal text-slate-400 dark:text-slate-500 normal-case">
                                   {dayName}, {dateStr}
                                 </div>
                               </div>
@@ -660,8 +664,8 @@ export default function ProductionForecaster() {
                         <React.Fragment key={row.partNumber}>
                           <tr 
                             className={cn(
-                              "hover:bg-slate-50/50 group transition-colors cursor-pointer",
-                              isExpanded && "bg-slate-50/80"
+                              "hover:bg-slate-50/50 dark:hover:bg-slate-800/30 group transition-colors cursor-pointer",
+                              isExpanded && "bg-slate-50/80 dark:bg-slate-800/40"
                             )}
                             onClick={() => {
                               const next = new Set(expandedRows);
@@ -675,8 +679,8 @@ export default function ProductionForecaster() {
                           >
                             <td 
                               className={cn(
-                                "px-4 font-medium text-slate-900 sticky left-0 z-10 border-r border-slate-100 min-w-[140px] shadow-[1px_0_0_0_#f1f5f9] flex items-center gap-2",
-                                isExpanded ? "bg-slate-50" : "bg-white group-hover:bg-slate-50",
+                                "px-4 font-medium text-slate-900 dark:text-slate-100 sticky left-0 z-10 border-r border-slate-100 dark:border-slate-800 min-w-[140px] shadow-[1px_0_0_0_#f1f5f9] dark:shadow-[1px_0_0_0_#1e293b] flex items-center gap-2",
+                                isExpanded ? "bg-slate-50 dark:bg-slate-800" : "bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/50",
                                 density === 'xs' ? 'py-1' : density === 'sm' ? 'py-3' : 'py-5'
                               )}
                             >
@@ -685,8 +689,8 @@ export default function ProductionForecaster() {
                             </td>
                             <td 
                               className={cn(
-                                "px-4 sticky left-[140px] z-10 border-r border-slate-100 min-w-[100px] shadow-[1px_0_0_0_#f1f5f9] text-slate-600",
-                                isExpanded ? "bg-slate-50" : "bg-white group-hover:bg-slate-50",
+                                "px-4 sticky left-[140px] z-10 border-r border-slate-100 dark:border-slate-800 min-w-[100px] shadow-[1px_0_0_0_#f1f5f9] dark:shadow-[1px_0_0_0_#1e293b] text-slate-600 dark:text-slate-400",
+                                isExpanded ? "bg-slate-50 dark:bg-slate-800" : "bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/50",
                                 density === 'xs' ? 'py-1' : density === 'sm' ? 'py-3' : 'py-5'
                               )}
                             >
@@ -694,8 +698,8 @@ export default function ProductionForecaster() {
                             </td>
                             <td 
                               className={cn(
-                                "px-4 sticky left-[240px] z-10 border-r border-slate-100 min-w-[120px] shadow-[1px_0_0_0_#f1f5f9] text-slate-600",
-                                isExpanded ? "bg-slate-50" : "bg-white group-hover:bg-slate-50",
+                                "px-4 sticky left-[240px] z-10 border-r border-slate-100 dark:border-slate-800 min-w-[120px] shadow-[1px_0_0_0_#f1f5f9] dark:shadow-[1px_0_0_0_#1e293b] text-slate-600 dark:text-slate-400",
+                                isExpanded ? "bg-slate-50 dark:bg-slate-800" : "bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/50",
                                 density === 'xs' ? 'py-1' : density === 'sm' ? 'py-3' : 'py-5'
                               )}
                             >
@@ -706,9 +710,9 @@ export default function ProductionForecaster() {
                               const isNegative = metrics.variance < 0;
                               return (
                                 <td key={day} className={cn(
-                                  "px-4 text-center border-l border-slate-100 transition-colors",
-                                  isNegative ? "bg-red-50/80 group-hover:bg-red-100/80" : "group-hover:bg-slate-50/50",
-                                  isExpanded && !isNegative && "bg-slate-50/80",
+                                  "px-4 text-center border-l border-slate-100 dark:border-slate-800 transition-colors",
+                                  isNegative ? "bg-red-50/80 dark:bg-red-900/20 group-hover:bg-red-100/80 dark:group-hover:bg-red-900/30" : "group-hover:bg-slate-50/50 dark:group-hover:bg-slate-800/40",
+                                  isExpanded && !isNegative && "bg-slate-50/80 dark:bg-slate-800/60",
                                   density === 'xs' ? 'py-1' : density === 'sm' ? 'py-2' : 'py-4'
                                 )}>
                                   <Tooltip
@@ -729,12 +733,12 @@ export default function ProductionForecaster() {
                                     multiline
                                   >
                                     <div className="cursor-help">
-                                      <div className={cn("font-semibold", isNegative ? "text-red-700" : "text-slate-800")}>
+                                      <div className={cn("font-semibold", isNegative ? "text-red-700 dark:text-red-400" : "text-slate-800 dark:text-slate-200")}>
                                         {metrics.expected}
                                       </div>
                                       <div className={cn(
                                         "text-xs font-medium mt-0.5", 
-                                        isNegative ? "text-red-600" : "text-emerald-600"
+                                        isNegative ? "text-red-600 dark:text-red-500" : "text-emerald-600 dark:text-emerald-500"
                                       )}>
                                         {metrics.variance > 0 ? '+' : ''}{metrics.variance}
                                       </div>
@@ -745,11 +749,11 @@ export default function ProductionForecaster() {
                             })}
                           </tr>
                           {isExpanded && row.distributions.map((dist, idx) => (
-                            <tr key={`${row.partNumber}-${dist.id}`} className="bg-white border-l-4 border-l-indigo-500">
+                            <tr key={`${row.partNumber}-${dist.id}`} className="bg-white dark:bg-slate-900 border-l-4 border-l-indigo-500">
                               <td 
                                 colSpan={3} 
                                 className={cn(
-                                  "px-8 text-xs font-medium text-slate-500 bg-slate-50 border-r border-slate-100 sticky left-0 z-10 shadow-[1px_0_0_0_#f1f5f9]",
+                                  "px-8 text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 border-r border-slate-100 dark:border-slate-800 sticky left-0 z-10 shadow-[1px_0_0_0_#f1f5f9] dark:shadow-[1px_0_0_0_#1e293b]",
                                   density === 'xs' ? 'py-1' : 'py-2'
                                 )}
                               >
@@ -759,7 +763,7 @@ export default function ProductionForecaster() {
                                 <td 
                                   key={day} 
                                   className={cn(
-                                    "px-4 text-center border-l border-slate-100 text-slate-500 text-xs",
+                                    "px-4 text-center border-l border-slate-100 dark:border-slate-800 text-slate-500 dark:text-slate-400 text-xs",
                                     density === 'xs' ? 'py-1' : 'py-2'
                                   )}
                                 >
@@ -795,8 +799,8 @@ function FileDropzone({ label, accept, onDrop, file }: { label: string, accept: 
     <div 
       className={cn(
         "border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center transition-all cursor-pointer",
-        isDragging ? "border-indigo-500 bg-indigo-50 scale-[1.02]" : "border-slate-300 hover:border-indigo-400 hover:bg-slate-50",
-        file ? "bg-emerald-50 border-emerald-500 hover:bg-emerald-50 hover:border-emerald-500" : ""
+        isDragging ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-950/30 scale-[1.02]" : "border-slate-300 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-slate-50 dark:hover:bg-slate-800/30",
+        file ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:border-emerald-500" : ""
       )}
       onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
       onDragLeave={() => setIsDragging(false)}
