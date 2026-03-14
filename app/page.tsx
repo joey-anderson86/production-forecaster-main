@@ -544,9 +544,9 @@ export default function ProductionForecaster() {
                 <table className="w-full text-sm text-left border-collapse">
                   <thead className="text-xs text-slate-600 uppercase bg-slate-50">
                     <tr>
-                      <th className="px-4 py-3 sticky left-0 bg-slate-50 z-20 border-r border-b border-slate-200 min-w-[140px] shadow-[1px_0_0_0_#e2e8f0]">Part Number</th>
-                      <th className="px-4 py-3 sticky left-[140px] bg-slate-50 z-20 border-r border-b border-slate-200 min-w-[100px] shadow-[1px_0_0_0_#e2e8f0]">Daily Rate</th>
-                      <th className="px-4 py-3 sticky left-[240px] bg-slate-50 z-20 border-r border-b border-slate-200 min-w-[120px] shadow-[1px_0_0_0_#e2e8f0]">Pipeline DOI</th>
+                      <th className="px-4 py-3 sticky top-0 left-0 bg-slate-50 z-30 border-r border-b border-slate-200 min-w-[140px] shadow-[1px_0_0_0_#e2e8f0]">Part Number</th>
+                      <th className="px-4 py-3 sticky top-0 left-[140px] bg-slate-50 z-30 border-r border-b border-slate-200 min-w-[100px] shadow-[1px_0_0_0_#e2e8f0]">Daily Rate</th>
+                      <th className="px-4 py-3 sticky top-0 left-[240px] bg-slate-50 z-30 border-r border-b border-slate-200 min-w-[120px] shadow-[1px_0_0_0_#e2e8f0]">Pipeline DOI</th>
                       {processedData.dayColumns.map(day => {
                         const date = new Date();
                         date.setDate(date.getDate() + day);
@@ -558,7 +558,7 @@ export default function ProductionForecaster() {
                           .map(([loc]) => loc);
 
                         return (
-                          <th key={day} className="px-4 py-3 text-center border-b border-slate-200 min-w-[100px]">
+                          <th key={day} className="px-4 py-3 text-center sticky top-0 bg-slate-50 z-20 border-b border-slate-200 min-w-[100px]">
                             <Tooltip 
                               label={
                                 <Stack gap={4}>
