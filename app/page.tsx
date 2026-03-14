@@ -423,12 +423,14 @@ export default function ProductionForecaster() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <h3 className="text-md font-semibold text-slate-800 dark:text-slate-200">Locator Mapping</h3>
-                      <div className="group relative">
+                      <Tooltip 
+                        label="Assign each WIP locator to &quot;X days from planned shipment&quot;. 0 = Today, 1 = Tomorrow, etc."
+                        multiline
+                        w={250}
+                        withArrow
+                      >
                         <Info className="w-4 h-4 text-slate-400 cursor-help" />
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-2 bg-slate-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
-                          Assign each WIP locator to &quot;X days from planned shipment&quot;. 0 = Today, 1 = Tomorrow, etc.
-                        </div>
-                      </div>
+                      </Tooltip>
                     </div>
                     <div className="flex items-center gap-2">
                       <input 
@@ -633,11 +635,11 @@ export default function ProductionForecaster() {
                             <Tooltip 
                               label={
                                 <Stack gap={4}>
-                                  <Text size="xs" fw={700} c="white">Locators in this bucket:</Text>
+                                  <Text size="xs" fw={700}>Locators in this bucket:</Text>
                                   {mappedLocators.length > 0 ? (
-                                    mappedLocators.map(loc => <Text key={loc} size="xs" c="white">{loc}</Text>)
+                                    mappedLocators.map(loc => <Text key={loc} size="xs">{loc}</Text>)
                                   ) : (
-                                    <Text size="xs" c="indigo.1">No locators mapped</Text>
+                                    <Text size="xs" c="dimmed">No locators mapped</Text>
                                   )}
                                 </Stack>
                               }
@@ -720,13 +722,13 @@ export default function ProductionForecaster() {
                                   <Tooltip
                                     label={
                                       <Stack gap={4}>
-                                        <Text size="xs" fw={700} c="white">Locator Breakdown:</Text>
+                                        <Text size="xs" fw={700}>Locator Breakdown:</Text>
                                         {Object.entries(metrics.locatorBreakdown).length > 0 ? (
                                           Object.entries(metrics.locatorBreakdown).map(([loc, qty]) => (
-                                            <Text key={loc} size="xs" c="white">{loc} = {qty} parts</Text>
+                                            <Text key={loc} size="xs">{loc} = {qty} parts</Text>
                                           ))
                                         ) : (
-                                          <Text size="xs" c="indigo.1">No WIP in this bucket</Text>
+                                          <Text size="xs" c="dimmed">No WIP in this bucket</Text>
                                         )}
                                       </Stack>
                                     }

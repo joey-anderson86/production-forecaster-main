@@ -12,7 +12,9 @@ export function ColorSchemeToggle() {
   };
 
   return (
-    <Tooltip label={`Switch to ${computedColorScheme === 'light' ? 'dark' : 'light'} mode`}>
+    <Tooltip 
+      label={`Switch to ${computedColorScheme === 'light' ? 'dark' : 'light'} mode`}
+    >
       <ActionIcon
         onClick={toggleColorScheme}
         variant="outline"
