@@ -176,6 +176,7 @@ export default function ProductionForecaster() {
       dailyRate: number;
       locators: Record<string, number>;
       distributions: Record<string, Record<string, number>>; // {Customer - City} -> {Locator} -> Qty
+      locatorBreakdownByDay: Record<number, Record<string, number>>; // Day -> {Locator -> Qty}
     }>();
 
     pipelineData.forEach(row => {
@@ -189,7 +190,8 @@ export default function ProductionForecaster() {
           partNumber,
           dailyRate: ratesMap.get(partNumber) || 0,
           locators: {},
-          distributions: {}
+          distributions: {},
+          locatorBreakdownByDay: {}
         });
         locators.forEach(loc => groupedMap.get(partNumber)!.locators[loc] = 0);
       }
@@ -204,6 +206,14 @@ export default function ProductionForecaster() {
         const qty = Number(row[loc]) || 0;
         group.locators[loc] += qty;
         group.distributions[distId][loc] += qty;
+        
+        const mappedDay = locatorMapping[loc];
+        if (mappedDay !== undefined && qty > 0) {
+          if (!group.locatorBreakdownByDay[mappedDay]) {
+            group.locatorBreakdownByDay[mappedDay] = {};
+          }
+          group.locatorBreakdownByDay[mappedDay][loc] = (group.locatorBreakdownByDay[mappedDay][loc] || 0) + qty;
+        }
       });
     });
 
@@ -225,11 +235,15 @@ export default function ProductionForecaster() {
 
       const totalPipelineDOI = dailyRate > 0 ? totalWip / dailyRate : 0;
 
-      const dayMetrics: Record<number, { expected: number, variance: number }> = {};
+      const dayMetrics: Record<number, { expected: number, variance: number, locatorBreakdown: Record<string, number> }> = {};
       dayColumns.forEach(d => {
         const expected = dayVolumes[d];
         const variance = expected - dailyRate;
-        dayMetrics[d] = { expected, variance };
+        dayMetrics[d] = { 
+          expected, 
+          variance,
+          locatorBreakdown: group.locatorBreakdownByDay[d] || {}
+        };
       });
 
       // Process distributions for sub-rows
@@ -631,15 +645,35 @@ export default function ProductionForecaster() {
                                   isExpanded && !isNegative && "bg-slate-50/80",
                                   density === 'xs' ? 'py-1' : density === 'sm' ? 'py-2' : 'py-4'
                                 )}>
-                                  <div className={cn("font-semibold", isNegative ? "text-red-700" : "text-slate-800")}>
-                                    {metrics.expected}
-                                  </div>
-                                  <div className={cn(
-                                    "text-xs font-medium mt-0.5", 
-                                    isNegative ? "text-red-600" : "text-emerald-600"
-                                  )}>
-                                    {metrics.variance > 0 ? '+' : ''}{metrics.variance}
-                                  </div>
+                                  <Tooltip
+                                    label={
+                                      <Stack gap={4}>
+                                        <Text size="xs" fw={700} c="white">Locator Breakdown:</Text>
+                                        {Object.entries(metrics.locatorBreakdown).length > 0 ? (
+                                          Object.entries(metrics.locatorBreakdown).map(([loc, qty]) => (
+                                            <Text key={loc} size="xs" c="white">{loc} = {qty} parts</Text>
+                                          ))
+                                        ) : (
+                                          <Text size="xs" c="indigo.1">No WIP in this bucket</Text>
+                                        )}
+                                      </Stack>
+                                    }
+                                    withArrow
+                                    position="top"
+                                    multiline
+                                  >
+                                    <div className="cursor-help">
+                                      <div className={cn("font-semibold", isNegative ? "text-red-700" : "text-slate-800")}>
+                                        {metrics.expected}
+                                      </div>
+                                      <div className={cn(
+                                        "text-xs font-medium mt-0.5", 
+                                        isNegative ? "text-red-600" : "text-emerald-600"
+                                      )}>
+                                        {metrics.variance > 0 ? '+' : ''}{metrics.variance}
+                                      </div>
+                                    </div>
+                                  </Tooltip>
                                 </td>
                               );
                             })}
