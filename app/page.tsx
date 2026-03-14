@@ -524,6 +524,7 @@ export default function ProductionForecaster() {
             {/* Main Data Table */}
           <div 
             ref={tableRef}
+            id="fullscreen-table-container"
             className={cn(
                 "bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col",
                 fullscreen && "p-8 overflow-auto h-screen w-screen"
@@ -551,15 +552,15 @@ export default function ProductionForecaster() {
                   </Button>
                   
                   <Group gap="xs">
-                    <Tooltip label="Filters">
+                    <Tooltip label="Filters" portalProps={{ target: fullscreen ? '#fullscreen-table-container' : undefined }}>
                       <ActionIcon variant="light" color="indigo" size="lg" onClick={() => console.log('Filter clicked')}>
                         <Filter size={18} />
                       </ActionIcon>
                     </Tooltip>
                     
-                    <Menu shadow="md" width={200}>
+                    <Menu shadow="md" width={200} portalProps={{ target: fullscreen ? '#fullscreen-table-container' : undefined }}>
                       <Menu.Target>
-                        <Tooltip label="Show/Hide Columns">
+                        <Tooltip label="Show/Hide Columns" portalProps={{ target: fullscreen ? '#fullscreen-table-container' : undefined }}>
                           <ActionIcon variant="light" color="indigo" size="lg" onClick={() => console.log('Columns clicked')}>
                             <Columns size={18} />
                           </ActionIcon>
@@ -574,9 +575,9 @@ export default function ProductionForecaster() {
                       </Menu.Dropdown>
                     </Menu>
 
-                    <Menu shadow="md" width={150}>
+                    <Menu shadow="md" width={150} portalProps={{ target: fullscreen ? '#fullscreen-table-container' : undefined }}>
                       <Menu.Target>
-                        <Tooltip label="Toggle Density">
+                        <Tooltip label="Toggle Density" portalProps={{ target: fullscreen ? '#fullscreen-table-container' : undefined }}>
                           <ActionIcon variant="light" color="indigo" size="lg">
                             <LayoutList size={18} />
                           </ActionIcon>
@@ -590,7 +591,7 @@ export default function ProductionForecaster() {
                       </Menu.Dropdown>
                     </Menu>
 
-                    <Tooltip label={fullscreen ? "Exit Full Screen" : "Toggle Full Screen"}>
+                    <Tooltip label={fullscreen ? "Exit Full Screen" : "Toggle Full Screen"} portalProps={{ target: fullscreen ? '#fullscreen-table-container' : undefined }}>
                       <ActionIcon variant="light" color="indigo" size="lg" onClick={toggleFullscreen}>
                         {fullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
                       </ActionIcon>
@@ -644,6 +645,7 @@ export default function ProductionForecaster() {
                               position="top"
                               multiline
                               w={200}
+                              portalProps={{ target: fullscreen ? '#fullscreen-table-container' : undefined }}
                             >
                               <div className="cursor-help inline-block w-full">
                                 <div className="text-xs font-bold dark:text-slate-200">Day {day}</div>
@@ -731,6 +733,7 @@ export default function ProductionForecaster() {
                                     withArrow
                                     position="top"
                                     multiline
+                                    portalProps={{ target: fullscreen ? '#fullscreen-table-container' : undefined }}
                                   >
                                     <div className="cursor-help">
                                       <div className={cn("font-semibold", isNegative ? "text-red-700 dark:text-red-400" : "text-slate-800 dark:text-slate-200")}>
