@@ -35,15 +35,21 @@ export default function ProductionForecaster() {
 
   const [isConfigOpen, setIsConfigOpen] = useState(true);
   const [forecastGenerated, setForecastGenerated] = useState(false);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
   // Toolbar States
   const [searchQuery, setSearchQuery] = useState('');
   const [density, setDensity] = useState<'xs' | 'sm' | 'md'>('sm');
-  const tableRef = useRef<HTMLDivElement>(null);
-  const { toggle: toggleFullscreen, fullscreen } = useFullscreen({ element: tableRef.current });
+  const { toggle: toggleFullscreen, fullscreen, ref: tableRef } = useFullscreen<HTMLDivElement>();
 
   const getPartNumberKey = (keys: string[]) => {
     return keys.find(k => k.toLowerCase().replace(/[^a-z0-9]/g, '') === 'partnumber') || keys[0];
+  };
+
+  const getCustomerKeys = (keys: string[]) => {
+    const customer = keys.find(k => k.toLowerCase().replace(/[^a-z]/g, '') === 'customer') || 'Customer';
+    const city = keys.find(k => k.toLowerCase().replace(/[^a-z]/g, '') === 'customercity' || k.toLowerCase().includes('city')) || 'Customer City';
+    return { customer, city };
   };
 
   const handleFileUpload = (file: File, type: 'pipeline' | 'dailyRate') => {
@@ -144,9 +150,13 @@ export default function ProductionForecaster() {
   const processedData = useMemo(() => {
     if (!forecastGenerated || pipelineData.length === 0 || dailyRateData.length === 0) return null;
 
-    const pipelinePartKey = getPartNumberKey(Object.keys(pipelineData[0]));
-    const ratePartKey = getPartNumberKey(Object.keys(dailyRateData[0]));
-    const rateValueKey = Object.keys(dailyRateData[0]).find(k => k !== ratePartKey) || Object.keys(dailyRateData[0])[1];
+    const pipelineKeys = Object.keys(pipelineData[0]);
+    const pipelinePartKey = getPartNumberKey(pipelineKeys);
+    const { customer: custKey, city: cityKey } = getCustomerKeys(pipelineKeys);
+    
+    const rateKeys = Object.keys(dailyRateData[0]);
+    const ratePartKey = getPartNumberKey(rateKeys);
+    const rateValueKey = rateKeys.find(k => k !== ratePartKey) || rateKeys[1];
 
     const ratesMap = new Map<string, number>();
     dailyRateData.forEach(row => {
@@ -160,16 +170,52 @@ export default function ProductionForecaster() {
     const maxDay = Math.max(...days, 0);
     const dayColumns = Array.from({ length: maxDay - minDay + 1 }, (_, i) => minDay + i);
 
-    let results = pipelineData.map(row => {
+    // Grouping logic
+    const groupedMap = new Map<string, {
+      partNumber: string;
+      dailyRate: number;
+      locators: Record<string, number>;
+      distributions: Record<string, Record<string, number>>; // {Customer - City} -> {Locator} -> Qty
+    }>();
+
+    pipelineData.forEach(row => {
       const partNumber = String(row[pipelinePartKey]).trim();
-      const dailyRate = ratesMap.get(partNumber) || 0;
+      const customer = String(row[custKey] || 'Unknown').trim();
+      const city = String(row[cityKey] || '').trim();
+      const distId = city ? `${customer} - ${city}` : customer;
+
+      if (!groupedMap.has(partNumber)) {
+        groupedMap.set(partNumber, {
+          partNumber,
+          dailyRate: ratesMap.get(partNumber) || 0,
+          locators: {},
+          distributions: {}
+        });
+        locators.forEach(loc => groupedMap.get(partNumber)!.locators[loc] = 0);
+      }
+
+      const group = groupedMap.get(partNumber)!;
+      if (!group.distributions[distId]) {
+        group.distributions[distId] = {};
+        locators.forEach(loc => group.distributions[distId][loc] = 0);
+      }
+
+      locators.forEach(loc => {
+        const qty = Number(row[loc]) || 0;
+        group.locators[loc] += qty;
+        group.distributions[distId][loc] += qty;
+      });
+    });
+
+    let results = Array.from(groupedMap.values()).map(group => {
+      const { partNumber, dailyRate, locators: groupLocators, distributions } = group;
       
       let totalWip = 0;
       const dayVolumes: Record<number, number> = {};
       dayColumns.forEach(d => dayVolumes[d] = 0);
 
       locators.forEach(loc => {
-        const qty = Number(row[loc]) || 0;
+        const qty = groupLocators[loc];
         totalWip += qty;
         const mappedDay = locatorMapping[loc];
         if (mappedDay !== undefined) {
@@ -186,12 +232,32 @@ export default function ProductionForecaster() {
         dayMetrics[d] = { expected, variance };
       });
 
+      // Process distributions for sub-rows
+      const distributionResults = Object.entries(distributions).map(([id, distLocators]) => {
+        const distDayVolumes: Record<number, number> = {};
+        dayColumns.forEach(d => distDayVolumes[d] = 0);
+
+        locators.forEach(loc => {
+          const qty = distLocators[loc];
+          const mappedDay = locatorMapping[loc];
+          if (mappedDay !== undefined) {
+            distDayVolumes[mappedDay] += qty;
+          }
+        });
+
+        return {
+          id,
+          dayVolumes: distDayVolumes
+        };
+      });
+
       return {
         partNumber,
         dailyRate,
         totalWip,
         totalPipelineDOI,
-        dayMetrics
+        dayMetrics,
+        distributions: distributionResults
       };
     });
 
@@ -382,9 +448,9 @@ export default function ProductionForecaster() {
             </div>
 
             {/* Main Data Table */}
-            <div 
-              ref={tableRef}
-              className={cn(
+          <div 
+            ref={tableRef}
+            className={cn(
                 "bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col",
                 fullscreen && "p-8 overflow-auto h-screen w-screen"
               )}
@@ -473,55 +539,103 @@ export default function ProductionForecaster() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {processedData.results.map((row, i) => (
-                      <tr key={i} className="hover:bg-slate-50/50 group transition-colors">
-                        <td 
-                          className={cn(
-                            "px-4 font-medium text-slate-900 sticky left-0 bg-white z-10 border-r border-slate-100 min-w-[140px] group-hover:bg-slate-50 shadow-[1px_0_0_0_#f1f5f9]",
-                            density === 'xs' ? 'py-1' : density === 'sm' ? 'py-3' : 'py-5'
-                          )}
-                        >
-                          {row.partNumber}
-                        </td>
-                        <td 
-                          className={cn(
-                            "px-4 sticky left-[140px] bg-white z-10 border-r border-slate-100 min-w-[100px] group-hover:bg-slate-50 shadow-[1px_0_0_0_#f1f5f9] text-slate-600",
-                            density === 'xs' ? 'py-1' : density === 'sm' ? 'py-3' : 'py-5'
-                          )}
-                        >
-                          {row.dailyRate}
-                        </td>
-                        <td 
-                          className={cn(
-                            "px-4 sticky left-[240px] bg-white z-10 border-r border-slate-100 min-w-[120px] group-hover:bg-slate-50 shadow-[1px_0_0_0_#f1f5f9] text-slate-600",
-                            density === 'xs' ? 'py-1' : density === 'sm' ? 'py-3' : 'py-5'
-                          )}
-                        >
-                          {row.totalPipelineDOI.toFixed(1)}
-                        </td>
-                        {processedData.dayColumns.map(day => {
-                          const metrics = row.dayMetrics[day];
-                          const isNegative = metrics.variance < 0;
-                          return (
-                            <td key={day} className={cn(
-                              "px-4 text-center border-l border-slate-100 transition-colors",
-                              isNegative ? "bg-red-50/80 group-hover:bg-red-100/80" : "group-hover:bg-slate-50/50",
-                              density === 'xs' ? 'py-1' : density === 'sm' ? 'py-2' : 'py-4'
-                            )}>
-                              <div className={cn("font-semibold", isNegative ? "text-red-700" : "text-slate-800")}>
-                                {metrics.expected}
-                              </div>
-                              <div className={cn(
-                                "text-xs font-medium mt-0.5", 
-                                isNegative ? "text-red-600" : "text-emerald-600"
-                              )}>
-                                {metrics.variance > 0 ? '+' : ''}{metrics.variance}
-                              </div>
+                    {processedData.results.map((row, i) => {
+                      const isExpanded = expandedRows.has(row.partNumber);
+                      return (
+                        <React.Fragment key={row.partNumber}>
+                          <tr 
+                            className={cn(
+                              "hover:bg-slate-50/50 group transition-colors cursor-pointer",
+                              isExpanded && "bg-slate-50/80"
+                            )}
+                            onClick={() => {
+                              const next = new Set(expandedRows);
+                              if (isExpanded) {
+                                next.delete(row.partNumber);
+                              } else {
+                                next.add(row.partNumber);
+                              }
+                              setExpandedRows(next);
+                            }}
+                          >
+                            <td 
+                              className={cn(
+                                "px-4 font-medium text-slate-900 sticky left-0 z-10 border-r border-slate-100 min-w-[140px] shadow-[1px_0_0_0_#f1f5f9] flex items-center gap-2",
+                                isExpanded ? "bg-slate-50" : "bg-white group-hover:bg-slate-50",
+                                density === 'xs' ? 'py-1' : density === 'sm' ? 'py-3' : 'py-5'
+                              )}
+                            >
+                              {isExpanded ? <ChevronUp size={14} className="text-indigo-600" /> : <ChevronDown size={14} className="text-slate-400" />}
+                              {row.partNumber}
                             </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
+                            <td 
+                              className={cn(
+                                "px-4 sticky left-[140px] z-10 border-r border-slate-100 min-w-[100px] shadow-[1px_0_0_0_#f1f5f9] text-slate-600",
+                                isExpanded ? "bg-slate-50" : "bg-white group-hover:bg-slate-50",
+                                density === 'xs' ? 'py-1' : density === 'sm' ? 'py-3' : 'py-5'
+                              )}
+                            >
+                              {row.dailyRate}
+                            </td>
+                            <td 
+                              className={cn(
+                                "px-4 sticky left-[240px] z-10 border-r border-slate-100 min-w-[120px] shadow-[1px_0_0_0_#f1f5f9] text-slate-600",
+                                isExpanded ? "bg-slate-50" : "bg-white group-hover:bg-slate-50",
+                                density === 'xs' ? 'py-1' : density === 'sm' ? 'py-3' : 'py-5'
+                              )}
+                            >
+                              {row.totalPipelineDOI.toFixed(1)}
+                            </td>
+                            {processedData.dayColumns.map(day => {
+                              const metrics = row.dayMetrics[day];
+                              const isNegative = metrics.variance < 0;
+                              return (
+                                <td key={day} className={cn(
+                                  "px-4 text-center border-l border-slate-100 transition-colors",
+                                  isNegative ? "bg-red-50/80 group-hover:bg-red-100/80" : "group-hover:bg-slate-50/50",
+                                  isExpanded && !isNegative && "bg-slate-50/80",
+                                  density === 'xs' ? 'py-1' : density === 'sm' ? 'py-2' : 'py-4'
+                                )}>
+                                  <div className={cn("font-semibold", isNegative ? "text-red-700" : "text-slate-800")}>
+                                    {metrics.expected}
+                                  </div>
+                                  <div className={cn(
+                                    "text-xs font-medium mt-0.5", 
+                                    isNegative ? "text-red-600" : "text-emerald-600"
+                                  )}>
+                                    {metrics.variance > 0 ? '+' : ''}{metrics.variance}
+                                  </div>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                          {isExpanded && row.distributions.map((dist, idx) => (
+                            <tr key={`${row.partNumber}-${dist.id}`} className="bg-white border-l-4 border-l-indigo-500">
+                              <td 
+                                colSpan={3} 
+                                className={cn(
+                                  "px-8 text-xs font-medium text-slate-500 bg-slate-50 border-r border-slate-100 sticky left-0 z-10 shadow-[1px_0_0_0_#f1f5f9]",
+                                  density === 'xs' ? 'py-1' : 'py-2'
+                                )}
+                              >
+                                {dist.id}
+                              </td>
+                              {processedData.dayColumns.map(day => (
+                                <td 
+                                  key={day} 
+                                  className={cn(
+                                    "px-4 text-center border-l border-slate-100 text-slate-500 text-xs",
+                                    density === 'xs' ? 'py-1' : 'py-2'
+                                  )}
+                                >
+                                  {dist.dayVolumes[day] || 0}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
                 {processedData.results.length === 0 && (
