@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { 
   TextInput, ActionIcon, Group, Tooltip, 
-  Menu, Button, Stack, Text, Box
+  Menu, Button, Stack, Text, Box, Slider
 } from '@mantine/core';
 import { ColorSchemeToggle } from '@/components/ColorSchemeToggle';
 import { useFullscreen } from '@mantine/hooks';
@@ -43,6 +43,10 @@ export default function ProductionForecaster() {
   const [searchQuery, setSearchQuery] = useState('');
   const [density, setDensity] = useState<'xs' | 'sm' | 'md'>('sm');
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
+  
+  const [dates, setDates] = useState<string[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+
   const { toggle: toggleFullscreen, fullscreen, ref: tableRef } = useFullscreen<HTMLDivElement>();
 
   const requestSort = (key: string) => {
@@ -70,6 +74,13 @@ export default function ProductionForecaster() {
     return { customer, city };
   };
 
+  const getDateKey = (keys: string[]) => {
+    return keys.find(k => {
+      const normalized = k.toLowerCase().trim();
+      return normalized === 'date' || normalized === 'snapshot date' || normalized === 'snapshotdate' || normalized === 'snapshot';
+    });
+  };
+
   const handleFileUpload = (file: File, type: 'pipeline' | 'dailyRate') => {
     Papa.parse(file, {
       header: true,
@@ -78,11 +89,23 @@ export default function ProductionForecaster() {
       complete: (results) => {
         if (type === 'pipeline') {
           setPipelineFile(file);
-          setPipelineData(results.data as PipelineData);
-          if (results.data.length > 0) {
-            const keys = Object.keys(results.data[0] as Record<string, any>);
+          const data = results.data as PipelineData;
+          setPipelineData(data);
+          if (data.length > 0) {
+            const keys = Object.keys(data[0] as Record<string, any>);
             const partNumberKey = getPartNumberKey(keys);
-            const locatorKeys = keys.filter(k => k !== partNumberKey);
+            const dateKey = getDateKey(keys);
+
+            if (dateKey) {
+              const uniqueDates = Array.from(new Set(data.map(row => String(row[dateKey])))).sort();
+              setDates(uniqueDates);
+              setSelectedDate(uniqueDates[0]);
+            } else {
+              setDates([]);
+              setSelectedDate(null);
+            }
+
+            const locatorKeys = keys.filter(k => k !== partNumberKey && k !== dateKey);
             setLocators(locatorKeys);
             
             const initialMapping: Record<string, number> = {};
@@ -224,11 +247,17 @@ export default function ProductionForecaster() {
   const processedData = useMemo(() => {
     if (!forecastGenerated || pipelineData.length === 0 || dailyRateData.length === 0) return null;
 
-    const pipelineKeys = Object.keys(pipelineData[0]);
+    const pipelineKeys = pipelineData.length > 0 ? Object.keys(pipelineData[0]) : [];
     const pipelinePartKey = getPartNumberKey(pipelineKeys);
     const { customer: custKey, city: cityKey } = getCustomerKeys(pipelineKeys);
+    const dateKey = getDateKey(pipelineKeys);
+
+    let filteredPipelineData = pipelineData;
+    if (dateKey && selectedDate) {
+      filteredPipelineData = pipelineData.filter(row => String(row[dateKey]) === selectedDate);
+    }
     
-    const rateKeys = Object.keys(dailyRateData[0]);
+    const rateKeys = dailyRateData.length > 0 ? Object.keys(dailyRateData[0]) : [];
     const ratePartKey = getPartNumberKey(rateKeys);
     const rateValueKey = rateKeys.find(k => k !== ratePartKey) || rateKeys[1];
 
@@ -253,7 +282,7 @@ export default function ProductionForecaster() {
       locatorBreakdownByDay: Record<number, Record<string, number>>; // Day -> {Locator -> Qty}
     }>();
 
-    pipelineData.forEach(row => {
+    filteredPipelineData.forEach(row => {
       const partNumber = String(row[pipelinePartKey]).trim();
       const customer = String(row[custKey] || 'Unknown').trim();
       const city = String(row[cityKey] || '').trim();
@@ -382,7 +411,7 @@ export default function ProductionForecaster() {
     }
 
     return { results, dayColumns };
-  }, [forecastGenerated, pipelineData, dailyRateData, locators, locatorMapping, searchQuery, sortConfig]);
+  }, [forecastGenerated, pipelineData, dailyRateData, locators, locatorMapping, searchQuery, sortConfig, selectedDate]);
 
   const summary = useMemo(() => {
     if (!processedData) return null;
@@ -564,7 +593,41 @@ export default function ProductionForecaster() {
                 </div>
               </div>
             </div>
-
+            
+            {/* Date Slider */}
+            {dates.length > 1 && (
+              <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <LayoutList className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                    <h3 className="text-md font-semibold text-slate-800 dark:text-slate-200">Snapshot Timeline</h3>
+                  </div>
+                  <Text size="sm" fw={600} className="text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-3 py-1 rounded-full">
+                    Active Snaphot: {selectedDate}
+                  </Text>
+                </div>
+                <div className="px-4 pb-4">
+                  <Slider
+                    value={dates.indexOf(selectedDate || '')}
+                    onChange={(val) => setSelectedDate(dates[val])}
+                    max={dates.length - 1}
+                    step={1}
+                    label={(val) => dates[val]}
+                    marks={dates.length <= 10 ? dates.map((d, i) => ({ value: i, label: d })) : [
+                      { value: 0, label: dates[0] },
+                      { value: dates.length - 1, label: dates[dates.length - 1] }
+                    ]}
+                    color="indigo"
+                    size="md"
+                    styles={{
+                      markLabel: { fontSize: '10px', marginTop: '8px' },
+                      thumb: { borderWidth: 2, padding: 3 }
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+            
             {/* Main Data Table */}
           <div 
             ref={tableRef}
