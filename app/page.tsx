@@ -750,7 +750,18 @@ export default function ProductionForecaster() {
                         </div>
                       </th>
                       {processedData.dayColumns.map(day => {
-                        const date = new Date();
+                        let baseDate = new Date();
+                        if (selectedDate) {
+                          const dateString = selectedDate.includes('-') && !selectedDate.includes('T') && !selectedDate.includes(' ')
+                            ? selectedDate + 'T12:00:00'
+                            : selectedDate;
+                          const parsed = new Date(dateString);
+                          if (!isNaN(parsed.getTime())) {
+                            baseDate = parsed;
+                          }
+                        }
+
+                        const date = new Date(baseDate.getTime());
                         date.setDate(date.getDate() + day);
                         const dateStr = date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
                         const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
