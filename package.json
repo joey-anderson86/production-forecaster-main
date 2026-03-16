@@ -14,6 +14,7 @@
     "@google/genai": "^1.17.0",
     "@hookform/resolvers": "^5.2.1",
     "@mantine/core": "^8.3.16",
+    "@mantine/dropzone": "^8.3.17",
     "@mantine/hooks": "^8.3.16",
     "@mantine/notifications": "^8.3.16",
     "@tabler/icons-react": "^3.40.0",

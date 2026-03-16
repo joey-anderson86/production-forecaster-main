@@ -11,9 +11,10 @@ import {
 } from 'lucide-react';
 import { 
   TextInput, ActionIcon, Group, Tooltip, 
-  Menu, Button, Stack, Text, Box, Slider
+  Menu, Button, Stack, Text, Box, Slider, Modal
 } from '@mantine/core';
 import { ColorSchemeToggle } from '@/components/ColorSchemeToggle';
+import { MultiCsvUploader } from '@/components/MultiCsvUploader';
 import { useFullscreen } from '@mantine/hooks';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -38,6 +39,7 @@ export default function ProductionForecaster() {
   const [isConfigOpen, setIsConfigOpen] = useState(true);
   const [forecastGenerated, setForecastGenerated] = useState(false);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [isUploaderModalOpen, setIsUploaderModalOpen] = useState(false);
 
   // Toolbar States
   const [searchQuery, setSearchQuery] = useState('');
@@ -474,13 +476,27 @@ export default function ProductionForecaster() {
           
           {isConfigOpen && (
             <div className="p-4 md:p-6 border-t border-slate-100 dark:border-slate-800 space-y-8">
-              <div className="grid md:grid-cols-2 gap-6">
-                <FileDropzone 
-                  label="Upload Pipeline CSV" 
-                  accept=".csv" 
-                  onDrop={(f) => handleFileUpload(f, 'pipeline')} 
-                  file={pipelineFile} 
-                />
+              <div className="grid md:grid-cols-2 gap-6 relative">
+                <div className="flex flex-col gap-2">
+                  <FileDropzone 
+                    label="Upload Pipeline CSV" 
+                    accept=".csv" 
+                    onDrop={(f) => handleFileUpload(f, 'pipeline')} 
+                    file={pipelineFile} 
+                  />
+                  <div className="flex justify-center relative z-10 hover:z-20">
+                     <Button 
+                       variant="light" 
+                       size="xs" 
+                       radius="xl" 
+                       onClick={() => setIsUploaderModalOpen(true)}
+                       className="shadow-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700"
+                       leftSection={<LayoutList size={14} />}
+                     >
+                        Merge Multiple Pipeline Files
+                     </Button>
+                  </div>
+                </div>
                 <FileDropzone 
                   label="Upload Daily Rate CSV" 
                   accept=".csv" 
@@ -942,6 +958,23 @@ export default function ProductionForecaster() {
           </div>
         )}
       </div>
+
+      <Modal
+        opened={isUploaderModalOpen}
+        onClose={() => setIsUploaderModalOpen(false)}
+        title={
+          <div className="flex items-center gap-2">
+            <LayoutList className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+            <span className="font-semibold text-slate-800 dark:text-slate-200">Merge Pipeline Data</span>
+          </div>
+        }
+        size="xl"
+        radius="md"
+        padding="xl"
+        className="dark:bg-slate-900"
+      >
+        <MultiCsvUploader />
+      </Modal>
     </div>
   );
 }
