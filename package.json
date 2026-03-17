@@ -13,6 +13,7 @@
   "dependencies": {
     "@google/genai": "^1.17.0",
     "@hookform/resolvers": "^5.2.1",
+    "@mantine/charts": "^8.3.17",
     "@mantine/core": "^8.3.16",
     "@mantine/dropzone": "^8.3.17",
     "@mantine/hooks": "^8.3.16",
@@ -31,7 +32,9 @@
     "postcss": "^8.5.6",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
-    "tailwind-merge": "^3.3.1"
+    "recharts": "^3.8.0",
+    "tailwind-merge": "^3.3.1",
+    "zustand": "^5.0.12"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.1.11",

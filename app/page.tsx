@@ -2,19 +2,21 @@
 
 import React, { useState, useMemo, useRef } from 'react';
 import Papa from 'papaparse';
-import { 
-  UploadCloud, Settings, ChevronDown, ChevronUp, 
-  AlertCircle, CheckCircle2, BarChart3, Info, 
-  DownloadCloud, Search, Filter, Columns, 
+import {
+  UploadCloud, Settings, ChevronDown, ChevronUp,
+  AlertCircle, CheckCircle2, BarChart3, Info,
+  DownloadCloud, Search, Filter, Columns,
   Maximize, Minimize, LayoutList,
   ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
-import { 
-  TextInput, ActionIcon, Group, Tooltip, 
-  Menu, Button, Stack, Text, Box, Slider, Modal
+import {
+  TextInput, ActionIcon, Group, Tooltip,
+  Menu, Button, Stack, Text, Box, Slider, Modal, Tabs
 } from '@mantine/core';
 import { ColorSchemeToggle } from '@/components/ColorSchemeToggle';
 import { MultiCsvUploader } from '@/components/MultiCsvUploader';
+import DeliveryScorecardManagement from '@/components/DeliveryScorecardManagement';
+import DeliveryScorecardDisplay from '@/components/DeliveryScorecardDisplay';
 import { useFullscreen } from '@mantine/hooks';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -45,9 +47,11 @@ export default function ProductionForecaster() {
   const [searchQuery, setSearchQuery] = useState('');
   const [density, setDensity] = useState<'xs' | 'sm' | 'md'>('sm');
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
-  
+
   const [dates, setDates] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+
+  const [mainTab, setMainTab] = useState<string>('forecaster');
 
   const { toggle: toggleFullscreen, fullscreen, ref: tableRef } = useFullscreen<HTMLDivElement>();
 
@@ -61,8 +65,8 @@ export default function ProductionForecaster() {
 
   const getSortIcon = (key: string) => {
     if (sortConfig?.key !== key) return <ArrowUpDown size={14} className="ml-2 opacity-30 group-hover/header:opacity-100 transition-opacity" />;
-    return sortConfig.direction === 'asc' 
-      ? <ArrowUp size={14} className="ml-2 text-indigo-600 dark:text-indigo-400" /> 
+    return sortConfig.direction === 'asc'
+      ? <ArrowUp size={14} className="ml-2 text-indigo-600 dark:text-indigo-400" />
       : <ArrowDown size={14} className="ml-2 text-indigo-600 dark:text-indigo-400" />;
   };
 
@@ -109,7 +113,7 @@ export default function ProductionForecaster() {
 
             const locatorKeys = keys.filter(k => k !== partNumberKey && k !== dateKey);
             setLocators(locatorKeys);
-            
+
             const initialMapping: Record<string, number> = {};
             locatorKeys.forEach(loc => initialMapping[loc] = 0);
             setLocatorMapping(initialMapping);
@@ -189,7 +193,7 @@ export default function ProductionForecaster() {
     });
     e.target.value = '';
   };
- 
+
   const handleExportForecast = async () => {
     if (!processedData) return;
 
@@ -258,7 +262,7 @@ export default function ProductionForecaster() {
     if (dateKey && selectedDate) {
       filteredPipelineData = pipelineData.filter(row => String(row[dateKey]) === selectedDate);
     }
-    
+
     const rateKeys = dailyRateData.length > 0 ? Object.keys(dailyRateData[0]) : [];
     const ratePartKey = getPartNumberKey(rateKeys);
     const rateValueKey = rateKeys.find(k => k !== ratePartKey) || rateKeys[1];
@@ -311,7 +315,7 @@ export default function ProductionForecaster() {
         const qty = Number(row[loc]) || 0;
         group.locators[loc] += qty;
         group.distributions[distId][loc] += qty;
-        
+
         const mappedDay = locatorMapping[loc];
         if (mappedDay !== undefined && qty > 0) {
           if (!group.locatorBreakdownByDay[mappedDay]) {
@@ -324,7 +328,7 @@ export default function ProductionForecaster() {
 
     let results = Array.from(groupedMap.values()).map(group => {
       const { partNumber, dailyRate, locators: groupLocators, distributions } = group;
-      
+
       let totalWip = 0;
       const dayVolumes: Record<number, number> = {};
       dayColumns.forEach(d => dayVolumes[d] = 0);
@@ -344,8 +348,8 @@ export default function ProductionForecaster() {
       dayColumns.forEach(d => {
         const expected = dayVolumes[d];
         const variance = expected - dailyRate;
-        dayMetrics[d] = { 
-          expected, 
+        dayMetrics[d] = {
+          expected,
           variance,
           locatorBreakdown: group.locatorBreakdownByDay[d] || {}
         };
@@ -382,7 +386,7 @@ export default function ProductionForecaster() {
 
     // Apply Search Filter
     if (searchQuery) {
-      results = results.filter(row => 
+      results = results.filter(row =>
         row.partNumber.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
@@ -417,7 +421,7 @@ export default function ProductionForecaster() {
 
   const summary = useMemo(() => {
     if (!processedData) return null;
-    
+
     let starvingToday = 0;
     let sumDOI = 0;
     let validDOICount = 0;
@@ -461,9 +465,21 @@ export default function ProductionForecaster() {
           </Group>
         </header>
 
-        {/* Configuration Panel */}
+        <div className="flex justify-center mb-6">
+          <Tabs value={mainTab} onChange={(val) => setMainTab(val as string)} variant="pills" color="indigo" radius="md">
+            <Tabs.List>
+              <Tabs.Tab value="forecaster">Production Forecaster</Tabs.Tab>
+              <Tabs.Tab value="scorecard-mgmt">Delivery Management</Tabs.Tab>
+              <Tabs.Tab value="scorecard-dash">Delivery Dashboard</Tabs.Tab>
+            </Tabs.List>
+          </Tabs>
+        </div>
+
+        {mainTab === 'forecaster' && (
+          <>
+            {/* Configuration Panel */}
         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
-          <button 
+          <button
             onClick={() => setIsConfigOpen(!isConfigOpen)}
             className="w-full flex items-center justify-between p-4 md:p-6 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
           >
@@ -473,35 +489,35 @@ export default function ProductionForecaster() {
             </div>
             {isConfigOpen ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
           </button>
-          
+
           {isConfigOpen && (
             <div className="p-4 md:p-6 border-t border-slate-100 dark:border-slate-800 space-y-8">
               <div className="grid md:grid-cols-2 gap-6 relative">
                 <div className="flex flex-col gap-2">
-                  <FileDropzone 
-                    label="Upload Pipeline CSV" 
-                    accept=".csv" 
-                    onDrop={(f) => handleFileUpload(f, 'pipeline')} 
-                    file={pipelineFile} 
+                  <FileDropzone
+                    label="Upload Pipeline CSV"
+                    accept=".csv"
+                    onDrop={(f) => handleFileUpload(f, 'pipeline')}
+                    file={pipelineFile}
                   />
                   <div className="flex justify-center relative z-10 hover:z-20">
-                     <Button 
-                       variant="light" 
-                       size="xs" 
-                       radius="xl" 
-                       onClick={() => setIsUploaderModalOpen(true)}
-                       className="shadow-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700"
-                       leftSection={<LayoutList size={14} />}
-                     >
-                        Merge Multiple Pipeline Files
-                     </Button>
+                    <Button
+                      variant="light"
+                      size="xs"
+                      radius="xl"
+                      onClick={() => setIsUploaderModalOpen(true)}
+                      className="shadow-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700"
+                      leftSection={<LayoutList size={14} />}
+                    >
+                      Merge Multiple Pipeline Files
+                    </Button>
                   </div>
                 </div>
-                <FileDropzone 
-                  label="Upload Daily Rate CSV" 
-                  accept=".csv" 
-                  onDrop={(f) => handleFileUpload(f, 'dailyRate')} 
-                  file={dailyRateFile} 
+                <FileDropzone
+                  label="Upload Daily Rate CSV"
+                  accept=".csv"
+                  onDrop={(f) => handleFileUpload(f, 'dailyRate')}
+                  file={dailyRateFile}
                 />
               </div>
 
@@ -510,7 +526,7 @@ export default function ProductionForecaster() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <h3 className="text-md font-semibold text-slate-800 dark:text-slate-200">Locator Mapping</h3>
-                      <Tooltip 
+                      <Tooltip
                         label="Assign each WIP locator to &quot;X days from planned shipment&quot;. 0 = Today, 1 = Tomorrow, etc."
                         multiline
                         w={250}
@@ -520,20 +536,20 @@ export default function ProductionForecaster() {
                       </Tooltip>
                     </div>
                     <div className="flex items-center gap-2">
-                      <input 
-                        type="file" 
-                        accept=".csv" 
-                        id="mapping-upload" 
-                        className="hidden" 
-                        onChange={handleImportMapping} 
+                      <input
+                        type="file"
+                        accept=".csv"
+                        id="mapping-upload"
+                        className="hidden"
+                        onChange={handleImportMapping}
                       />
-                      <label 
-                        htmlFor="mapping-upload" 
+                      <label
+                        htmlFor="mapping-upload"
                         className="cursor-pointer px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-medium rounded hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-1 shadow-sm"
                       >
                         <UploadCloud className="w-3 h-3" /> Import
                       </label>
-                      <button 
+                      <button
                         onClick={handleExportMapping}
                         className="px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-medium rounded hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-1 shadow-sm"
                       >
@@ -545,9 +561,9 @@ export default function ProductionForecaster() {
                     {locators.map(loc => (
                       <div key={loc} className="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-lg border border-slate-200 dark:border-slate-700 flex flex-col gap-2">
                         <label className="text-xs font-medium text-slate-600 dark:text-slate-400 truncate" title={loc}>{loc}</label>
-                        <input 
-                          type="number" 
-                          value={locatorMapping[loc]} 
+                        <input
+                          type="number"
+                          value={locatorMapping[loc]}
                           onChange={(e) => handleMappingChange(loc, parseInt(e.target.value) || 0)}
                           className="w-full px-3 py-1.5 text-sm border border-slate-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                         />
@@ -558,13 +574,13 @@ export default function ProductionForecaster() {
               )}
 
               <div className="flex justify-end pt-4 border-t border-slate-100 dark:border-slate-800">
-                <button 
+                <button
                   onClick={handleGenerate}
                   disabled={!pipelineFile || !dailyRateFile}
                   className={cn(
                     "px-6 py-2.5 rounded-lg font-medium text-sm transition-all shadow-sm",
-                    pipelineFile && dailyRateFile 
-                      ? "bg-indigo-600 text-white hover:bg-indigo-700 hover:shadow-md" 
+                    pipelineFile && dailyRateFile
+                      ? "bg-indigo-600 text-white hover:bg-indigo-700 hover:shadow-md"
                       : "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed"
                   )}
                 >
@@ -578,7 +594,7 @@ export default function ProductionForecaster() {
         {/* Dashboard */}
         {forecastGenerated && processedData && summary && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            
+
             {/* Summary Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col gap-1">
@@ -609,7 +625,7 @@ export default function ProductionForecaster() {
                 </div>
               </div>
             </div>
-            
+
             {/* Date Slider */}
             {dates.length > 1 && (
               <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
@@ -643,12 +659,12 @@ export default function ProductionForecaster() {
                 </div>
               </div>
             )}
-            
+
             {/* Main Data Table */}
-          <div 
-            ref={tableRef}
-            id="fullscreen-table-container"
-            className={cn(
+            <div
+              ref={tableRef}
+              id="fullscreen-table-container"
+              className={cn(
                 "bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col",
                 fullscreen && "p-8 overflow-auto h-screen w-screen"
               )}
@@ -664,23 +680,23 @@ export default function ProductionForecaster() {
                     className="flex-1 max-w-sm"
                   />
 
-                  <Button 
-                    variant="light" 
-                    color="indigo" 
+                  <Button
+                    variant="light"
+                    color="indigo"
                     leftSection={<DownloadCloud size={16} />}
                     onClick={handleExportForecast}
                     size="sm"
                   >
                     Export CSV
                   </Button>
-                  
+
                   <Group gap="xs">
                     <Tooltip label="Filters" portalProps={{ target: fullscreen ? '#fullscreen-table-container' : undefined }}>
                       <ActionIcon variant="light" color="indigo" size="lg" onClick={() => console.log('Filter clicked')}>
                         <Filter size={18} />
                       </ActionIcon>
                     </Tooltip>
-                    
+
                     <Menu shadow="md" width={200} portalProps={{ target: fullscreen ? '#fullscreen-table-container' : undefined }}>
                       <Menu.Target>
                         <Tooltip label="Show/Hide Columns" portalProps={{ target: fullscreen ? '#fullscreen-table-container' : undefined }}>
@@ -738,7 +754,7 @@ export default function ProductionForecaster() {
                 <table className="w-full text-sm text-left border-collapse">
                   <thead className="text-xs text-slate-600 dark:text-slate-400 uppercase bg-slate-50 dark:bg-slate-800/80">
                     <tr>
-                      <th 
+                      <th
                         onClick={() => requestSort('partNumber')}
                         className="px-4 py-3 sticky top-0 left-0 bg-slate-50 dark:bg-slate-800 z-30 border-r border-b border-slate-200 dark:border-slate-700 min-w-[140px] shadow-[1px_0_0_0_#e2e8f0] dark:shadow-[1px_0_0_0_#1e293b] cursor-pointer group/header select-none hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                       >
@@ -747,7 +763,7 @@ export default function ProductionForecaster() {
                           {getSortIcon('partNumber')}
                         </div>
                       </th>
-                      <th 
+                      <th
                         onClick={() => requestSort('dailyRate')}
                         className="px-4 py-3 sticky top-0 left-[140px] bg-slate-50 dark:bg-slate-800 z-30 border-r border-b border-slate-200 dark:border-slate-700 min-w-[100px] shadow-[1px_0_0_0_#e2e8f0] dark:shadow-[1px_0_0_0_#1e293b] cursor-pointer group/header select-none hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                       >
@@ -756,7 +772,7 @@ export default function ProductionForecaster() {
                           {getSortIcon('dailyRate')}
                         </div>
                       </th>
-                      <th 
+                      <th
                         onClick={() => requestSort('totalPipelineDOI')}
                         className="px-4 py-3 sticky top-0 left-[240px] bg-slate-50 dark:bg-slate-800 z-30 border-r border-b border-slate-200 dark:border-slate-700 min-w-[120px] shadow-[1px_0_0_0_#e2e8f0] dark:shadow-[1px_0_0_0_#1e293b] cursor-pointer group/header select-none hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                       >
@@ -781,18 +797,18 @@ export default function ProductionForecaster() {
                         date.setDate(date.getDate() + day);
                         const dateStr = date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
                         const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
-                        
+
                         const mappedLocators = Object.entries(locatorMapping)
                           .filter(([_, d]) => d === day)
                           .map(([loc]) => loc);
 
                         return (
-                          <th 
-                            key={day} 
+                          <th
+                            key={day}
                             onClick={() => requestSort(`day_${day}`)}
                             className="px-4 py-3 text-center sticky top-0 bg-slate-50 dark:bg-slate-800 z-20 border-b border-slate-200 dark:border-slate-700 min-w-[100px] cursor-pointer group/header select-none hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                           >
-                            <Tooltip 
+                            <Tooltip
                               label={
                                 <Stack gap={4}>
                                   <Text size="xs" fw={700}>Locators in this bucket:</Text>
@@ -831,7 +847,7 @@ export default function ProductionForecaster() {
                       const isExpanded = expandedRows.has(row.partNumber);
                       return (
                         <React.Fragment key={row.partNumber}>
-                          <tr 
+                          <tr
                             className={cn(
                               "hover:bg-slate-50/50 dark:hover:bg-slate-800/30 group transition-colors cursor-pointer",
                               isExpanded && "bg-slate-50/80 dark:bg-slate-800/40"
@@ -846,7 +862,7 @@ export default function ProductionForecaster() {
                               setExpandedRows(next);
                             }}
                           >
-                            <td 
+                            <td
                               className={cn(
                                 "px-4 font-medium text-slate-900 dark:text-slate-100 sticky left-0 z-10 border-r border-slate-100 dark:border-slate-800 min-w-[140px] shadow-[1px_0_0_0_#f1f5f9] dark:shadow-[1px_0_0_0_#1e293b] flex items-center gap-2",
                                 isExpanded ? "bg-slate-50 dark:bg-slate-800" : "bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/50",
@@ -856,7 +872,7 @@ export default function ProductionForecaster() {
                               {isExpanded ? <ChevronUp size={14} className="text-indigo-600" /> : <ChevronDown size={14} className="text-slate-400" />}
                               {row.partNumber}
                             </td>
-                            <td 
+                            <td
                               className={cn(
                                 "px-4 sticky left-[140px] z-10 border-r border-slate-100 dark:border-slate-800 min-w-[100px] shadow-[1px_0_0_0_#f1f5f9] dark:shadow-[1px_0_0_0_#1e293b] text-slate-600 dark:text-slate-400",
                                 isExpanded ? "bg-slate-50 dark:bg-slate-800" : "bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/50",
@@ -865,7 +881,7 @@ export default function ProductionForecaster() {
                             >
                               {row.dailyRate}
                             </td>
-                            <td 
+                            <td
                               className={cn(
                                 "px-4 sticky left-[240px] z-10 border-r border-slate-100 dark:border-slate-800 min-w-[120px] shadow-[1px_0_0_0_#f1f5f9] dark:shadow-[1px_0_0_0_#1e293b] text-slate-600 dark:text-slate-400",
                                 isExpanded ? "bg-slate-50 dark:bg-slate-800" : "bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/50",
@@ -907,7 +923,7 @@ export default function ProductionForecaster() {
                                         {metrics.expected}
                                       </div>
                                       <div className={cn(
-                                        "text-xs font-medium mt-0.5", 
+                                        "text-xs font-medium mt-0.5",
                                         isNegative ? "text-red-600 dark:text-red-500" : "text-emerald-600 dark:text-emerald-500"
                                       )}>
                                         {metrics.variance > 0 ? '+' : ''}{metrics.variance}
@@ -920,8 +936,8 @@ export default function ProductionForecaster() {
                           </tr>
                           {isExpanded && row.distributions.map((dist, idx) => (
                             <tr key={`${row.partNumber}-${dist.id}`} className="bg-white dark:bg-slate-900 border-l-4 border-l-indigo-500">
-                              <td 
-                                colSpan={3} 
+                              <td
+                                colSpan={3}
                                 className={cn(
                                   "px-8 text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 border-r border-slate-100 dark:border-slate-800 sticky left-0 z-10 shadow-[1px_0_0_0_#f1f5f9] dark:shadow-[1px_0_0_0_#1e293b]",
                                   density === 'xs' ? 'py-1' : 'py-2'
@@ -930,8 +946,8 @@ export default function ProductionForecaster() {
                                 {dist.id}
                               </td>
                               {processedData.dayColumns.map(day => (
-                                <td 
-                                  key={day} 
+                                <td
+                                  key={day}
                                   className={cn(
                                     "px-4 text-center border-l border-slate-100 dark:border-slate-800 text-slate-500 dark:text-slate-400 text-xs",
                                     density === 'xs' ? 'py-1' : 'py-2'
@@ -955,6 +971,20 @@ export default function ProductionForecaster() {
                 )}
               </div>
             </div>
+          </div>
+        )}
+          </>
+        )}
+
+        {mainTab === 'scorecard-mgmt' && (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
+            <DeliveryScorecardManagement />
+          </div>
+        )}
+
+        {mainTab === 'scorecard-dash' && (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
+            <DeliveryScorecardDisplay />
           </div>
         )}
       </div>
@@ -983,7 +1013,7 @@ function FileDropzone({ label, accept, onDrop, file }: { label: string, accept: 
   const [isDragging, setIsDragging] = useState(false);
 
   return (
-    <div 
+    <div
       className={cn(
         "border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center transition-all cursor-pointer",
         isDragging ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-950/30 scale-[1.02]" : "border-slate-300 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-slate-50 dark:hover:bg-slate-800/30",

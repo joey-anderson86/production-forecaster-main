@@ -1,6 +1,8 @@
 import type {Metadata} from 'next';
 import { ColorSchemeScript, MantineProvider, mantineHtmlProps, createTheme, virtualColor } from '@mantine/core';
 import '@mantine/core/styles.css';
+import '@mantine/notifications/styles.css';
+import { Notifications } from '@mantine/notifications';
 import './globals.css'; // Global styles
 
 export const metadata: Metadata = {
@@ -34,6 +36,7 @@ export default function RootLayout({children}: {children: React.ReactNode}) {
       </head>
       <body suppressHydrationWarning>
         <MantineProvider theme={theme}>
+          <Notifications />
           {children}
         </MantineProvider>
       </body>
