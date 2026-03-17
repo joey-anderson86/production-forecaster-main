@@ -221,6 +221,37 @@ export default function DeliveryScorecardManagement() {
     });
   };
 
+  const handleGlobalExportCSV = () => {
+    const csvData = [
+      ["Department", "WeekIdentifier", "PartNumber", "DayOfWeek", "Target", "Actual", "ReasonCode"]
+    ];
+
+    Object.values(store.departments).forEach(dept => {
+      Object.values(dept.weeks).forEach(week => {
+        week.parts.forEach(part => {
+          part.dailyRecords.forEach(record => {
+            csvData.push([
+              dept.departmentName,
+              week.weekLabel,
+              part.partNumber,
+              record.dayOfWeek,
+              record.target !== null ? record.target.toString() : "",
+              record.actual !== null ? record.actual.toString() : "",
+              record.reasonCode || ""
+            ]);
+          });
+        });
+      });
+    });
+
+    const csv = Papa.unparse(csvData);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `Scorecard_Global_Export_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+  };
+
   // Render variables
   const weekOptions = activeDepartment 
     ? Object.values(activeDepartment.weeks).map(w => ({ value: w.weekId, label: w.weekLabel })) 
@@ -258,6 +289,15 @@ export default function DeliveryScorecardManagement() {
             size="md"
           />
           <Group gap="sm">
+            <Button 
+              leftSection={<IconDownload size={16} />} 
+              variant="outline" 
+              color="teal"
+              size="md"
+              onClick={handleGlobalExportCSV}
+            >
+              Download Global CSV
+            </Button>
             <Button 
               leftSection={<IconUpload size={16} />} 
               variant="outline" 
