@@ -27,6 +27,12 @@ export interface DepartmentScorecard {
   weeks: Record<string, WeeklyScorecard>; // Key is weekId
 }
 
+export interface BulkImportGroup {
+  departmentName: string;
+  weekLabel: string;
+  parts: PartScorecard[];
+}
+
 export interface ScorecardState {
   departments: Record<string, DepartmentScorecard>;
 }
@@ -47,6 +53,7 @@ interface ScorecardActions {
     value: any
   ) => void;
   importWeeklyCsv: (departmentName: string, weekId: string, data: PartScorecard[]) => void;
+  bulkImportCsv: (groups: BulkImportGroup[]) => void;
 }
 
 export type ScorecardStore = ScorecardState & ScorecardActions;
@@ -239,6 +246,43 @@ export const useScorecardStore = create<ScorecardStore>()(
             }
           }
         };
+      }),
+
+      bulkImportCsv: (groups) => set((state) => {
+        let newDepartments = { ...state.departments };
+
+        groups.forEach(group => {
+          const dept = newDepartments[group.departmentName];
+          if (!dept) return; // Ignore if department doesn't exist
+
+          // Find existing week by label
+          let existingWeekId: string | null = null;
+          for (const [id, w] of Object.entries(dept.weeks)) {
+            if (w.weekLabel === group.weekLabel) {
+              existingWeekId = id;
+              break;
+            }
+          }
+
+          const weekIdToUse = existingWeekId || `week-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+          newDepartments = {
+            ...newDepartments,
+            [group.departmentName]: {
+              ...dept,
+              weeks: {
+                ...dept.weeks,
+                [weekIdToUse]: {
+                  weekId: weekIdToUse,
+                  weekLabel: group.weekLabel,
+                  parts: group.parts
+                }
+              }
+            }
+          };
+        });
+
+        return { departments: newDepartments };
       })
 
     }),

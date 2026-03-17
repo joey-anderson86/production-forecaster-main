@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Tabs, Select, Button, TextInput, NumberInput, Card, Grid, Group, Text, ActionIcon, Divider, Box } from '@mantine/core';
 import { IconFlask, IconBox, IconShip, IconPlus, IconTrash, IconDownload, IconUpload, IconX } from '@tabler/icons-react';
-import { useScorecardStore, DayOfWeek, PartScorecard } from '@/lib/scorecardStore';
+import { useScorecardStore, DayOfWeek, PartScorecard, BulkImportGroup } from '@/lib/scorecardStore';
 import { notifications } from '@mantine/notifications';
 import Papa from 'papaparse';
 
@@ -74,16 +74,16 @@ export default function DeliveryScorecardManagement() {
   // CSV Export/Import
   const handleExportTemplate = () => {
     const csvData = [
-      ["Part Number", "Day", "Actual", "Target", "Reason Code"]
+      ["Department", "WeekIdentifier", "PartNumber", "DayOfWeek", "Target", "Actual", "ReasonCode"]
     ];
     // Add one dummy row as example
-    csvData.push(["EX-001", "Mon", "", "", ""]);
+    csvData.push(["Plating", "Week 41 (Oct 5 - Oct 11)", "EX-001", "Mon", "100", "0", ""]);
     
     const csv = Papa.unparse(csvData);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `Scorecard_Template.csv`;
+    link.download = `Scorecard_Global_Template.csv`;
     link.click();
   };
 
@@ -93,16 +93,18 @@ export default function DeliveryScorecardManagement() {
     if (!weekData) return;
 
     const csvData = [
-      ["Part Number", "Day", "Actual", "Target", "Reason Code"]
+      ["Department", "WeekIdentifier", "PartNumber", "DayOfWeek", "Target", "Actual", "ReasonCode"]
     ];
 
     weekData.parts.forEach(part => {
       part.dailyRecords.forEach(record => {
         csvData.push([
+          activeDepartment.departmentName,
+          weekData.weekLabel,
           part.partNumber,
           record.dayOfWeek,
-          record.actual !== null ? record.actual.toString() : "",
           record.target !== null ? record.target.toString() : "",
+          record.actual !== null ? record.actual.toString() : "",
           record.reasonCode || ""
         ]);
       });
@@ -116,9 +118,9 @@ export default function DeliveryScorecardManagement() {
     link.click();
   };
 
-  const handleUploadCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleGlobalUploadCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !activeTab || !selectedWeekId) return;
+    if (!file) return;
 
     Papa.parse(file, {
       header: true,
@@ -126,23 +128,49 @@ export default function DeliveryScorecardManagement() {
       complete: (results) => {
         const importedData = results.data as any[];
         
-        // Group by part number
-        const partsMap: Record<string, PartScorecard> = {};
+        let validRows = 0;
+        let invalidRows = 0;
+        
+        const groupMap: Record<string, {
+           departmentName: string, 
+           weekLabel: string, 
+           partsMap: Record<string, PartScorecard>
+        }> = {};
 
         importedData.forEach(row => {
-          const pNum = row["Part Number"];
-          const day = row["Day"] as DayOfWeek;
+          const dept = row["Department"];
+          const weekId = row["WeekIdentifier"];
+          const pNum = row["PartNumber"] || row["Part Number"];
+          const day = row["DayOfWeek"] || row["Day"] as DayOfWeek;
           const actualStr = row["Actual"];
           const targetStr = row["Target"];
-          const reason = row["Reason Code"] || "";
+          const reason = row["ReasonCode"] || row["Reason Code"] || "";
 
-          if (!pNum || !DAYS_OF_WEEK.includes(day)) return;
+          const validDepts = DEFAULT_DEPARTMENTS.map(d => d.name);
+          
+          if (!validDepts.includes(dept) || !weekId || !pNum || !DAYS_OF_WEEK.includes(day)) {
+            invalidRows++;
+            return;
+          }
+          
+          validRows++;
+          const groupKey = `${dept}|${weekId}`;
 
-          if (!partsMap[pNum]) {
-             partsMap[pNum] = {
+          if (!groupMap[groupKey]) {
+             groupMap[groupKey] = {
+               departmentName: dept,
+               weekLabel: weekId,
+               partsMap: {}
+             };
+          }
+
+          const group = groupMap[groupKey];
+
+          if (!group.partsMap[pNum]) {
+             group.partsMap[pNum] = {
                partNumber: pNum,
                dailyRecords: DAYS_OF_WEEK.map(d => ({
-                 dayOfWeek: d,
+                 dayOfWeek: d as DayOfWeek,
                  actual: null,
                  target: null,
                  reasonCode: ''
@@ -150,24 +178,36 @@ export default function DeliveryScorecardManagement() {
              };
           }
 
-          const dailyRec = partsMap[pNum].dailyRecords.find(d => d.dayOfWeek === day);
+          const dailyRec = group.partsMap[pNum].dailyRecords.find(d => d.dayOfWeek === day);
           if (dailyRec) {
-            dailyRec.actual = actualStr ? parseFloat(actualStr) : null;
-            dailyRec.target = targetStr ? parseFloat(targetStr) : null;
-            dailyRec.reasonCode = reason;
+            dailyRec.actual = actualStr !== undefined && actualStr !== "" ? parseFloat(actualStr) : null;
+            dailyRec.target = targetStr !== undefined && targetStr !== "" ? parseFloat(targetStr) : null;
+            if (reason) dailyRec.reasonCode = reason;
           }
         });
 
-        const newParts = Object.values(partsMap);
-        store.importWeeklyCsv(activeTab, selectedWeekId, newParts);
-        
-        notifications.show({
-          title: 'Success',
-          message: `Imported data for ${newParts.length} parts.`,
-          color: 'green'
-        });
+        const bulkGroups: BulkImportGroup[] = Object.values(groupMap).map(g => ({
+          departmentName: g.departmentName,
+          weekLabel: g.weekLabel,
+          parts: Object.values(g.partsMap)
+        }));
 
-        // Reset file input
+        store.bulkImportCsv(bulkGroups);
+        
+        if (validRows > 0) {
+          notifications.show({
+            title: 'Import Successful',
+            message: `Imported ${validRows} records across ${bulkGroups.length} weeks. ${invalidRows > 0 ? `Ignored ${invalidRows} invalid rows.` : ''}`,
+            color: 'green'
+          });
+        } else {
+          notifications.show({
+            title: 'Import Error',
+            message: `No valid records found to import. Ignored ${invalidRows} rows. Check Department/Headers.`,
+            color: 'red'
+          });
+        }
+
         if (fileInputRef.current) fileInputRef.current.value = '';
       },
       error: () => {
@@ -176,6 +216,7 @@ export default function DeliveryScorecardManagement() {
           message: 'Failed to parse CSV.',
           color: 'red'
         });
+        if (fileInputRef.current) fileInputRef.current.value = '';
       }
     });
   };
@@ -216,15 +257,33 @@ export default function DeliveryScorecardManagement() {
             className="flex-1 max-w-md"
             size="md"
           />
-          <Button 
-            leftSection={<IconPlus size={16} />} 
-            variant="light" 
-            color="indigo"
-            size="md"
-            onClick={handleAddWeek}
-          >
-            Add New Week
-          </Button>
+          <Group gap="sm">
+            <Button 
+              leftSection={<IconUpload size={16} />} 
+              variant="outline" 
+              color="indigo"
+              size="md"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              Upload Global CSV
+            </Button>
+            <input 
+              type="file" 
+              accept=".csv" 
+              ref={fileInputRef} 
+              style={{ display: 'none' }} 
+              onChange={handleGlobalUploadCSV} 
+            />
+            <Button 
+              leftSection={<IconPlus size={16} />} 
+              variant="light" 
+              color="indigo"
+              size="md"
+              onClick={handleAddWeek}
+            >
+              Add New Week
+            </Button>
+          </Group>
         </Group>
       </Card>
 
@@ -271,22 +330,6 @@ export default function DeliveryScorecardManagement() {
                 >
                   Export CSV
                 </Button>
-                <Button 
-                  leftSection={<IconUpload size={16} />} 
-                  variant="light" 
-                  color="indigo"
-                  size="xs"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  Upload CSV
-                </Button>
-                <input 
-                  type="file" 
-                  accept=".csv" 
-                  ref={fileInputRef} 
-                  style={{ display: 'none' }} 
-                  onChange={handleUploadCSV} 
-                />
              </Group>
           </Card>
 
