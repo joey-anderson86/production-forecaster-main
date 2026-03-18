@@ -11,7 +11,8 @@ import {
 } from 'lucide-react';
 import {
   TextInput, ActionIcon, Group, Tooltip,
-  Menu, Button, Stack, Text, Box, Slider, Modal, Tabs
+  Menu, Button, Stack, Text, Box, Slider, Modal, Tabs,
+  Popover, MultiSelect, Badge
 } from '@mantine/core';
 import { ColorSchemeToggle } from '@/components/ColorSchemeToggle';
 import { MultiCsvUploader } from '@/components/MultiCsvUploader';
@@ -47,6 +48,8 @@ export default function ProductionForecaster() {
   const [searchQuery, setSearchQuery] = useState('');
   const [density, setDensity] = useState<'xs' | 'sm' | 'md'>('sm');
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
+  const [selectedPartNumbers, setSelectedPartNumbers] = useState<string[]>([]);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   const [dates, setDates] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -249,6 +252,13 @@ export default function ProductionForecaster() {
     link.click();
     document.body.removeChild(link);
   };
+  
+  const allPartNumbers = useMemo(() => {
+    if (pipelineData.length === 0) return [];
+    const keys = Object.keys(pipelineData[0]);
+    const partNumberKey = getPartNumberKey(keys);
+    return Array.from(new Set(pipelineData.map(row => String(row[partNumberKey]).trim()))).sort();
+  }, [pipelineData]);
 
   const processedData = useMemo(() => {
     if (!forecastGenerated || pipelineData.length === 0 || dailyRateData.length === 0) return null;
@@ -391,6 +401,13 @@ export default function ProductionForecaster() {
       );
     }
 
+    // Apply Part Number Filter
+    if (selectedPartNumbers.length > 0) {
+      results = results.filter(row =>
+        selectedPartNumbers.includes(row.partNumber)
+      );
+    }
+
     // Apply Sorting
     if (sortConfig) {
       results.sort((a, b) => {
@@ -417,7 +434,7 @@ export default function ProductionForecaster() {
     }
 
     return { results, dayColumns };
-  }, [forecastGenerated, pipelineData, dailyRateData, locators, locatorMapping, searchQuery, sortConfig, selectedDate]);
+  }, [forecastGenerated, pipelineData, dailyRateData, locators, locatorMapping, searchQuery, sortConfig, selectedDate, selectedPartNumbers]);
 
   const summary = useMemo(() => {
     if (!processedData) return null;
@@ -691,11 +708,75 @@ export default function ProductionForecaster() {
                   </Button>
 
                   <Group gap="xs">
-                    <Tooltip label="Filters" portalProps={{ target: fullscreen ? '#fullscreen-table-container' : undefined }}>
-                      <ActionIcon variant="light" color="indigo" size="lg" onClick={() => console.log('Filter clicked')}>
-                        <Filter size={18} />
-                      </ActionIcon>
-                    </Tooltip>
+                    <Popover 
+                      position="bottom-end" 
+                      shadow="md" 
+                      withArrow 
+                      trapFocus
+                      opened={isFilterOpen}
+                      onChange={setIsFilterOpen}
+                    >
+                      <Popover.Target>
+                        <Tooltip label="Filters" portalProps={{ target: fullscreen ? '#fullscreen-table-container' : undefined }}>
+                          <ActionIcon 
+                            variant="light" 
+                            color="indigo" 
+                            size="lg" 
+                            className="relative"
+                            onClick={() => setIsFilterOpen((o) => !o)}
+                          >
+                            <Filter size={18} />
+                            {selectedPartNumbers.length > 0 && (
+                              <Badge 
+                                size="xs" 
+                                circle 
+                                color="red" 
+                                className="absolute -top-1 -right-1 z-10"
+                                p={0}
+                              >
+                                {selectedPartNumbers.length}
+                              </Badge>
+                            )}
+                          </ActionIcon>
+                        </Tooltip>
+                      </Popover.Target>
+                      <Popover.Dropdown p="md">
+                        <Stack gap="sm" w={300}>
+                          <Text fw={600} size="sm">Filter by Part Number</Text>
+                          <MultiSelect
+                            data={allPartNumbers}
+                            placeholder="Select Part Numbers..."
+                            value={selectedPartNumbers}
+                            onChange={setSelectedPartNumbers}
+                            searchable
+                            clearable
+                            nothingFoundMessage="No part numbers found"
+                            maxDropdownHeight={300}
+                            comboboxProps={{ withinPortal: false }}
+                          />
+                          <Group grow gap="xs">
+                            {selectedPartNumbers.length > 0 && (
+                              <Button 
+                                variant="light" 
+                                color="red" 
+                                size="xs" 
+                                onClick={() => setSelectedPartNumbers([])}
+                              >
+                                Clear All
+                              </Button>
+                            )}
+                            <Button 
+                              variant="filled" 
+                              color="indigo" 
+                              size="xs" 
+                              onClick={() => setIsFilterOpen(false)}
+                            >
+                              Done
+                            </Button>
+                          </Group>
+                        </Stack>
+                      </Popover.Dropdown>
+                    </Popover>
 
                     <Menu shadow="md" width={200} portalProps={{ target: fullscreen ? '#fullscreen-table-container' : undefined }}>
                       <Menu.Target>
