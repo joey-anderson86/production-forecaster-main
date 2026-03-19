@@ -110,37 +110,57 @@ export default function DeliveryScorecardDisplay() {
                 {DAYS_OF_WEEK.map(day => (
                   <Table.Th key={day} ta="center"><Text size="xs" fw={700} c="dimmed">{day.toUpperCase()}</Text></Table.Th>
                 ))}
+                <Table.Th ta="center"><Text size="xs" fw={700} c="dimmed">TOTAL ACTUAL</Text></Table.Th>
+                <Table.Th ta="center"><Text size="xs" fw={700} c="dimmed">TOTAL TARGET</Text></Table.Th>
+                <Table.Th ta="center"><Text size="xs" fw={700} c="dimmed">GAP</Text></Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {activeWeek.parts.map(part => (
-                <Table.Tr key={part.partNumber}>
-                  <Table.Td fw={600}>{part.partNumber}</Table.Td>
-                  {DAYS_OF_WEEK.map(day => {
-                     const record = part.dailyRecords.find(r => r.dayOfWeek === day);
-                     if (!record || record.actual === null || record.target === null) {
+              {activeWeek.parts.map(part => {
+                const totalActual = part.dailyRecords.reduce((sum, r) => sum + (r.actual || 0), 0);
+                const totalTarget = part.dailyRecords.reduce((sum, r) => sum + (r.target || 0), 0);
+                const gap = totalActual - totalTarget;
+
+                return (
+                  <Table.Tr key={part.partNumber}>
+                    <Table.Td fw={600}>{part.partNumber}</Table.Td>
+                    {DAYS_OF_WEEK.map(day => {
+                       const record = part.dailyRecords.find(r => r.dayOfWeek === day);
+                       if (!record || record.actual === null || record.target === null) {
+                         return (
+                           <Table.Td key={day} ta="center">
+                              <Text size="md" fw={700} c="gray.4">-</Text>
+                              <Text size="xs" c="dimmed">Tgt: -</Text>
+                           </Table.Td>
+                         );
+                       }
+
+                       const styles = getCellStyles(record.actual, record.target);
+
                        return (
-                         <Table.Td key={day} ta="center">
-                            <Text size="md" fw={700} c="gray.4">-</Text>
-                            <Text size="xs" c="dimmed">Tgt: -</Text>
-                         </Table.Td>
+                          <Table.Td key={day} ta="center" bg={styles.bg}>
+                             <Text size="md" fw={styles.fw} c={styles.color}>{record.actual}</Text>
+                             <Text size="xs" c="dimmed">Tgt: {record.target}</Text>
+                          </Table.Td>
                        );
-                     }
-
-                     const styles = getCellStyles(record.actual, record.target);
-
-                     return (
-                        <Table.Td key={day} ta="center" bg={styles.bg}>
-                           <Text size="md" fw={styles.fw} c={styles.color}>{record.actual}</Text>
-                           <Text size="xs" c="dimmed">Tgt: {record.target}</Text>
-                        </Table.Td>
-                     );
-                  })}
-                </Table.Tr>
-              ))}
+                    })}
+                    <Table.Td ta="center" bg="gray.0">
+                      <Text size="md" fw={700}>{totalActual}</Text>
+                    </Table.Td>
+                    <Table.Td ta="center" bg="gray.0">
+                      <Text size="md" fw={700}>{totalTarget}</Text>
+                    </Table.Td>
+                    <Table.Td ta="center" bg={gap < 0 ? 'red.0' : 'green.0'}>
+                      <Text size="md" fw={700} c={gap < 0 ? 'red.8' : 'green.8'}>
+                        {gap > 0 ? `+${gap}` : gap}
+                      </Text>
+                    </Table.Td>
+                  </Table.Tr>
+                );
+              })}
               {activeWeek.parts.length === 0 && (
                 <Table.Tr>
-                  <Table.Td colSpan={8} ta="center" py="xl">
+                  <Table.Td colSpan={11} ta="center" py="xl">
                     <Text c="dimmed">No parts tracked for this week yet.</Text>
                   </Table.Td>
                 </Table.Tr>
