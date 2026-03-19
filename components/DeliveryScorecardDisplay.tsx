@@ -6,13 +6,14 @@ import { generateParetoData } from '@/lib/paretoUtils';
 import { 
   Tabs, Select, Table, Card, Text, Group, Badge, Title, Box 
 } from '@mantine/core';
-import { IconFlask, IconBox, IconShip } from '@tabler/icons-react';
+import { IconFlask, IconBox, IconShip, IconClipboardCheck } from '@tabler/icons-react';
 import { 
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
 } from 'recharts';
 
 const DEFAULT_DEPARTMENTS = [
   { name: 'Plating', icon: <IconFlask size={20} /> },
+  { name: 'VPA', icon: <IconClipboardCheck size={20} /> },
   { name: 'EBPVD', icon: <IconBox size={20} /> },
   { name: 'Shipping', icon: <IconShip size={20} /> }
 ];

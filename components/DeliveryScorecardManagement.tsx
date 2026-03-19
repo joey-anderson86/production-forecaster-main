@@ -5,7 +5,8 @@ import { Tabs, Select, Button, TextInput, NumberInput, Card, Grid, Group, Text, 
 import { 
   IconFlask, IconBox, IconShip, IconPlus, IconTrash, 
   IconDownload, IconUpload, IconX, IconCloudCheck, 
-  IconCloudUpload, IconCircleX, IconLink, IconLinkOff 
+  IconCloudUpload, IconCircleX, IconLink, IconLinkOff,
+  IconClipboardCheck 
 } from '@tabler/icons-react';
 import { useScorecardStore, DayOfWeek, PartScorecard, BulkImportGroup } from '@/lib/scorecardStore';
 import { notifications } from '@mantine/notifications';
@@ -14,6 +15,7 @@ import Papa from 'papaparse';
 
 const DEFAULT_DEPARTMENTS = [
   { name: 'Plating', icon: <IconFlask size={16} /> },
+  { name: 'VPA', icon: <IconClipboardCheck size={16} /> },
   { name: 'EBPVD', icon: <IconBox size={16} /> },
   { name: 'Shipping', icon: <IconShip size={16} /> }
 ];
