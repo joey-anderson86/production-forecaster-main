@@ -213,21 +213,38 @@ export default function DeliveryScorecardDisplay() {
                      contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
                   />
                   <Legend verticalAlign="top" height={36} />
-                  <Bar 
-                    yAxisId="left" 
-                    dataKey="frequency" 
-                    fill="var(--mantine-color-indigo-6)" 
-                    name="Frequency" 
-                    radius={[4, 4, 0, 0]} 
-                    barSize={60}
-                  />
+                  {/* Stacked bars for each part number */}
+                  {Array.from(new Set(activeWeek.parts.map(p => p.partNumber))).map((partNum, index) => {
+                    const colors = [
+                      'var(--mantine-color-indigo-6)',
+                      'var(--mantine-color-blue-6)',
+                      'var(--mantine-color-cyan-6)',
+                      'var(--mantine-color-teal-6)',
+                      'var(--mantine-color-green-6)',
+                      'var(--mantine-color-lime-6)',
+                      'var(--mantine-color-yellow-6)',
+                      'var(--mantine-color-orange-6)'
+                    ];
+                    return (
+                      <Bar 
+                        key={partNum}
+                        yAxisId="left" 
+                        dataKey={partNum} 
+                        fill={colors[index % colors.length]} 
+                        name={partNum} 
+                        stackId="a"
+                        legendType="none"
+                        barSize={60}
+                      />
+                    );
+                  })}
                   <Line 
                     yAxisId="right" 
                     type="monotone" 
                     dataKey="cumulativePercentage" 
-                    stroke="var(--mantine-color-orange-5)" 
+                    stroke="var(--mantine-color-red-6)" 
                     strokeWidth={3}
-                    dot={{ r: 5, fill: 'var(--mantine-color-orange-5)', strokeWidth: 2, stroke: 'white' }}
+                    dot={{ r: 5, fill: 'var(--mantine-color-red-6)', strokeWidth: 2, stroke: 'white' }}
                     activeDot={{ r: 7 }}
                     name="Cumulative %" 
                   />
