@@ -4,11 +4,11 @@ import React, { useState } from 'react';
 import { useScorecardStore, DayOfWeek } from '@/lib/scorecardStore';
 import { generateParetoData } from '@/lib/paretoUtils';
 import { 
-  Tabs, Select, Table, Card, Text, Group, Badge, Title, Box 
+  Tabs, Select, Table, Card, Text, Group, Badge, Title, Box, Tooltip, Stack 
 } from '@mantine/core';
 import { IconFlask, IconBox, IconShip, IconClipboardCheck } from '@tabler/icons-react';
 import { 
-  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
+  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer 
 } from 'recharts';
 
 const DEFAULT_DEPARTMENTS = [
@@ -138,9 +138,24 @@ export default function DeliveryScorecardDisplay() {
                        const styles = getCellStyles(record.actual, record.target);
 
                        return (
-                          <Table.Td key={day} ta="center" bg={styles.bg}>
-                             <Text size="md" fw={styles.fw} c={styles.color}>{record.actual}</Text>
-                             <Text size="xs" c="dimmed">Tgt: {record.target}</Text>
+                          <Table.Td key={day} ta="center" bg={styles.bg} p={0}>
+                             <Tooltip 
+                               label={
+                                 <Stack gap={2}>
+                                   <Text size="xs" fw={700}>Part: {part.partNumber}</Text>
+                                   <Text size="xs">Actual: {record.actual}</Text>
+                                   <Text size="xs">Target: {record.target}</Text>
+                                   <Text size="xs">Reason for Miss: {record.reasonCode || 'N/A'}</Text>
+                                 </Stack>
+                               }
+                               withArrow
+                               position="top"
+                             >
+                               <Box py="sm" px="xs">
+                                 <Text size="md" fw={styles.fw} c={styles.color}>{record.actual}</Text>
+                                 <Text size="xs" c="dimmed">Tgt: {record.target}</Text>
+                               </Box>
+                             </Tooltip>
                           </Table.Td>
                        );
                     })}
@@ -205,7 +220,7 @@ export default function DeliveryScorecardDisplay() {
                      label={{ value: 'Cumulative %', angle: 90, position: 'insideRight', style: { textAnchor: 'middle' } }}
                      tick={{ fontSize: 12, fill: 'var(--mantine-color-gray-6)' }}
                   />
-                  <Tooltip 
+                  <RechartsTooltip 
                      formatter={(value: any, name: any) => [
                        name === 'Cumulative %' ? `${value}%` : value, 
                        name
