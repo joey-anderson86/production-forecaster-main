@@ -18,6 +18,7 @@ import { ColorSchemeToggle } from '@/components/ColorSchemeToggle';
 import { MultiCsvUploader } from '@/components/MultiCsvUploader';
 import DeliveryScorecardManagement from '@/components/DeliveryScorecardManagement';
 import DeliveryScorecardDisplay from '@/components/DeliveryScorecardDisplay';
+import SyncManager from '@/components/SyncManager';
 import { useFullscreen } from '@mantine/hooks';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -470,6 +471,7 @@ export default function ProductionForecaster() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans p-4 md:p-8 transition-colors duration-300">
+      <SyncManager />
       <div className="max-w-7xl mx-auto space-y-6">
         <header className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800">
           <div>

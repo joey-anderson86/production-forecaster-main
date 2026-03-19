@@ -2,9 +2,14 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { Tabs, Select, Button, TextInput, NumberInput, Card, Grid, Group, Text, ActionIcon, Divider, Box } from '@mantine/core';
-import { IconFlask, IconBox, IconShip, IconPlus, IconTrash, IconDownload, IconUpload, IconX } from '@tabler/icons-react';
+import { 
+  IconFlask, IconBox, IconShip, IconPlus, IconTrash, 
+  IconDownload, IconUpload, IconX, IconCloudCheck, 
+  IconCloudUpload, IconCircleX, IconLink, IconLinkOff 
+} from '@tabler/icons-react';
 import { useScorecardStore, DayOfWeek, PartScorecard, BulkImportGroup } from '@/lib/scorecardStore';
 import { notifications } from '@mantine/notifications';
+import { Badge, Tooltip as MantineTooltip } from '@mantine/core';
 import Papa from 'papaparse';
 
 const DEFAULT_DEPARTMENTS = [
@@ -118,97 +123,61 @@ export default function DeliveryScorecardManagement() {
     link.click();
   };
 
-  const handleGlobalUploadCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleGlobalUploadCSV = async (e?: React.ChangeEvent<HTMLInputElement>) => {
+    // If we have an event, it means the hidden input was triggered and a file was selected
+    if (e?.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: (results) => {
+          processCsvData(results.data);
+          if (fileInputRef.current) fileInputRef.current.value = '';
+        },
+        error: () => {
+          notifications.show({
+            title: 'Error',
+            message: 'Failed to parse CSV.',
+            color: 'red'
+          });
+          if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+      });
+      return;
+    }
 
-    Papa.parse(file, {
+    // Otherwise, we are being called from the button click
+    // Try Tauri native dialog first to get the path for syncing
+    // @ts-ignore
+    if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__) {
+      try {
+        const { open } = await import('@tauri-apps/plugin-dialog');
+        const selected = await open({
+          multiple: false,
+          filters: [{ name: 'CSV', extensions: ['csv'] }]
+        });
+        
+        if (selected && typeof selected === 'string') {
+          const { readTextFile } = await import('@tauri-apps/plugin-fs');
+          const content = await readTextFile(selected);
+          processCsv(content, selected);
+          return;
+        }
+      } catch (err) {
+        console.error('Tauri open failed:', err);
+      }
+    }
+
+    // Fallback to standard file input trigger
+    fileInputRef.current?.click();
+  };
+
+  const processCsv = (content: string, path?: string) => {
+    Papa.parse(content, {
       header: true,
       skipEmptyLines: true,
       complete: (results) => {
-        const importedData = results.data as any[];
-        
-        let validRows = 0;
-        let invalidRows = 0;
-        
-        const groupMap: Record<string, {
-           departmentName: string, 
-           weekLabel: string, 
-           partsMap: Record<string, PartScorecard>
-        }> = {};
-
-        importedData.forEach(row => {
-          const dept = row["Department"];
-          const weekId = row["WeekIdentifier"];
-          const pNum = row["PartNumber"] || row["Part Number"];
-          const day = row["DayOfWeek"] || row["Day"] as DayOfWeek;
-          const actualStr = row["Actual"];
-          const targetStr = row["Target"];
-          const reason = row["ReasonCode"] || row["Reason Code"] || "";
-
-          const validDepts = DEFAULT_DEPARTMENTS.map(d => d.name);
-          
-          if (!validDepts.includes(dept) || !weekId || !pNum || !DAYS_OF_WEEK.includes(day)) {
-            invalidRows++;
-            return;
-          }
-          
-          validRows++;
-          const groupKey = `${dept}|${weekId}`;
-
-          if (!groupMap[groupKey]) {
-             groupMap[groupKey] = {
-               departmentName: dept,
-               weekLabel: weekId,
-               partsMap: {}
-             };
-          }
-
-          const group = groupMap[groupKey];
-
-          if (!group.partsMap[pNum]) {
-             group.partsMap[pNum] = {
-               partNumber: pNum,
-               dailyRecords: DAYS_OF_WEEK.map(d => ({
-                 dayOfWeek: d as DayOfWeek,
-                 actual: null,
-                 target: null,
-                 reasonCode: ''
-               }))
-             };
-          }
-
-          const dailyRec = group.partsMap[pNum].dailyRecords.find(d => d.dayOfWeek === day);
-          if (dailyRec) {
-            dailyRec.actual = actualStr !== undefined && actualStr !== "" ? parseFloat(actualStr) : null;
-            dailyRec.target = targetStr !== undefined && targetStr !== "" ? parseFloat(targetStr) : null;
-            if (reason) dailyRec.reasonCode = reason;
-          }
-        });
-
-        const bulkGroups: BulkImportGroup[] = Object.values(groupMap).map(g => ({
-          departmentName: g.departmentName,
-          weekLabel: g.weekLabel,
-          parts: Object.values(g.partsMap)
-        }));
-
-        store.bulkImportCsv(bulkGroups);
-        
-        if (validRows > 0) {
-          notifications.show({
-            title: 'Import Successful',
-            message: `Imported ${validRows} records across ${bulkGroups.length} weeks. ${invalidRows > 0 ? `Ignored ${invalidRows} invalid rows.` : ''}`,
-            color: 'green'
-          });
-        } else {
-          notifications.show({
-            title: 'Import Error',
-            message: `No valid records found to import. Ignored ${invalidRows} rows. Check Department/Headers.`,
-            color: 'red'
-          });
-        }
-
-        if (fileInputRef.current) fileInputRef.current.value = '';
+        processCsvData(results.data, path);
       },
       error: () => {
         notifications.show({
@@ -216,9 +185,105 @@ export default function DeliveryScorecardManagement() {
           message: 'Failed to parse CSV.',
           color: 'red'
         });
-        if (fileInputRef.current) fileInputRef.current.value = '';
       }
     });
+  };
+
+  const processCsvData = (importedData: any[], path?: string) => {
+    const groupMap: Record<string, {
+       departmentName: string, 
+       weekLabel: string, 
+       partsMap: Record<string, PartScorecard>
+    }> = {};
+
+    let validRows = 0;
+    let invalidRows = 0;
+
+    importedData.forEach(row => {
+      const dept = row["Department"];
+      const weekId = row["WeekIdentifier"];
+      const pNum = row["PartNumber"] || row["Part Number"];
+      const day = row["DayOfWeek"] || row["Day"] as DayOfWeek;
+      const actualStr = row["Actual"];
+      const targetStr = row["Target"];
+      const reason = row["ReasonCode"] || row["Reason Code"] || "";
+
+      const validDepts = DEFAULT_DEPARTMENTS.map(d => d.name);
+      
+      if (!validDepts.includes(dept) || !weekId || !pNum || !DAYS_OF_WEEK.includes(day)) {
+        invalidRows++;
+        return;
+      }
+      
+      validRows++;
+      const groupKey = `${dept}|${weekId}`;
+
+      if (!groupMap[groupKey]) {
+         groupMap[groupKey] = {
+           departmentName: dept,
+           weekLabel: weekId,
+           partsMap: {}
+         };
+      }
+
+      const group = groupMap[groupKey];
+
+      if (!group.partsMap[pNum]) {
+         group.partsMap[pNum] = {
+           partNumber: pNum,
+           dailyRecords: DAYS_OF_WEEK.map(d => ({
+             dayOfWeek: d as DayOfWeek,
+             actual: null,
+             target: null,
+             reasonCode: ''
+           }))
+         };
+      }
+
+      const dailyRec = group.partsMap[pNum].dailyRecords.find(d => d.dayOfWeek === day);
+      if (dailyRec) {
+        dailyRec.actual = actualStr !== undefined && actualStr !== "" ? parseFloat(actualStr) : null;
+        dailyRec.target = targetStr !== undefined && targetStr !== "" ? parseFloat(targetStr) : null;
+        if (reason) dailyRec.reasonCode = reason;
+      }
+    });
+
+    const bulkGroups: BulkImportGroup[] = Object.values(groupMap).map(g => ({
+      departmentName: g.departmentName,
+      weekLabel: g.weekLabel,
+      parts: Object.values(g.partsMap)
+    }));
+
+    store.bulkImportCsv(bulkGroups);
+    if (path) {
+      store.setSyncFilePath(path);
+    } else {
+      // If no path was provided, it means we used the browser fallback
+      // @ts-ignore
+      const isTauri = typeof window !== 'undefined' && (window.__TAURI_INTERNALS__ || window.__TAURI__);
+      if (!isTauri) {
+        notifications.show({
+          title: 'Auto-Sync Unavailable',
+          message: 'Direct file synchronization is only available in the Tauri desktop application. Changes made here will not update your local file.',
+          color: 'blue',
+          autoClose: 10000
+        });
+      }
+    }
+    
+    if (validRows > 0) {
+      notifications.show({
+        title: 'Import Successful',
+        message: `Imported ${validRows} records across ${bulkGroups.length} weeks. ${invalidRows > 0 ? `Ignored ${invalidRows} invalid rows.` : ''}`,
+        color: 'green'
+      });
+    } else {
+      notifications.show({
+        title: 'Import Error',
+        message: `No valid records found to import. Ignored ${invalidRows} rows. Check Department/Headers.`,
+        color: 'red'
+      });
+    }
   };
 
   const handleGlobalExportCSV = () => {
@@ -299,11 +364,11 @@ export default function DeliveryScorecardManagement() {
               Download Global CSV
             </Button>
             <Button 
-              leftSection={<IconUpload size={16} />} 
-              variant="outline" 
-              color="indigo"
-              size="md"
-              onClick={() => fileInputRef.current?.click()}
+               leftSection={<IconUpload size={16} />} 
+               variant="outline" 
+               color="indigo"
+               size="md"
+               onClick={() => handleGlobalUploadCSV()}
             >
               Upload Global CSV
             </Button>
@@ -325,6 +390,66 @@ export default function DeliveryScorecardManagement() {
             </Button>
           </Group>
         </Group>
+        
+        {/* Sync Status Banner */}
+        {store.syncFilePath && (
+          <Box 
+            mt="md" 
+            p="sm" 
+            style={{ 
+              borderRadius: '8px', 
+              background: 'white',
+              border: '1px solid var(--mantine-color-gray-2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}
+          >
+            <Group gap="xs">
+              <IconLink size={18} style={{ color: 'var(--mantine-color-indigo-6)' }} />
+              <Box>
+                <Text size="xs" fw={700} c="dimmed" style={{ lineHeight: 1 }}>AUTO-SYNCING TO FILE</Text>
+                <Text size="sm" fw={500} truncate maw={400}>{store.syncFilePath}</Text>
+              </Box>
+              <Badge 
+                size="sm" 
+                variant="light" 
+                color={
+                  store.lastSyncStatus === 'synced' ? 'green' : 
+                  store.lastSyncStatus === 'syncing' ? 'blue' : 
+                  store.lastSyncStatus === 'error' ? 'red' : 'gray'
+                }
+                leftSection={
+                  store.lastSyncStatus === 'synced' ? <IconCloudCheck size={14} /> : 
+                  store.lastSyncStatus === 'syncing' ? <IconCloudUpload size={14} /> : 
+                  store.lastSyncStatus === 'error' ? <IconCircleX size={14} /> :
+                  <IconLink size={14} />
+                }
+              >
+                {
+                  store.lastSyncStatus === 'synced' ? 'Synced' : 
+                  store.lastSyncStatus === 'syncing' ? 'Syncing...' : 
+                  store.lastSyncStatus === 'error' ? 'Sync Error' : 'File Linked'
+                }
+              </Badge>
+              {store.lastSyncTime && (
+                <Text size="xs" c="dimmed">Last update: {store.lastSyncTime}</Text>
+              )}
+            </Group>
+            
+            <MantineTooltip label="Stop auto-syncing to this file">
+              <Button 
+                variant="subtle" 
+                color="red" 
+                size="xs" 
+                leftSection={<IconLinkOff size={16} />}
+                onClick={() => store.setSyncFilePath(null)}
+              >
+                Stop Sync
+              </Button>
+            </MantineTooltip>
+          </Box>
+        )}
       </Card>
 
       {/* Week Content */}

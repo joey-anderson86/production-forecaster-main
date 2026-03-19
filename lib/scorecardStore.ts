@@ -35,6 +35,9 @@ export interface BulkImportGroup {
 
 export interface ScorecardState {
   departments: Record<string, DepartmentScorecard>;
+  syncFilePath: string | null;
+  lastSyncStatus: 'synced' | 'syncing' | 'error' | null;
+  lastSyncTime: string | null;
 }
 
 interface ScorecardActions {
@@ -54,6 +57,8 @@ interface ScorecardActions {
   ) => void;
   importWeeklyCsv: (departmentName: string, weekId: string, data: PartScorecard[]) => void;
   bulkImportCsv: (groups: BulkImportGroup[]) => void;
+  setSyncFilePath: (path: string | null) => void;
+  setSyncStatus: (status: 'synced' | 'syncing' | 'error' | null) => void;
 }
 
 export type ScorecardStore = ScorecardState & ScorecardActions;
@@ -73,6 +78,9 @@ export const useScorecardStore = create<ScorecardStore>()(
   persist(
     (set) => ({
       departments: {},
+      syncFilePath: null,
+      lastSyncStatus: null,
+      lastSyncTime: null,
 
       addDepartment: (departmentName) => set((state) => {
         if (state.departments[departmentName]) return state;
@@ -283,6 +291,12 @@ export const useScorecardStore = create<ScorecardStore>()(
         });
 
         return { departments: newDepartments };
+      }),
+
+      setSyncFilePath: (path: string | null) => set({ syncFilePath: path }),
+      setSyncStatus: (status: 'synced' | 'syncing' | 'error' | null) => set({ 
+        lastSyncStatus: status,
+        lastSyncTime: status === 'synced' ? new Date().toLocaleTimeString() : null
       })
 
     }),
