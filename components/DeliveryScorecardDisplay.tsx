@@ -58,6 +58,39 @@ export default function DeliveryScorecardDisplay() {
   const activeWeek = activeDepartment && selectedWeekId ? activeDepartment.weeks[selectedWeekId] : null;
   const paretoData = generateParetoData(activeWeek);
 
+  // Calculate Rolling Gaps using useMemo
+  const rollingGaps = React.useMemo(() => {
+    if (!activeWeek) return {};
+
+    const now = new Date();
+    // Mon=0, Tue=1, ..., Sun=6
+    const todayIndex = now.getDay() === 0 ? 6 : now.getDay() - 1;
+
+    // Helper to determine if we should cap the calculation to today
+    // We assume the week is "current" if it's the one we are in.
+    // Since weekId format varies, we'll try to find if activeWeek represents the current week.
+    // For this context, we'll use todayIndex to limit calculation if the week seems current or future.
+    // Requirement 4: "Stop calculating... for future dates beyond the current chronological date"
+    
+    return activeWeek.parts.reduce((acc, part) => {
+      let cumulative = 0;
+      DAYS_OF_WEEK.forEach((day, index) => {
+        // Current date check: if index > todayIndex, it's a "future" day in the current week.
+        // We stop summing if it's a future day.
+        if (index <= todayIndex) {
+          const record = part.dailyRecords.find(r => r.dayOfWeek === day);
+          if (record) {
+            const actual = record.actual ?? 0;
+            const target = record.target ?? 0;
+            cumulative += (actual - target);
+          }
+        }
+      });
+      acc[part.partNumber] = cumulative;
+      return acc;
+    }, {} as Record<string, number>);
+  }, [activeWeek]);
+
   const getCellStyles = (actual: number | null, target: number | null) => {
     if (actual === null || target === null) return {};
     if (actual >= target) {
@@ -127,6 +160,7 @@ export default function DeliveryScorecardDisplay() {
                 <Table.Th ta="center"><Text size="xs" fw={700} c="dimmed">TOTAL ACTUAL</Text></Table.Th>
                 <Table.Th ta="center"><Text size="xs" fw={700} c="dimmed">TOTAL TARGET</Text></Table.Th>
                 <Table.Th ta="center"><Text size="xs" fw={700} c="dimmed">GAP</Text></Table.Th>
+                <Table.Th ta="center"><Text size="xs" fw={700} c="dimmed">ROLLING GAP</Text></Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -210,6 +244,11 @@ export default function DeliveryScorecardDisplay() {
                     <Table.Td ta="center" bg={gap < 0 ? 'red.0' : 'green.0'}>
                       <Text size="md" fw={700} c={gap < 0 ? 'red.8' : 'green.8'}>
                         {gap > 0 ? `+${gap}` : gap}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td ta="center" bg={rollingGaps[part.partNumber] < 0 ? 'red.0' : 'green.0'}>
+                      <Text size="md" fw={700} c={rollingGaps[part.partNumber] < 0 ? 'red.8' : 'green.8'}>
+                        {rollingGaps[part.partNumber] > 0 ? `+${rollingGaps[part.partNumber]}` : rollingGaps[part.partNumber]}
                       </Text>
                     </Table.Td>
                   </Table.Tr>
