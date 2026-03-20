@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useScorecardStore, DayOfWeek } from '@/lib/scorecardStore';
+import { useScorecardStore, DayOfWeek, DailyScorecardRecord } from '@/lib/scorecardStore';
 import { generateParetoData } from '@/lib/paretoUtils';
 import { 
   Tabs, Select, Table, Card, Text, Group, Badge, Title, Box, Tooltip, Stack 
@@ -10,6 +10,7 @@ import { IconFlask, IconBox, IconShip, IconClipboardCheck } from '@tabler/icons-
 import { 
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer 
 } from 'recharts';
+import { EditEntryModal } from './EditEntryModal';
 
 const DEFAULT_DEPARTMENTS = [
   { name: 'Plating', icon: <IconFlask size={20} /> },
@@ -24,6 +25,14 @@ export default function DeliveryScorecardDisplay() {
   const store = useScorecardStore();
   const [activeTab, setActiveTab] = useState<string | null>('Plating');
   const [selectedWeekId, setSelectedWeekId] = useState<string | null>(null);
+
+  // Edit Modal State
+  const [editModalOpened, setEditModalOpened] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<{
+    partNumber: string;
+    dayOfWeek: DayOfWeek;
+    record: DailyScorecardRecord;
+  } | null>(null);
 
   const activeDepartment = activeTab ? store.departments[activeTab] : null;
 
@@ -58,6 +67,11 @@ export default function DeliveryScorecardDisplay() {
   };
 
   const activeDeptConfig = DEFAULT_DEPARTMENTS.find(d => d.name === activeTab);
+
+  const handleCellClick = (partNumber: string, dayOfWeek: DayOfWeek, record: DailyScorecardRecord) => {
+    setEditingEntry({ partNumber, dayOfWeek, record });
+    setEditModalOpened(true);
+  };
 
   return (
     <Box className="w-full">
@@ -138,7 +152,14 @@ export default function DeliveryScorecardDisplay() {
                        const styles = getCellStyles(record.actual, record.target);
 
                        return (
-                          <Table.Td key={day} ta="center" bg={styles.bg} p={0}>
+                          <Table.Td 
+                            key={day} 
+                            ta="center" 
+                            bg={styles.bg} 
+                            p={0}
+                            className="cursor-pointer hover:opacity-80 transition-opacity"
+                            onClick={() => handleCellClick(part.partNumber, day, record)}
+                          >
                              <Tooltip 
                                label={
                                  <Stack gap={2}>
@@ -146,6 +167,7 @@ export default function DeliveryScorecardDisplay() {
                                    <Text size="xs">Actual: {record.actual}</Text>
                                    <Text size="xs">Target: {record.target}</Text>
                                    <Text size="xs">Reason for Miss: {record.reasonCode || 'N/A'}</Text>
+                                   <Text size="xs" c="indigo.4" mt={4} fw={700}>Click to Edit</Text>
                                  </Stack>
                                }
                                withArrow
@@ -269,6 +291,19 @@ export default function DeliveryScorecardDisplay() {
           </Box>
         )}
       </Card>
+
+      {activeDepartment && activeWeek && editingEntry && (
+        <EditEntryModal
+          opened={editModalOpened}
+          onClose={() => setEditModalOpened(false)}
+          departmentName={activeDepartment.departmentName}
+          weekId={activeWeek.weekId}
+          weekLabel={activeWeek.weekLabel}
+          partNumber={editingEntry.partNumber}
+          dayOfWeek={editingEntry.dayOfWeek}
+          initialData={editingEntry.record}
+        />
+      )}
     </Box>
   );
 }
