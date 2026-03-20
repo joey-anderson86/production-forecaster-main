@@ -140,14 +140,34 @@ export default function DeliveryScorecardDisplay() {
                     <Table.Td fw={600}>{part.partNumber}</Table.Td>
                     {DAYS_OF_WEEK.map(day => {
                        const record = part.dailyRecords.find(r => r.dayOfWeek === day);
-                       if (!record || record.actual === null || record.target === null) {
-                         return (
-                           <Table.Td key={day} ta="center">
-                              <Text size="md" fw={700} c="gray.4">-</Text>
-                              <Text size="xs" c="dimmed">Tgt: -</Text>
-                           </Table.Td>
-                         );
-                       }
+                        if (!record || record.actual === null || record.target === null) {
+                          return (
+                            <Table.Td 
+                              key={day} 
+                              ta="center"
+                              className="cursor-pointer hover:bg-gray-50 transition-colors"
+                              onClick={() => record && handleCellClick(part.partNumber, day, record)}
+                            >
+                               <Tooltip 
+                                 label={
+                                   <Stack gap={2}>
+                                     <Text size="xs" fw={700}>Part: {part.partNumber}</Text>
+                                     <Text size="xs">Actual: -</Text>
+                                     <Text size="xs">Target: -</Text>
+                                     <Text size="xs" c="indigo.4" mt={4} fw={700}>Click to Initialize</Text>
+                                   </Stack>
+                                 }
+                                 withArrow
+                                 position="top"
+                               >
+                                 <Box py="sm" px="xs">
+                                   <Text size="md" fw={700} c="gray.4">-</Text>
+                                   <Text size="xs" c="dimmed">Tgt: -</Text>
+                                 </Box>
+                               </Tooltip>
+                            </Table.Td>
+                          );
+                        }
 
                        const styles = getCellStyles(record.actual, record.target);
 
