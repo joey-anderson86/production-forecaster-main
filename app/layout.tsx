@@ -1,13 +1,14 @@
-import type {Metadata} from 'next';
+import type { Metadata } from 'next';
 import { ColorSchemeScript, MantineProvider, mantineHtmlProps, createTheme, virtualColor } from '@mantine/core';
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
 import { Notifications } from '@mantine/notifications';
+import { ZoomManager } from '../components/ZoomManager';
 import './globals.css'; // Global styles
 
 export const metadata: Metadata = {
-  title: 'My Google AI Studio App',
-  description: 'My Google AI Studio App',
+  title: 'Production Forecaster',
+  description: 'Production Forecaster',
 };
 
 const theme = createTheme({
@@ -28,7 +29,7 @@ const theme = createTheme({
   },
 });
 
-export default function RootLayout({children}: {children: React.ReactNode}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" {...mantineHtmlProps}>
       <head>
@@ -37,6 +38,7 @@ export default function RootLayout({children}: {children: React.ReactNode}) {
       <body suppressHydrationWarning>
         <MantineProvider theme={theme}>
           <Notifications />
+          <ZoomManager />
           {children}
         </MantineProvider>
       </body>
