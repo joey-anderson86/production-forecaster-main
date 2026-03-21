@@ -10,8 +10,9 @@ import {
 } from '@tabler/icons-react';
 import { useScorecardStore, DayOfWeek, PartScorecard, BulkImportGroup } from '@/lib/scorecardStore';
 import { notifications } from '@mantine/notifications';
-import { Badge, Tooltip as MantineTooltip } from '@mantine/core';
+import { Badge, Tooltip as MantineTooltip, Stack } from '@mantine/core';
 import Papa from 'papaparse';
+import { getWeekDates, formatISODate } from '@/lib/dateUtils';
 
 const DEFAULT_DEPARTMENTS = [
   { name: 'Plating', icon: <IconFlask size={16} /> },
@@ -54,9 +55,12 @@ export default function DeliveryScorecardManagement() {
 
   const handleAddWeek = () => {
     if (!activeTab) return;
-    const weekLabel = prompt("Enter Week Label (e.g., 'Week 41 (Oct 5 - Oct 11)'):");
+    const exampleId = `${new Date().getFullYear()}-w${Math.ceil((new Date().getDate() - new Date(new Date().getFullYear(), 0, 1).getDate()) / 7)}`;
+    const weekId = prompt(`Enter Week ID (e.g., '${exampleId}'):`, exampleId);
+    if (!weekId) return;
+
+    const weekLabel = prompt("Enter Week Label (e.g., 'Week 12 (Mar 16 - Mar 22)'):");
     if (weekLabel) {
-      const weekId = `week-${Date.now()}`;
       store.addWeek(activeTab, weekId, weekLabel);
       setSelectedWeekId(weekId);
     }
@@ -534,7 +538,10 @@ export default function DeliveryScorecardManagement() {
                     return (
                       <Grid.Col span={1} key={day}>
                         <Card withBorder padding="xs" radius="sm">
-                          <Text ta="center" size="sm" fw={600} mb="xs" c="dimmed">{day}</Text>
+                          <Stack gap={0} align="center" mb="xs">
+                            <Text size="sm" fw={600} c="dimmed" lh={1}>{day}</Text>
+                            {record.date && <Text size="10px" c="indigo.4" fw={700}>{new Date(record.date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</Text>}
+                          </Stack>
                           <Group gap="xs" mb={4} wrap="nowrap">
                              <Text size="xs" fw={500} c="dimmed" w={20}>Act</Text>
                              <NumberInput

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { getISODateForDay, getNumericDateForDay } from './dateUtils';
 
 export type DayOfWeek = 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat' | 'Sun';
 
@@ -9,6 +10,8 @@ export interface DailyScorecardRecord {
   target: number | null; 
   reasonCode: string; // Required if actual < target
   wipAvailable?: number;
+  date?: string;       // YYYY-MM-DD
+  numericDate?: number; // YYYYMMDD
 }
 
 export interface PartScorecard {
@@ -63,14 +66,14 @@ interface ScorecardActions {
 
 export type ScorecardStore = ScorecardState & ScorecardActions;
 
-const emptyDailyRecords = (): DailyScorecardRecord[] => [
-  { dayOfWeek: 'Mon', actual: null, target: null, reasonCode: '' },
-  { dayOfWeek: 'Tue', actual: null, target: null, reasonCode: '' },
-  { dayOfWeek: 'Wed', actual: null, target: null, reasonCode: '' },
-  { dayOfWeek: 'Thu', actual: null, target: null, reasonCode: '' },
-  { dayOfWeek: 'Fri', actual: null, target: null, reasonCode: '' },
-  { dayOfWeek: 'Sat', actual: null, target: null, reasonCode: '' },
-  { dayOfWeek: 'Sun', actual: null, target: null, reasonCode: '' },
+const emptyDailyRecords = (weekId: string): DailyScorecardRecord[] => [
+  { dayOfWeek: 'Mon', actual: null, target: null, reasonCode: '', date: getISODateForDay(weekId, 'Mon'), numericDate: getNumericDateForDay(weekId, 'Mon') },
+  { dayOfWeek: 'Tue', actual: null, target: null, reasonCode: '', date: getISODateForDay(weekId, 'Tue'), numericDate: getNumericDateForDay(weekId, 'Tue') },
+  { dayOfWeek: 'Wed', actual: null, target: null, reasonCode: '', date: getISODateForDay(weekId, 'Wed'), numericDate: getNumericDateForDay(weekId, 'Wed') },
+  { dayOfWeek: 'Thu', actual: null, target: null, reasonCode: '', date: getISODateForDay(weekId, 'Thu'), numericDate: getNumericDateForDay(weekId, 'Thu') },
+  { dayOfWeek: 'Fri', actual: null, target: null, reasonCode: '', date: getISODateForDay(weekId, 'Fri'), numericDate: getNumericDateForDay(weekId, 'Fri') },
+  { dayOfWeek: 'Sat', actual: null, target: null, reasonCode: '', date: getISODateForDay(weekId, 'Sat'), numericDate: getNumericDateForDay(weekId, 'Sat') },
+  { dayOfWeek: 'Sun', actual: null, target: null, reasonCode: '', date: getISODateForDay(weekId, 'Sun'), numericDate: getNumericDateForDay(weekId, 'Sun') },
 ];
 
 
@@ -150,7 +153,7 @@ export const useScorecardStore = create<ScorecardStore>()(
 
         const newPart: PartScorecard = {
           partNumber,
-          dailyRecords: emptyDailyRecords()
+          dailyRecords: emptyDailyRecords(weekId)
         };
 
         return {
@@ -239,6 +242,16 @@ export const useScorecardStore = create<ScorecardStore>()(
 
         const week = dept.weeks[weekId];
         
+        // Ensure imported data has dates populated
+        const augmentedData = data.map(part => ({
+          ...part,
+          dailyRecords: part.dailyRecords.map(record => ({
+            ...record,
+            date: record.date || getISODateForDay(weekId, record.dayOfWeek),
+            numericDate: record.numericDate || getNumericDateForDay(weekId, record.dayOfWeek)
+          }))
+        }));
+        
         return {
           departments: {
             ...state.departments,
@@ -248,7 +261,7 @@ export const useScorecardStore = create<ScorecardStore>()(
                 ...dept.weeks,
                 [weekId]: {
                   ...week,
-                  parts: data // completely replace existing parts for this week
+                  parts: augmentedData 
                 }
               }
             }
@@ -274,6 +287,16 @@ export const useScorecardStore = create<ScorecardStore>()(
 
           const weekIdToUse = existingWeekId || `week-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
+          // Ensure imported data has dates populated
+          const augmentedParts = group.parts.map(part => ({
+            ...part,
+            dailyRecords: part.dailyRecords.map(record => ({
+              ...record,
+              date: record.date || getISODateForDay(weekIdToUse, record.dayOfWeek),
+              numericDate: record.numericDate || getNumericDateForDay(weekIdToUse, record.dayOfWeek)
+            }))
+          }));
+
           newDepartments = {
             ...newDepartments,
             [group.departmentName]: {
@@ -283,7 +306,7 @@ export const useScorecardStore = create<ScorecardStore>()(
                 [weekIdToUse]: {
                   weekId: weekIdToUse,
                   weekLabel: group.weekLabel,
-                  parts: group.parts
+                  parts: augmentedParts
                 }
               }
             }

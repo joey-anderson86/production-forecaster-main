@@ -11,6 +11,7 @@ import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer 
 } from 'recharts';
 import { EditEntryModal } from './EditEntryModal';
+import { getTodayNumeric, DAYS_OF_WEEK as ALL_DAYS, getWeekDates, formatISODate } from '@/lib/dateUtils';
 
 const DEFAULT_DEPARTMENTS = [
   { name: 'Plating', icon: <IconFlask size={20} /> },
@@ -58,32 +59,20 @@ export default function DeliveryScorecardDisplay() {
   const activeWeek = activeDepartment && selectedWeekId ? activeDepartment.weeks[selectedWeekId] : null;
   const paretoData = generateParetoData(activeWeek);
 
-  // Calculate Rolling Gaps using useMemo
+  // Calculate Rolling Gaps using numericDate
   const rollingGaps = React.useMemo(() => {
     if (!activeWeek) return {};
 
-    const now = new Date();
-    // Mon=0, Tue=1, ..., Sun=6
-    const todayIndex = now.getDay() === 0 ? 6 : now.getDay() - 1;
-
-    // Helper to determine if we should cap the calculation to today
-    // We assume the week is "current" if it's the one we are in.
-    // Since weekId format varies, we'll try to find if activeWeek represents the current week.
-    // For this context, we'll use todayIndex to limit calculation if the week seems current or future.
-    // Requirement 4: "Stop calculating... for future dates beyond the current chronological date"
+    const todayNumeric = getTodayNumeric();
     
     return activeWeek.parts.reduce((acc, part) => {
       let cumulative = 0;
-      DAYS_OF_WEEK.forEach((day, index) => {
-        // Current date check: if index > todayIndex, it's a "future" day in the current week.
-        // We stop summing if it's a future day.
-        if (index <= todayIndex) {
-          const record = part.dailyRecords.find(r => r.dayOfWeek === day);
-          if (record) {
-            const actual = record.actual ?? 0;
-            const target = record.target ?? 0;
-            cumulative += (actual - target);
-          }
+      part.dailyRecords.forEach((record) => {
+        // Stop summing if the record's date is in the future
+        if (record.numericDate && record.numericDate <= todayNumeric) {
+          const actual = record.actual ?? 0;
+          const target = record.target ?? 0;
+          cumulative += (actual - target);
         }
       });
       acc[part.partNumber] = cumulative;
@@ -154,9 +143,18 @@ export default function DeliveryScorecardDisplay() {
             <Table.Thead>
               <Table.Tr>
                 <Table.Th><Text size="xs" fw={700} c="dimmed">PART NUMBER</Text></Table.Th>
-                {DAYS_OF_WEEK.map(day => (
-                  <Table.Th key={day} ta="center"><Text size="xs" fw={700} c="dimmed">{day.toUpperCase()}</Text></Table.Th>
-                ))}
+                {DAYS_OF_WEEK.map((day, idx) => {
+                  const dayDate = activeWeek ? getWeekDates(activeWeek.weekId)[idx] : null;
+                  const dateStr = dayDate ? dayDate.toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }) : '';
+                  return (
+                    <Table.Th key={day} ta="center">
+                      <Stack gap={0} align="center">
+                        <Text size="xs" fw={700} c="dimmed">{day.toUpperCase()}</Text>
+                        {dateStr && <Text size="10px" c="indigo.4" fw={700}>{dateStr}</Text>}
+                      </Stack>
+                    </Table.Th>
+                  );
+                })}
                 <Table.Th ta="center"><Text size="xs" fw={700} c="dimmed">TOTAL ACTUAL</Text></Table.Th>
                 <Table.Th ta="center"><Text size="xs" fw={700} c="dimmed">TOTAL TARGET</Text></Table.Th>
                 <Table.Th ta="center"><Text size="xs" fw={700} c="dimmed">GAP</Text></Table.Th>
