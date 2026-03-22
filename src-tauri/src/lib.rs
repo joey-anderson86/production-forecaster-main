@@ -55,6 +55,18 @@ struct ProcessInfo {
     machine_id: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct PipelineRow {
+    date: Option<String>,
+    customer: Option<String>,
+    customer_city: Option<String>,
+    part_number: Option<String>,
+    part_name: Option<String>,
+    wip_locator: Option<String>,
+    qty: Option<i16>,
+}
+
 // State for managing the MSSQL connection status and settings
 pub struct DbState {
     pub connection_string: Mutex<Option<String>>,
@@ -138,6 +150,16 @@ async fn create_client(connection_string: &str) -> Result<Client<tokio_util::com
     Ok(client)
 }
 
+fn get_i16_robust(row: &tiberius::Row, col: &str) -> Option<i16> {
+    if let Ok(val) = row.try_get::<i16, _>(col) {
+        return val;
+    }
+    if let Ok(val) = row.try_get::<&str, _>(col) {
+        return val.and_then(|s| s.trim().parse::<i16>().ok());
+    }
+    None
+}
+
 #[tauri::command]
 async fn test_mssql_connection(connection_string: String) -> Result<String, String> {
     let mut client = create_client(&connection_string).await?;
@@ -156,7 +178,7 @@ async fn get_locator_mapping_preview(connection_string: String) -> Result<Vec<Lo
         LocatorMapping {
             wip_locator: row.get::<&str, _>("WIPLocator").map(|s| s.trim().to_string()),
             process: row.get::<&str, _>("Process").map(|s| s.trim().to_string()),
-            days_from_shipment: row.get::<i16, _>("DaysFromShipment"),
+            days_from_shipment: get_i16_robust(&row, "DaysFromShipment"),
         }
     }).collect();
     
@@ -173,8 +195,8 @@ async fn get_part_info_preview(connection_string: String) -> Result<Vec<PartInfo
         PartInfo {
             part_number: row.get::<&str, _>("PartNumber").map(|s| s.trim().to_string()),
             process: row.get::<&str, _>("Process").map(|s| s.trim().to_string()),
-            batch_size: row.get::<i16, _>("BatchSize"),
-            processing_time: row.get::<i16, _>("ProcessingTime"),
+            batch_size: get_i16_robust(&row, "BatchSize"),
+            processing_time: get_i16_robust(&row, "ProcessingTime"),
         }
     }).collect();
     
@@ -192,12 +214,59 @@ async fn get_process_info_preview(connection_string: String) -> Result<Vec<Proce
         ProcessInfo {
             process: row.get::<&str, _>("Process").map(|s| s.trim().to_string()),
             date: row.get::<&str, _>("Date").map(|s| s.trim().to_string()),
-            hours_available: row.get::<i16, _>("HoursAvailable"),
+            hours_available: get_i16_robust(&row, "HoursAvailable"),
             machine_id: row.get::<&str, _>("MachineID").map(|s| s.trim().to_string()),
         }
     }).collect();
     
     Ok(result)
+}
+
+#[tauri::command]
+async fn get_pipeline_data_preview(connection_string: String) -> Result<Vec<PipelineRow>, String> {
+    let mut client = create_client(&connection_string).await?;
+    let stream = client.query("SELECT TOP 500 CONVERT(VARCHAR, Date, 23) as Date, Customer, CustomerCity, PartNumber, PartName, WIPLocator, Qty FROM dbo.PipelineData", &[]).await.map_err(|e| e.to_string())?;
+    let rows = stream.into_first_result().await.map_err(|e| e.to_string())?;
+    
+    let result = rows.into_iter().map(|row| {
+        PipelineRow {
+            date: row.get::<&str, _>("Date").map(|s| s.trim().to_string()),
+            customer: row.get::<&str, _>("Customer").map(|s| s.trim().to_string()),
+            customer_city: row.get::<&str, _>("CustomerCity").map(|s| s.trim().to_string()),
+            part_number: row.get::<&str, _>("PartNumber").map(|s| s.trim().to_string()),
+            part_name: row.get::<&str, _>("PartName").map(|s| s.trim().to_string()),
+            wip_locator: row.get::<&str, _>("WIPLocator").map(|s| s.trim().to_string()),
+            qty: get_i16_robust(&row, "Qty"),
+        }
+    }).collect();
+    
+    Ok(result)
+}
+
+#[tauri::command]
+async fn append_pipeline_data(connection_string: String, records: Vec<PipelineRow>) -> Result<(), String> {
+    let mut client = create_client(&connection_string).await?;
+    client.simple_query("BEGIN TRANSACTION").await.map_err(|e| e.to_string())?;
+    
+    for rec in records {
+        client.execute(
+            "INSERT INTO dbo.PipelineData (Date, Customer, CustomerCity, PartNumber, PartName, WIPLocator, Qty) 
+             VALUES (CAST(@p1 as DATE), @p2, @p3, @p4, @p5, @p6, @p7)",
+            &[&rec.date, &rec.customer, &rec.customer_city, &rec.part_number, &rec.part_name, &rec.wip_locator, &rec.qty],
+        ).await.map_err(|e| e.to_string())?;
+    }
+
+    client.simple_query("COMMIT TRANSACTION").await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn delete_pipeline_data_by_date(connection_string: String, date: String) -> Result<(), String> {
+    let mut client = create_client(&connection_string).await?;
+    client.execute("DELETE FROM dbo.PipelineData WHERE Date = CAST(@p1 as DATE)", &[&date])
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -362,6 +431,7 @@ pub fn run() {
         get_locator_mapping_preview,
         get_part_info_preview,
         get_process_info_preview,
+        get_pipeline_data_preview,
         upsert_locator_mapping,
         upsert_part_info,
         upsert_process_info,
@@ -370,7 +440,9 @@ pub fn run() {
         delete_process_infos,
         replace_locator_mappings,
         replace_part_infos,
-        replace_process_infos
+        replace_process_infos,
+        append_pipeline_data,
+        delete_pipeline_data_by_date
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

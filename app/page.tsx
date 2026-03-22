@@ -20,6 +20,7 @@ import DeliveryScorecardManagement from '@/components/DeliveryScorecardManagemen
 import DeliveryScorecardDisplay from '@/components/DeliveryScorecardDisplay';
 import SyncManager from '@/components/SyncManager';
 import { DatabaseSettings } from '@/components/DatabaseSettings';
+import { PipelineDataPreview } from '@/components/PipelineDataPreview';
 import { useFullscreen } from '@mantine/hooks';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -610,6 +611,10 @@ export default function ProductionForecaster() {
                   </div>
                 </div>
               )}
+            </div>
+
+            <div className="mt-8">
+              <PipelineDataPreview />
             </div>
 
             {/* Dashboard */}
