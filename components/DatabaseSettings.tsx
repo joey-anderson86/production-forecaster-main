@@ -17,10 +17,12 @@ import {
   ScrollArea,
   ActionIcon,
   NumberInput,
+  FileButton,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { invoke } from "@tauri-apps/api/core";
 import { load } from "@tauri-apps/plugin-store";
+import Papa from "papaparse";
 import {
   IconDatabase,
   IconTable,
@@ -29,8 +31,12 @@ import {
   IconRefresh,
   IconPlus,
   IconDeviceFloppy,
-  IconTrash
+  IconTrash,
+  IconUpload,
+  IconDownload
 } from "@tabler/icons-react";
+
+
 
 interface LocatorMapping {
   wipLocator?: string;
@@ -315,7 +321,99 @@ export function DatabaseSettings() {
   };
 
 
+  const handleFileUpload = (file: File | null) => {
+    if (!file || !connectionString) return;
+
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async (results) => {
+        setIsSavingData(true);
+        try {
+          const rawData = results.data as any[];
+          
+          if (activeTab === "locatorMapping") {
+            const mapped = rawData.map(r => ({
+              wipLocator: r.WIPLocator || r.wipLocator || "",
+              process: r.Process || r.process || "",
+              daysFromShipment: parseInt(r.DaysFromShipment || r.daysFromShipment || "0")
+            }));
+            await invoke("replace_locator_mappings", { connectionString, records: mapped });
+          } else if (activeTab === "partInfo") {
+            const mapped = rawData.map(r => ({
+              partNumber: r.PartNumber || r.partNumber || "",
+              process: r.Process || r.process || "",
+              batchSize: parseInt(r.BatchSize || r.batchSize || "0"),
+              processingTime: parseInt(r.ProcessingTime || r.processingTime || "0")
+            }));
+            await invoke("replace_part_infos", { connectionString, records: mapped });
+          } else if (activeTab === "processInfo") {
+            const mapped = rawData.map(r => ({
+              process: r.Process || r.process || "",
+              date: r.Date || r.date || "",
+              hoursAvailable: parseInt(r.HoursAvailable || r.hoursAvailable || "0"),
+              machineId: r.MachineID || r.MachineId || r.machineId || ""
+            }));
+            await invoke("replace_process_infos", { connectionString, records: mapped });
+          }
+
+          notifications.show({
+            title: "Import Successful",
+            message: `Replaced all records in ${activeTab} with data from ${file.name}`,
+            color: "green",
+          });
+          fetchData(activeTab);
+        } catch (err) {
+          console.error(err);
+          notifications.show({
+            title: "Import Failed",
+            message: typeof err === "string" ? err : "Failed to process CSV file",
+            color: "red",
+          });
+        } finally {
+          setIsSavingData(false);
+        }
+      }
+    });
+  };
+
+  const downloadTemplate = () => {
+    let headers = "";
+    let fileName = "";
+    
+    if (activeTab === "locatorMapping") {
+      headers = "WIPLocator,Process,DaysFromShipment";
+      fileName = "locator_mapping_template.csv";
+    } else if (activeTab === "partInfo") {
+      headers = "PartNumber,Process,BatchSize,ProcessingTime";
+      fileName = "part_information_template.csv";
+    } else if (activeTab === "processInfo") {
+      headers = "Process,Date,HoursAvailable,MachineID";
+      fileName = "process_information_template.csv";
+    }
+    
+    if (!headers) return;
+
+    const blob = new Blob([headers], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", fileName);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    notifications.show({
+      title: "Template Downloaded",
+      message: `Headed to your downloads: ${fileName}`,
+      color: "blue",
+    });
+  };
+
   const renderTable = () => {
+
+
     if (isLoadingData) {
       return (
         <Center h={200}>
@@ -525,6 +623,30 @@ export function DatabaseSettings() {
             
             <Group gap="xs">
               <Button 
+                variant="subtle" 
+                color="gray" 
+                size="xs" 
+                leftSection={<IconDownload size={14} />}
+                onClick={downloadTemplate}
+              >
+                Download Template
+              </Button>
+              <FileButton onChange={handleFileUpload} accept=".csv">
+                {(props) => (
+                  <Button 
+                    {...props} 
+                    variant="light" 
+                    color="gray" 
+                    size="xs" 
+                    leftSection={<IconUpload size={14} />}
+                    loading={isSavingData}
+                  >
+                    Replace with CSV
+                  </Button>
+                )}
+              </FileButton>
+
+              <Button 
                 variant="light" 
                 color="indigo" 
                 size="xs" 
@@ -533,6 +655,7 @@ export function DatabaseSettings() {
               >
                 Add Record
               </Button>
+
               <Button 
                 color="green" 
                 size="xs" 

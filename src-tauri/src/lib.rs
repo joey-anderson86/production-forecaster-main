@@ -297,6 +297,58 @@ async fn delete_process_infos(connection_string: String, identifiers: Vec<Proces
     Ok(())
 }
 
+#[tauri::command]
+async fn replace_locator_mappings(connection_string: String, records: Vec<LocatorMapping>) -> Result<(), String> {
+    let mut client = create_client(&connection_string).await?;
+    client.simple_query("BEGIN TRANSACTION").await.map_err(|e| e.to_string())?;
+    
+    // Clear and re-populate
+    client.execute("DELETE FROM dbo.LocatorMapping", &[]).await.map_err(|e| e.to_string())?;
+    for rec in records {
+        client.execute(
+            "INSERT INTO dbo.LocatorMapping (WIPLocator, Process, DaysFromShipment) VALUES (@p1, @p2, @p3)",
+            &[&rec.wip_locator, &rec.process, &rec.days_from_shipment],
+        ).await.map_err(|e| e.to_string())?;
+    }
+
+    client.simple_query("COMMIT TRANSACTION").await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn replace_part_infos(connection_string: String, records: Vec<PartInfo>) -> Result<(), String> {
+    let mut client = create_client(&connection_string).await?;
+    client.simple_query("BEGIN TRANSACTION").await.map_err(|e| e.to_string())?;
+    
+    client.execute("DELETE FROM dbo.PartInfo", &[]).await.map_err(|e| e.to_string())?;
+    for rec in records {
+        client.execute(
+            "INSERT INTO dbo.PartInfo (PartNumber, Process, BatchSize, ProcessingTime) VALUES (@p1, @p2, @p3, @p4)",
+            &[&rec.part_number, &rec.process, &rec.batch_size, &rec.processing_time],
+        ).await.map_err(|e| e.to_string())?;
+    }
+
+    client.simple_query("COMMIT TRANSACTION").await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn replace_process_infos(connection_string: String, records: Vec<ProcessInfo>) -> Result<(), String> {
+    let mut client = create_client(&connection_string).await?;
+    client.simple_query("BEGIN TRANSACTION").await.map_err(|e| e.to_string())?;
+    
+    client.execute("DELETE FROM dbo.ProcessInfo", &[]).await.map_err(|e| e.to_string())?;
+    for rec in records {
+        client.execute(
+            "INSERT INTO dbo.ProcessInfo (Process, Date, HoursAvailable, MachineID) VALUES (@p1, CAST(@p2 as DATE), @p3, @p4)",
+            &[&rec.process, &rec.date, &rec.hours_available, &rec.machine_id],
+        ).await.map_err(|e| e.to_string())?;
+    }
+
+    client.simple_query("COMMIT TRANSACTION").await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -315,7 +367,10 @@ pub fn run() {
         upsert_process_info,
         delete_locator_mappings,
         delete_part_infos,
-        delete_process_infos
+        delete_process_infos,
+        replace_locator_mappings,
+        replace_part_infos,
+        replace_process_infos
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {
@@ -330,6 +385,7 @@ pub fn run() {
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
 }
+
 
 
 
