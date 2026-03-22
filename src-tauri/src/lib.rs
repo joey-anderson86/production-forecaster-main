@@ -67,6 +67,16 @@ struct PipelineRow {
     qty: Option<i16>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct PlanRow {
+    date: Option<String>,
+    part_number: Option<String>,
+    part_name: Option<String>,
+    process: Option<String>,
+    qty: Option<i16>,
+}
+
 // State for managing the MSSQL connection status and settings
 pub struct DbState {
     pub connection_string: Mutex<Option<String>>,
@@ -244,6 +254,25 @@ async fn get_pipeline_data_preview(connection_string: String) -> Result<Vec<Pipe
 }
 
 #[tauri::command]
+async fn get_plan_data_preview(connection_string: String) -> Result<Vec<PlanRow>, String> {
+    let mut client = create_client(&connection_string).await?;
+    let stream = client.query("SELECT TOP 500 CONVERT(VARCHAR, Date, 23) as Date, PartNumber, PartName, Process, Qty FROM dbo.PlanData", &[]).await.map_err(|e| e.to_string())?;
+    let rows = stream.into_first_result().await.map_err(|e| e.to_string())?;
+    
+    let result = rows.into_iter().map(|row| {
+        PlanRow {
+            date: row.get::<&str, _>("Date").map(|s| s.trim().to_string()),
+            part_number: row.get::<&str, _>("PartNumber").map(|s| s.trim().to_string()),
+            part_name: row.get::<&str, _>("PartName").map(|s| s.trim().to_string()),
+            process: row.get::<&str, _>("Process").map(|s| s.trim().to_string()),
+            qty: get_i16_robust(&row, "Qty"),
+        }
+    }).collect();
+    
+    Ok(result)
+}
+
+#[tauri::command]
 async fn append_pipeline_data(connection_string: String, records: Vec<PipelineRow>) -> Result<(), String> {
     let mut client = create_client(&connection_string).await?;
     client.simple_query("BEGIN TRANSACTION").await.map_err(|e| e.to_string())?;
@@ -264,6 +293,32 @@ async fn append_pipeline_data(connection_string: String, records: Vec<PipelineRo
 async fn delete_pipeline_data_by_date(connection_string: String, date: String) -> Result<(), String> {
     let mut client = create_client(&connection_string).await?;
     client.execute("DELETE FROM dbo.PipelineData WHERE Date = CAST(@p1 as DATE)", &[&date])
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn append_plan_data(connection_string: String, records: Vec<PlanRow>) -> Result<(), String> {
+    let mut client = create_client(&connection_string).await?;
+    client.simple_query("BEGIN TRANSACTION").await.map_err(|e| e.to_string())?;
+    
+    for rec in records {
+        client.execute(
+            "INSERT INTO dbo.Plan (Date, PartNumber, PartName, Process, Qty) 
+             VALUES (CAST(@p1 as DATE), @p2, @p3, @p4, @p5)",
+            &[&rec.date, &rec.part_number, &rec.part_name, &rec.process, &rec.qty],
+        ).await.map_err(|e| e.to_string())?;
+    }
+
+    client.simple_query("COMMIT TRANSACTION").await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn delete_plan_data_by_date(connection_string: String, date: String) -> Result<(), String> {
+    let mut client = create_client(&connection_string).await?;
+    client.execute("DELETE FROM dbo.Plan WHERE Date = CAST(@p1 as DATE)", &[&date])
         .await
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -442,7 +497,10 @@ pub fn run() {
         replace_part_infos,
         replace_process_infos,
         append_pipeline_data,
-        delete_pipeline_data_by_date
+        delete_pipeline_data_by_date,
+        get_plan_data_preview,
+        append_plan_data,
+        delete_plan_data_by_date
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {
