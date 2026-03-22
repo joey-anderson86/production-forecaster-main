@@ -414,6 +414,21 @@ async fn parse_and_transpose_pipeline_csv(file_path: String) -> Result<Vec<Pipel
 }
 
 #[tauri::command]
+async fn sync_pipeline_locators(connection_string: String) -> Result<u64, String> {
+    let mut client = create_client(&connection_string).await?;
+    let res = client.execute(
+        "INSERT INTO dbo.LocatorMapping (WIPLocator)
+         SELECT DISTINCT UPPER(WIPLocator)
+         FROM dbo.PipelineData
+         WHERE WIPLocator IS NOT NULL 
+           AND UPPER(WIPLocator) NOT IN (SELECT WIPLocator FROM dbo.LocatorMapping WHERE WIPLocator IS NOT NULL)",
+        &[],
+    ).await.map_err(|e| e.to_string())?;
+    
+    Ok(res.total())
+}
+
+#[tauri::command]
 async fn upsert_locator_mapping(connection_string: String, records: Vec<LocatorMapping>) -> Result<(), String> {
     let mut client = create_client(&connection_string).await?;
     for mut rec in records {
@@ -596,7 +611,8 @@ pub fn run() {
         get_plan_data_preview,
         append_plan_data,
         delete_plan_data_by_date,
-        parse_and_transpose_pipeline_csv
+        parse_and_transpose_pipeline_csv,
+        sync_pipeline_locators
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

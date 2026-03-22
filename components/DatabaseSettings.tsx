@@ -81,6 +81,7 @@ export function DatabaseSettings() {
 
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [isSavingData, setIsSavingData] = useState(false);
+  const [isSyncingLocators, setIsSyncingLocators] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   // Detection of changes
@@ -259,6 +260,34 @@ export function DatabaseSettings() {
       });
     } finally {
       setIsSavingData(false);
+    }
+  };
+
+  const handleSyncPipelineLocators = async () => {
+    if (!connectionString) return;
+    
+    setIsSyncingLocators(true);
+    try {
+      const insertedCount = await invoke<number>("sync_pipeline_locators", { connectionString });
+      
+      notifications.show({
+        title: "Synchronization Complete",
+        message: `Successfully synced ${insertedCount} new locators from pipeline data.`,
+        color: "green",
+        icon: <IconRefresh size={18} />,
+      });
+      
+      // Refresh the table
+      fetchData("locatorMapping");
+    } catch (err) {
+      console.error(err);
+      notifications.show({
+        title: "Sync Error",
+        message: typeof err === "string" ? err : "Failed to synchronize locators",
+        color: "red",
+      });
+    } finally {
+      setIsSyncingLocators(false);
     }
   };
 
@@ -645,6 +674,19 @@ export function DatabaseSettings() {
                   </Button>
                 )}
               </FileButton>
+
+              {activeTab === "locatorMapping" && (
+                <Button 
+                  variant="light" 
+                  color="blue" 
+                  size="xs" 
+                  leftSection={<IconRefresh size={14} />}
+                  loading={isSyncingLocators}
+                  onClick={handleSyncPipelineLocators}
+                >
+                  Refresh to Pipeline
+                </Button>
+              )}
 
               <Button 
                 variant="light" 
