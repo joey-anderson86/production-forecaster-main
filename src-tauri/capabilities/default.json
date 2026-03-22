@@ -12,6 +12,7 @@
     "fs:allow-read-text-file",
     "dialog:default",
     "dialog:allow-save",
-    "dialog:allow-open"
+    "dialog:allow-open",
+    "store:default"
   ]
 }

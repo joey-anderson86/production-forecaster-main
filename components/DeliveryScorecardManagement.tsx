@@ -12,7 +12,7 @@ import { useScorecardStore, DayOfWeek, PartScorecard, BulkImportGroup } from '@/
 import { notifications } from '@mantine/notifications';
 import { Badge, Tooltip as MantineTooltip, Stack } from '@mantine/core';
 import Papa from 'papaparse';
-import { getWeekDates, formatISODate } from '@/lib/dateUtils';
+import { getWeekDates, formatISODate, getISODateForDay, getNumericDateForDay } from '@/lib/dateUtils';
 
 const DEFAULT_DEPARTMENTS = [
   { name: 'Plating', icon: <IconFlask size={16} /> },
@@ -85,10 +85,10 @@ export default function DeliveryScorecardManagement() {
   // CSV Export/Import
   const handleExportTemplate = () => {
     const csvData = [
-      ["Department", "WeekIdentifier", "PartNumber", "DayOfWeek", "Target", "Actual", "ReasonCode"]
+      ["Department", "WeekIdentifier", "PartNumber", "DayOfWeek", "Target", "Actual", "ReasonCode", "Date", "NumericDate"]
     ];
     // Add one dummy row as example
-    csvData.push(["Plating", "Week 41 (Oct 5 - Oct 11)", "EX-001", "Mon", "100", "0", ""]);
+    csvData.push(["Plating", "Week 41 (Oct 5 - Oct 11)", "EX-001", "Mon", "100", "0", "", "2026-10-05", "20261005"]);
     
     const csv = Papa.unparse(csvData);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -104,7 +104,7 @@ export default function DeliveryScorecardManagement() {
     if (!weekData) return;
 
     const csvData = [
-      ["Department", "WeekIdentifier", "PartNumber", "DayOfWeek", "Target", "Actual", "ReasonCode"]
+      ["Department", "WeekIdentifier", "PartNumber", "DayOfWeek", "Target", "Actual", "ReasonCode", "Date", "NumericDate"]
     ];
 
     weekData.parts.forEach(part => {
@@ -116,7 +116,9 @@ export default function DeliveryScorecardManagement() {
           record.dayOfWeek,
           record.target !== null ? record.target.toString() : "",
           record.actual !== null ? record.actual.toString() : "",
-          record.reasonCode || ""
+          record.reasonCode || "",
+          record.date || "",
+          record.numericDate?.toString() || ""
         ]);
       });
     });
@@ -241,7 +243,9 @@ export default function DeliveryScorecardManagement() {
              dayOfWeek: d as DayOfWeek,
              actual: null,
              target: null,
-             reasonCode: ''
+             reasonCode: '',
+             date: getISODateForDay(weekId, d as DayOfWeek),
+             numericDate: getNumericDateForDay(weekId, d as DayOfWeek)
            }))
          };
       }
@@ -294,7 +298,7 @@ export default function DeliveryScorecardManagement() {
 
   const handleGlobalExportCSV = () => {
     const csvData = [
-      ["Department", "WeekIdentifier", "PartNumber", "DayOfWeek", "Target", "Actual", "ReasonCode"]
+      ["Department", "WeekIdentifier", "PartNumber", "DayOfWeek", "Target", "Actual", "ReasonCode", "Date", "NumericDate"]
     ];
 
     Object.values(store.departments).forEach(dept => {
@@ -308,7 +312,9 @@ export default function DeliveryScorecardManagement() {
               record.dayOfWeek,
               record.target !== null ? record.target.toString() : "",
               record.actual !== null ? record.actual.toString() : "",
-              record.reasonCode || ""
+              record.reasonCode || "",
+              record.date || "",
+              record.numericDate?.toString() || ""
             ]);
           });
         });

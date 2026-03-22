@@ -18,6 +18,10 @@ struct CsvRow {
     actual: String,
     #[serde(rename = "ReasonCode")]
     reason_code: String,
+    #[serde(rename = "Date")]
+    date: String,
+    #[serde(rename = "NumericDate")]
+    numeric_date: String,
 }
 
 #[tauri::command]
@@ -30,6 +34,8 @@ async fn update_csv_entry(
     new_target: Option<i32>,
     new_actual: Option<i32>,
     new_reason: String,
+    new_date: String,
+    new_numeric_date: i32,
 ) -> Result<(), String> {
     let path = Path::new(&file_path);
     if !path.exists() {
@@ -57,6 +63,8 @@ async fn update_csv_entry(
             row.target = new_target.map(|v| v.to_string()).unwrap_or_default();
             row.actual = new_actual.map(|v| v.to_string()).unwrap_or_default();
             row.reason_code = new_reason.clone();
+            row.date = new_date.clone();
+            row.numeric_date = new_numeric_date.to_string();
             found = true;
         }
         rows.push(row);
@@ -86,12 +94,33 @@ async fn update_csv_entry(
     Ok(())
 }
 
+#[tauri::command]
+async fn test_mssql_connection(connection_string: String) -> Result<String, String> {
+    use tiberius::{Client, Config, SqlBrowser};
+    use tokio::net::TcpStream;
+    use tokio_util::compat::TokioAsyncWriteCompatExt;
+
+    let config = Config::from_ado_string(&connection_string).map_err(|e| format!("Invalid connection string: {}", e))?;
+    
+    let tcp = TcpStream::connect_named(&config).await.map_err(|e| format!("Failed to connect to TCP socket: {}", e))?;
+    tcp.set_nodelay(true).map_err(|e| format!("Failed to set TCP nodelay: {}", e))?;
+    
+    let mut client = Client::connect(config, tcp.compat_write()).await.map_err(|e| format!("Failed to authenticate with MSSQL server: {:?}", e))?;
+    
+    // Test the connection by doing a simple select
+    let _row: Option<tiberius::Row> = client.query("SELECT 1", &[]).await.map_err(|e| format!("Failed to execute query: {:?}", e))?
+        .into_row().await.map_err(|e| format!("Failed to read row: {:?}", e))?;
+    
+    Ok("Successfully connected to MSSQL!".to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
+    .plugin(tauri_plugin_store::Builder::new().build())
     .plugin(tauri_plugin_fs::init())
     .plugin(tauri_plugin_dialog::init())
-    .invoke_handler(tauri::generate_handler![update_csv_entry])
+    .invoke_handler(tauri::generate_handler![update_csv_entry, test_mssql_connection])
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(

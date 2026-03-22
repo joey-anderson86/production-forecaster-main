@@ -81,7 +81,9 @@ export function EditEntryModal({
           dayOfWeek: dayOfWeek,
           newTarget: targetVal,
           newActual: actualVal,
-          newReason: reasonCode
+          newReason: reasonCode,
+          newDate: initialData.date || "",
+          newNumericDate: initialData.numericDate || 0
         });
       }
 
