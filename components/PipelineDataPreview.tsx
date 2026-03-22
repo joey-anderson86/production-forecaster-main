@@ -4,8 +4,10 @@ import React, { useState, useEffect } from 'react';
 import { 
   Table, Card, Title, Text, Group, Button, 
   Loader, Center, Alert, Stack, ScrollArea,
-  Badge, FileButton, Select, Divider
+  Badge, FileButton, Select, Divider, Modal,
+  Skeleton
 } from '@mantine/core';
+import { open } from '@tauri-apps/plugin-dialog';
 import { 
   IconTable, IconRefresh, IconAlertCircle, 
   IconDatabase, IconDatabaseExport, IconUpload,
@@ -34,6 +36,11 @@ export function PipelineDataPreview() {
   const [selectedDeleteDate, setSelectedDeleteDate] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [connectionString, setConnectionString] = useState<string | null>(null);
+
+  // New states for Transpose & Preview
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+  const [transposedData, setTransposedData] = useState<PipelineRow[]>([]);
+  const [isConfirmingUpload, setIsConfirmingUpload] = useState(false);
 
   const fetchConnectionString = async () => {
     try {
@@ -89,49 +96,88 @@ export function PipelineDataPreview() {
     });
   };
 
-  const handleFileUpload = (file: File | null) => {
-    if (!file || !connectionString) return;
+  const handleTransposedFileUpload = async () => {
+    if (!connectionString) {
+      notifications.show({
+        title: "Configuration Missing",
+        message: "Please ensure your database connection string is set in Settings.",
+        color: "yellow"
+      });
+      return;
+    }
 
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: async (results) => {
-        setIsUploading(true);
-        try {
-          const rawData = results.data as any[];
-          const mapped: PipelineRow[] = rawData.map(r => ({
-            date: r.Date || r.date || "",
-            customer: r.Customer || r.customer || "",
-            customerCity: r.CustomerCity || r.customerCity || "",
-            partNumber: r.PartNumber || r.partNumber || "",
-            partName: r.PartName || r.partName || "",
-            wipLocator: r.WIPLocator || r.wipLocator || "",
-            qty: parseInt(r.Qty || r.qty || "0")
-          }));
+    try {
+      // Use the Tauri open dialog to get the absolute file path
+      const filePath = await open({
+        multiple: false,
+        filters: [{
+          name: 'CSV Files',
+          extensions: ['csv']
+        }]
+      });
 
-          await invoke("append_pipeline_data", { 
-            connectionString, 
-            records: mapped 
-          });
+      if (!filePath) return;
 
-          notifications.show({
-            title: "Data Appended",
-            message: `Successfully added ${mapped.length} new records to live pipeline data.`,
-            color: "green",
-          });
-          fetchData();
-        } catch (err) {
-          console.error(err);
-          notifications.show({
-            title: "Upload Failed",
-            message: typeof err === "string" ? err : "An error occurred while uploading. Ensure headers match the schema.",
-            color: "red",
-          });
-        } finally {
-          setIsUploading(false);
-        }
+      setIsUploading(true);
+      
+      const result = await invoke<PipelineRow[]>("parse_and_transpose_pipeline_csv", { 
+        filePath 
+      });
+
+      if (result.length === 0) {
+        notifications.show({
+          title: "No Data Found",
+          message: "The CSV appears to be empty or in an unrecognized format.",
+          color: "orange"
+        });
+        return;
       }
-    });
+
+      setTransposedData(result);
+      setIsPreviewModalOpen(true);
+
+    } catch (err) {
+      console.error(err);
+      notifications.show({
+        title: "Processing Failed",
+        message: typeof err === "string" ? err : "An error occurred while parsing the CSV. Check that required headers ARE: Date, Customer, Customer City, Part Number.",
+        color: "red",
+        autoClose: 10000
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleConfirmUpload = async () => {
+    if (!connectionString || transposedData.length === 0) return;
+
+    setIsConfirmingUpload(true);
+    try {
+      await invoke("append_pipeline_data", { 
+        connectionString, 
+        records: transposedData 
+      });
+
+      notifications.show({
+        title: "Data Uploaded",
+        message: `Successfully uploaded ${transposedData.length} records to the database.`,
+        color: "green",
+      });
+
+      setIsPreviewModalOpen(false);
+      setTransposedData([]);
+      fetchData();
+    } catch (err) {
+      console.error(err);
+      notifications.show({
+        title: "Database Error",
+        message: typeof err === "string" ? err : "Failed to insert records into the database.",
+        color: "red"
+      });
+    } finally {
+      setIsConfirmingUpload(false);
+    }
   };
 
   const handleDeleteDate = async () => {
@@ -216,20 +262,16 @@ export function PipelineDataPreview() {
               Template
             </Button>
 
-            <FileButton onChange={handleFileUpload} accept=".csv">
-              {(props) => (
-                <Button 
-                  {...props} 
-                  variant="light" 
-                  color="gray" 
-                  size="xs" 
-                  leftSection={<IconUpload size={14} />}
-                  loading={isUploading}
-                >
-                  Append New Day's Data
-                </Button>
-              )}
-            </FileButton>
+            <Button 
+              variant="light" 
+              color="indigo" 
+              size="xs" 
+              leftSection={<IconUpload size={14} />}
+              loading={isUploading}
+              onClick={handleTransposedFileUpload}
+            >
+              Advanced Pipeline Upload
+            </Button>
 
             <Button 
               variant="filled" 
@@ -348,6 +390,71 @@ export function PipelineDataPreview() {
           </ScrollArea>
         )}
       </Stack>
+
+      <Modal
+        opened={isPreviewModalOpen}
+        onClose={() => setIsPreviewModalOpen(false)}
+        title={<Title order={4}>Review Transposed Pipeline Data</Title>}
+        size="90%"
+        radius="md"
+        styles={{ title: { width: '100%' } }}
+      >
+        <Stack gap="md">
+          <Text size="sm">
+            The CSV has been transposed from a wide format to the long database format. 
+            Please review the first 500 rows below before confirming the upload.
+          </Text>
+
+          <ScrollArea h={500} offsetScrollbars>
+            <Table stickyHeader striped highlightOnHover withTableBorder>
+              <Table.Thead className="bg-slate-50">
+                <Table.Tr>
+                  <Table.Th>Date</Table.Th>
+                  <Table.Th>Customer</Table.Th>
+                  <Table.Th>City</Table.Th>
+                  <Table.Th>Part Number</Table.Th>
+                  <Table.Th>Part Name</Table.Th>
+                  <Table.Th>WIP Locator</Table.Th>
+                  <Table.Th ta="right">Qty</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {transposedData.slice(0, 500).map((row, idx) => (
+                  <Table.Tr key={idx}>
+                    <Table.Td>{row.date}</Table.Td>
+                    <Table.Td>{row.customer}</Table.Td>
+                    <Table.Td>{row.customerCity}</Table.Td>
+                    <Table.Td><Badge size="xs" variant="light">{row.partNumber}</Badge></Table.Td>
+                    <Table.Td><Text size="xs" truncate maw={150} title={row.partName}>{row.partName}</Text></Table.Td>
+                    <Table.Td fw={700} color="indigo">{row.wipLocator}</Table.Td>
+                    <Table.Td ta="right">{row.qty?.toLocaleString()}</Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </ScrollArea>
+          
+          {transposedData.length > 500 && (
+            <Text size="xs" c="dimmed" ta="center">
+              Only showing first 500 of {transposedData.length} total rows.
+            </Text>
+          )}
+
+          <Group justify="flex-end" mt="md">
+            <Button variant="default" onClick={() => setIsPreviewModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              color="green" 
+              leftSection={<IconDatabase size={16} />}
+              loading={isConfirmingUpload}
+              onClick={handleConfirmUpload}
+            >
+              Confirm & Upload {transposedData.length} Rows
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Card>
   );
 }

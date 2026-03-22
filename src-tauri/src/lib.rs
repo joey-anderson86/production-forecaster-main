@@ -277,7 +277,10 @@ async fn append_pipeline_data(connection_string: String, records: Vec<PipelineRo
     let mut client = create_client(&connection_string).await?;
     client.simple_query("BEGIN TRANSACTION").await.map_err(|e| e.to_string())?;
     
-    for rec in records {
+    for mut rec in records {
+        if let Some(ref mut locator) = rec.wip_locator {
+            *locator = locator.to_uppercase();
+        }
         client.execute(
             "INSERT INTO dbo.PipelineData (Date, Customer, CustomerCity, PartNumber, PartName, WIPLocator, Qty) 
              VALUES (CAST(@p1 as DATE), @p2, @p3, @p4, @p5, @p6, @p7)",
@@ -325,9 +328,98 @@ async fn delete_plan_data_by_date(connection_string: String, date: String) -> Re
 }
 
 #[tauri::command]
+async fn parse_and_transpose_pipeline_csv(file_path: String) -> Result<Vec<PipelineRow>, String> {
+    let path = Path::new(&file_path);
+    if !path.exists() {
+        return Err(format!("File not found: {}", file_path));
+    }
+
+    let mut rdr = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .from_path(path)
+        .map_err(|e| e.to_string())?;
+
+    let headers = rdr.headers().map_err(|e| e.to_string())?.clone();
+    
+    // Identify fixed columns with case-insensitive matching
+    let fixed_match = |h: &str| -> Option<&'static str> {
+        let h_lower = h.to_lowercase();
+        if h_lower == "date" { Some("Date") }
+        else if h_lower == "customer" { Some("Customer") }
+        else if h_lower == "customer city" || h_lower == "customercity" { Some("Customer City") }
+        else if h_lower == "part number" || h_lower == "partnumber" { Some("Part Number") }
+        else if h_lower == "part name" || h_lower == "partname" { Some("Part Name") }
+        else { None }
+    };
+
+    // Find WIP Locators: anything that doesn't match a fixed column
+    let mut wip_locator_cols = Vec::new();
+    for (i, header) in headers.iter().enumerate() {
+        if fixed_match(header).is_none() {
+            wip_locator_cols.push((i, header.to_string()));
+        }
+    }
+
+    // Map positional indices of fixed columns
+    let find_idx = |target: &str| headers.iter().position(|h| fixed_match(h) == Some(target));
+    let date_idx = find_idx("Date");
+    let customer_idx = find_idx("Customer");
+    let city_idx = find_idx("Customer City");
+    let part_idx = find_idx("Part Number");
+    let name_idx = find_idx("Part Name");
+
+    let mut transposed = Vec::new();
+
+    for result in rdr.records() {
+        let record = result.map_err(|e| e.to_string())?;
+        
+        // Extract fixed values
+        let date_val = date_idx.and_then(|i| record.get(i)).map(|s| s.to_string());
+        let customer_val = customer_idx.and_then(|i| record.get(i)).map(|s| s.to_string());
+        let city_val = city_idx.and_then(|i| record.get(i)).map(|s| s.to_string());
+        let part_val = part_idx.and_then(|i| record.get(i)).map(|s| s.to_string());
+        
+        // PartName logic: use CSV value if exists, else first 7 of PartNumber
+        let part_name_val = if let Some(idx) = name_idx {
+            record.get(idx).map(|s| s.to_string()).unwrap_or_default()
+        } else {
+            part_val.as_ref()
+                .map(|p| if p.len() >= 7 { p[..7].to_string() } else { p.clone() })
+                .unwrap_or_default()
+        };
+
+        // For each WIP Locator column, generate a new row if Qty > 0
+        for (pos, locator_name) in &wip_locator_cols {
+            if let Some(qty_str) = record.get(*pos) {
+                if !qty_str.is_empty() {
+                    // Try to parse Qty, handle decimals if any by parsing to f64 then casting
+                    let qty = qty_str.trim().parse::<f64>().unwrap_or(0.0) as i16;
+                    if qty > 0 {
+                        transposed.push(PipelineRow {
+                            date: date_val.clone(),
+                            customer: customer_val.clone(),
+                            customer_city: city_val.clone(),
+                            part_number: part_val.clone(),
+                            part_name: Some(part_name_val.clone()),
+                            wip_locator: Some(locator_name.to_uppercase()),
+                            qty: Some(qty),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(transposed)
+}
+
+#[tauri::command]
 async fn upsert_locator_mapping(connection_string: String, records: Vec<LocatorMapping>) -> Result<(), String> {
     let mut client = create_client(&connection_string).await?;
-    for rec in records {
+    for mut rec in records {
+        if let Some(ref mut locator) = rec.wip_locator {
+            *locator = locator.to_uppercase();
+        }
         client.execute(
             "MERGE dbo.LocatorMapping AS target
              USING (SELECT @p1 as WIPLocator, @p2 as Process, @p3 as DaysFromShipment) AS source
@@ -385,7 +477,7 @@ async fn upsert_process_info(connection_string: String, records: Vec<ProcessInfo
 async fn delete_locator_mappings(connection_string: String, wip_locators: Vec<String>) -> Result<(), String> {
     let mut client = create_client(&connection_string).await?;
     for id in wip_locators {
-        client.execute("DELETE FROM dbo.LocatorMapping WHERE WIPLocator = @p1", &[&id]).await.map_err(|e| e.to_string())?;
+        client.execute("DELETE FROM dbo.LocatorMapping WHERE WIPLocator = @p1", &[&id.to_uppercase()]).await.map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -428,7 +520,10 @@ async fn replace_locator_mappings(connection_string: String, records: Vec<Locato
     
     // Clear and re-populate
     client.execute("DELETE FROM dbo.LocatorMapping", &[]).await.map_err(|e| e.to_string())?;
-    for rec in records {
+    for mut rec in records {
+        if let Some(ref mut locator) = rec.wip_locator {
+            *locator = locator.to_uppercase();
+        }
         client.execute(
             "INSERT INTO dbo.LocatorMapping (WIPLocator, Process, DaysFromShipment) VALUES (@p1, @p2, @p3)",
             &[&rec.wip_locator, &rec.process, &rec.days_from_shipment],
@@ -500,7 +595,8 @@ pub fn run() {
         delete_pipeline_data_by_date,
         get_plan_data_preview,
         append_plan_data,
-        delete_plan_data_by_date
+        delete_plan_data_by_date,
+        parse_and_transpose_pipeline_csv
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {
