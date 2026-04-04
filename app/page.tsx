@@ -564,7 +564,7 @@ export default function ProductionForecaster() {
           <Tabs value={mainTab} onChange={(val) => setMainTab(val as string)} variant="pills" color="indigo" radius="md">
             <Tabs.List>
               <Tabs.Tab value="forecaster">Production Forecaster</Tabs.Tab>
-              <Tabs.Tab value="scorecard-mgmt">Delivery Management</Tabs.Tab>
+              <Tabs.Tab value="scorecard-mgmt">Production Planning</Tabs.Tab>
               <Tabs.Tab value="scorecard-dash">Delivery Dashboard</Tabs.Tab>
               <Tabs.Tab value="settings">Settings</Tabs.Tab>
             </Tabs.List>
