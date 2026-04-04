@@ -7,13 +7,14 @@ import {
 } from '@mantine/core';
 import { 
   IconFlask, IconBox, IconShip, IconClipboardCheck, IconPlus, 
-  IconChevronDown, IconChevronRight 
+  IconChevronDown, IconChevronRight, IconSearch, IconArrowsSort, IconSortAscending, IconSortDescending 
 } from '@tabler/icons-react';
 import { EditEntryModal } from './EditEntryModal';
 import { ShiftProductionEntryModal } from './ShiftProductionEntryModal';
 import { DeliveryLossPareto } from './DeliveryLossPareto';
 import { getTodayNumeric, getWeekDates } from '@/lib/dateUtils';
 import { useProcessStore } from '@/lib/processStore';
+import { TextInput } from '@mantine/core';
 
 const PROCESS_ICONS: Record<string, React.ReactNode> = {
   'Plating': <IconFlask size={20} />,
@@ -42,6 +43,21 @@ export default function DeliveryScorecardDisplay() {
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const [selectedWeekId, setSelectedWeekId] = useState<string | null>(null);
   const [expandedParts, setExpandedParts] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortConfig, setSortConfig] = useState<{ key: keyof GroupedPartScorecard; direction: 'asc' | 'desc' } | null>({ key: 'partNumber', direction: 'asc' });
+
+  const requestSort = (key: keyof GroupedPartScorecard) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const getSortIcon = (key: keyof GroupedPartScorecard) => {
+    if (!sortConfig || sortConfig.key !== key) return <IconArrowsSort size={14} style={{ opacity: 0.3 }} />;
+    return sortConfig.direction === 'asc' ? <IconSortAscending size={14} /> : <IconSortDescending size={14} />;
+  };
 
   const toggleExpand = (partNumber: string) => {
     setExpandedParts(prev => {
@@ -162,8 +178,35 @@ export default function DeliveryScorecardDisplay() {
         group.rollingGap += childRollingGap;
      });
 
-     return Object.values(groups);
-  }, [activeWeek]);
+     let results = Object.values(groups);
+
+     // Apply Filtering
+     if (searchQuery) {
+        results = results.filter(p => p.partNumber.toLowerCase().includes(searchQuery.toLowerCase()));
+     }
+
+     // Apply Sorting
+     if (sortConfig) {
+        results.sort((a, b) => {
+           const aValue = a[sortConfig.key];
+           const bValue = b[sortConfig.key];
+           
+           if (typeof aValue === 'string' && typeof bValue === 'string') {
+              return sortConfig.direction === 'asc' 
+                 ? aValue.localeCompare(bValue) 
+                 : bValue.localeCompare(aValue);
+           }
+           
+           if (typeof aValue === 'number' && typeof bValue === 'number') {
+              return sortConfig.direction === 'asc' ? (aValue as number) - (bValue as number) : (bValue as number) - (aValue as number);
+           }
+           
+           return 0;
+        });
+     }
+
+     return results;
+  }, [activeWeek, searchQuery, sortConfig]);
 
   return (
     <Box className="w-full">
@@ -206,24 +249,44 @@ export default function DeliveryScorecardDisplay() {
            </Group>
            <Text c="dimmed" size="xs">Daily actual vs target by part number, and root<br/>cause accumulation.</Text>
         </Box>
+      </Group>
+
+     <Group justify="space-between" align="center" mb="md" gap="md">
+        <TextInput
+          placeholder="Search Part Number..."
+          leftSection={<IconSearch size={16} />}
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.currentTarget.value)}
+          size="sm"
+          className="flex-1 max-w-sm"
+        />
 
         <Select
-          label={<Text size="xs" fw={700} c="dimmed">SELECT WORK WEEK TO VIEW</Text>}
+          label={<Text size="xs" fw={700} c="dimmed" mb={2}>SELECT WORK WEEK TO VIEW</Text>}
           value={selectedWeekId}
           onChange={setSelectedWeekId}
           data={weekOptions}
           placeholder="Select a week"
-          size="md"
-          className="flex-1 max-w-md"
+          size="sm"
+          className="w-[200px]"
         />
-      </Group>
+     </Group>
 
       <Card withBorder shadow="sm" radius="md" mt="sm">
         {activeWeek ? (
           <Table verticalSpacing="sm" striped highlightOnHover className="w-full">
             <Table.Thead>
               <Table.Tr>
-                <Table.Th><Text size="xs" fw={700} c="dimmed">PART NUMBER</Text></Table.Th>
+                <Table.Th 
+                  onClick={() => requestSort('partNumber')} 
+                  style={{ cursor: 'pointer' }}
+                  className="hover:bg-gray-50"
+                >
+                  <Group gap={4} wrap="nowrap">
+                    <Text size="xs" fw={700} c="dimmed">PART NUMBER</Text>
+                    {getSortIcon('partNumber')}
+                  </Group>
+                </Table.Th>
                 <Table.Th ta="center"><Text size="xs" fw={700} c="dimmed">SHIFT</Text></Table.Th>
                 {DAYS_OF_WEEK.map((day, idx) => {
                   const dayDate = activeWeek ? getWeekDates(activeWeek.weekId)[idx] : null;
@@ -237,10 +300,50 @@ export default function DeliveryScorecardDisplay() {
                     </Table.Th>
                   );
                 })}
-                <Table.Th ta="center"><Text size="xs" fw={700} c="dimmed">TOTAL ACTUAL</Text></Table.Th>
-                <Table.Th ta="center"><Text size="xs" fw={700} c="dimmed">TOTAL TARGET</Text></Table.Th>
-                <Table.Th ta="center"><Text size="xs" fw={700} c="dimmed">GAP</Text></Table.Th>
-                <Table.Th ta="center"><Text size="xs" fw={700} c="dimmed">ROLLING GAP</Text></Table.Th>
+                <Table.Th 
+                  ta="center" 
+                  onClick={() => requestSort('totalActual')} 
+                  style={{ cursor: 'pointer' }}
+                  className="hover:bg-gray-50"
+                >
+                  <Group gap={4} justify="center" wrap="nowrap">
+                    <Text size="xs" fw={700} c="dimmed">ACTUAL</Text>
+                    {getSortIcon('totalActual')}
+                  </Group>
+                </Table.Th>
+                <Table.Th 
+                  ta="center" 
+                  onClick={() => requestSort('totalTarget')} 
+                  style={{ cursor: 'pointer' }}
+                  className="hover:bg-gray-50"
+                >
+                  <Group gap={4} justify="center" wrap="nowrap">
+                    <Text size="xs" fw={700} c="dimmed">TARGET</Text>
+                    {getSortIcon('totalTarget')}
+                  </Group>
+                </Table.Th>
+                <Table.Th 
+                  ta="center" 
+                  onClick={() => requestSort('gap')} 
+                  style={{ cursor: 'pointer' }}
+                  className="hover:bg-gray-50"
+                >
+                  <Group gap={4} justify="center" wrap="nowrap">
+                    <Text size="xs" fw={700} c="dimmed">GAP</Text>
+                    {getSortIcon('gap')}
+                  </Group>
+                </Table.Th>
+                <Table.Th 
+                  ta="center" 
+                  onClick={() => requestSort('rollingGap')} 
+                  style={{ cursor: 'pointer' }}
+                  className="hover:bg-gray-50"
+                >
+                  <Group gap={4} justify="center" wrap="nowrap">
+                    <Text size="xs" fw={700} c="dimmed">ROLLING GAP</Text>
+                    {getSortIcon('rollingGap')}
+                  </Group>
+                </Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>

@@ -9,7 +9,7 @@ import {
   IconTrash, IconAlertCircle, IconCalculator, 
   IconArrowUp, IconArrowDown, IconArrowLeft, IconArrowRight 
 } from '@tabler/icons-react';
-import { DayOfWeek, DAYS_OF_WEEK } from '@/lib/dateUtils';
+import { DayOfWeek, DAYS_OF_WEEK, getWeekDates } from '@/lib/dateUtils';
 import { PartScorecard, DailyScorecardRecord } from '@/lib/scorecardStore';
 
 interface WeeklyPlanTableProps {
@@ -152,6 +152,15 @@ export default function WeeklyPlanTable({
   isLoadingParts
 }: WeeklyPlanTableProps) {
   
+  // Calculate dates for the header
+  const weekDates = useMemo(() => {
+    try {
+      return getWeekDates(weekId);
+    } catch (e) {
+      return [];
+    }
+  }, [weekId]);
+
   // Ref-based management for arrow key navigation
   const tableRef = useRef<HTMLTableElement>(null);
 
@@ -202,11 +211,17 @@ export default function WeeklyPlanTable({
           <Table.Tr>
             <Table.Th key="part"><Text size="xs" fw={700} c="dimmed">PART NUMBER</Text></Table.Th>
             <Table.Th key="shift" ta="center"><Text size="xs" fw={700} c="dimmed">SHIFT</Text></Table.Th>
-            {DAYS_OF_WEEK.map(day => (
-              <Table.Th key={day} ta="center" style={{ width: 90 }}>
-                <Text size="xs" fw={700} c="dimmed">{day.toUpperCase()}</Text>
-              </Table.Th>
-            ))}
+            {DAYS_OF_WEEK.map((day, idx) => {
+              const dateStr = weekDates[idx] ? weekDates[idx].toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }) : '';
+              return (
+                <Table.Th key={day} ta="center" style={{ width: 90 }}>
+                  <Stack gap={0} align="center">
+                    <Text size="xs" fw={700} c="dimmed">{day.toUpperCase()}</Text>
+                    {dateStr && <Text size="10px" c="indigo.4" fw={700}>{dateStr}</Text>}
+                  </Stack>
+                </Table.Th>
+              );
+            })}
             <Table.Th key="total" ta="center" bg="gray.1" style={{ width: 100 }}>
               <Group gap={4} justify="center">
                 <IconCalculator size={14} />
