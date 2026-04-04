@@ -23,9 +23,11 @@ interface PlanRow {
   partName?: string;
   process?: string;
   qty?: number;
+  actual?: number | null;
   shift?: string;
   weekIdentifier?: string;
   dayOfWeek?: string;
+  reasonCode?: string | null;
 }
 
 export function PlanDataPreview() {
@@ -109,9 +111,11 @@ export function PlanDataPreview() {
               partName: "",
               process: r.Process || r.process || "",
               qty: parseInt(r.Qty || r.qty || "0"),
+              actual: null,
               shift: r.Shift || r.shift || "",
               weekIdentifier: isNaN(dateObj.getTime()) ? "" : getWeekIdentifier(dateObj),
-              dayOfWeek: isNaN(dateObj.getTime()) ? "" : getDayOfWeekLabel(dateObj)
+              dayOfWeek: isNaN(dateObj.getTime()) ? "" : getDayOfWeekLabel(dateObj),
+              reasonCode: ""
             };
           });
 
