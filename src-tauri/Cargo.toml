@@ -30,3 +30,4 @@ tokio = { version = "1.50.0", features = ["net", "rt", "macros"] }
 tiberius = { version = "0.12.3", features = ["sql-browser-tokio", "native-tls", "winauth"] }
 tokio-util = { version = "0.7.18", features = ["compat"] }
 tauri-plugin-store = "2"
+

@@ -15,16 +15,18 @@ import {
   Popover, MultiSelect, Badge
 } from '@mantine/core';
 import { ColorSchemeToggle } from '@/components/ColorSchemeToggle';
-import { MultiCsvUploader } from '@/components/MultiCsvUploader';
 import DeliveryScorecardManagement from '@/components/DeliveryScorecardManagement';
 import DeliveryScorecardDisplay from '@/components/DeliveryScorecardDisplay';
-import SyncManager from '@/components/SyncManager';
 import { DatabaseSettings } from '@/components/DatabaseSettings';
 import { PipelineDataPreview } from '@/components/PipelineDataPreview';
 import { PlanDataPreview } from '@/components/PlanDataPreview';
 import { useFullscreen } from '@mantine/hooks';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { invoke } from '@tauri-apps/api/core';
+import { load } from '@tauri-apps/plugin-store';
+import { notifications } from '@mantine/notifications';
+import { getCurrentWeekId } from '@/lib/dateUtils';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -34,9 +36,6 @@ type PipelineData = Record<string, any>[];
 type DailyRateData = Record<string, any>[];
 
 export default function ProductionForecaster() {
-  const [pipelineFile, setPipelineFile] = useState<File | null>(null);
-  const [dailyRateFile, setDailyRateFile] = useState<File | null>(null);
-
   const [pipelineData, setPipelineData] = useState<PipelineData>([]);
   const [dailyRateData, setDailyRateData] = useState<DailyRateData>([]);
 
@@ -46,7 +45,7 @@ export default function ProductionForecaster() {
   const [isConfigOpen, setIsConfigOpen] = useState(true);
   const [forecastGenerated, setForecastGenerated] = useState(false);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
-  const [isUploaderModalOpen, setIsUploaderModalOpen] = useState(false);
+  const [isLoadingDb, setIsLoadingDb] = useState(false);
 
   // Toolbar States
   const [searchQuery, setSearchQuery] = useState('');
@@ -94,49 +93,124 @@ export default function ProductionForecaster() {
     });
   };
 
-  const handleFileUpload = (file: File, type: 'pipeline' | 'dailyRate') => {
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      dynamicTyping: true,
-      complete: (results) => {
-        if (type === 'pipeline') {
-          setPipelineFile(file);
-          const data = results.data as PipelineData;
-          setPipelineData(data);
-          if (data.length > 0) {
-            const keys = Object.keys(data[0] as Record<string, any>);
-            const partNumberKey = getPartNumberKey(keys);
-            const dateKey = getDateKey(keys);
-
-            if (dateKey) {
-              const uniqueDates = Array.from(new Set(data.map(row => String(row[dateKey])))).sort();
-              setDates(uniqueDates);
-              setSelectedDate(uniqueDates[0]);
-            } else {
-              setDates([]);
-              setSelectedDate(null);
-            }
-
-            const locatorKeys = keys.filter(k => k !== partNumberKey && k !== dateKey);
-            setLocators(locatorKeys);
-
-            const initialMapping: Record<string, number> = {};
-            locatorKeys.forEach(loc => initialMapping[loc] = 0);
-            setLocatorMapping(initialMapping);
-          }
-        } else {
-          setDailyRateFile(file);
-          setDailyRateData(results.data as DailyRateData);
-        }
-        setForecastGenerated(false);
-      }
-    });
-  };
-
   const handleMappingChange = (locator: string, value: number) => {
     setLocatorMapping(prev => ({ ...prev, [locator]: value }));
     setForecastGenerated(false);
+  };
+
+  const fetchFromDatabase = async () => {
+    setIsLoadingDb(true);
+    try {
+      const store = await load("store.json", { autoSave: false, defaults: {} });
+      const connectionString = await store.get<string>("db_connection_string");
+      
+      if (!connectionString) {
+        notifications.show({
+          title: "Configuration Missing",
+          message: "Please set up your database connection string in Settings.",
+          color: "red"
+        });
+        return;
+      }
+
+      // 1. Fetch Pipeline Data
+      const dbPipeline = await invoke<any[]>("get_pipeline_data_preview", { connectionString });
+      
+      // 2. Fetch Daily Rates
+      const dbRates = await invoke<any[]>("get_daily_rate_preview", { connectionString });
+      
+      // Filter for current week/year
+      const currentWeekId = getCurrentWeekId(); // "2026-w13"
+      const [currYear, currWeekStr] = currentWeekId.split("-w");
+      const targetYear = parseInt(currYear);
+      const targetWeek = parseInt(currWeekStr);
+
+      const mappedRates = dbRates
+        .filter(r => r.year === targetYear && r.week === targetWeek)
+        .map(r => ({
+          "Part Number": r.partNumber,
+          "Daily Rate": r.qty
+        }));
+      
+      // If none found for current week, maybe just take all and let it unique-ify?
+      // Actually, many users might want to see what's in there.
+      // But the forecaster needs one rate. 
+      // Let's provide a fallback: if current week missing, find most recent available for each part
+      const ratesToUse = mappedRates.length > 0 ? mappedRates : 
+        Array.from(new Set(dbRates.map(r => r.partNumber))).map(part => {
+          const partRows = dbRates.filter(r => r.partNumber === part);
+          // Sort by year desc, week desc
+          partRows.sort((a,b) => b.year !== a.year ? b.year - a.year : b.week - a.week);
+          return {
+            "Part Number": part,
+            "Daily Rate": partRows[0].qty
+          };
+        });
+
+      // 3. Fetch Locator Mapping
+      const dbMappingRows = await invoke<any[]>("get_locator_mapping_preview", { connectionString });
+
+      // Transform data for the forecaster
+      if (dbPipeline.length > 0) {
+        // Find unique locators
+        const uniqueLocators = Array.from(new Set(dbPipeline.map(r => r.wipLocator).filter(Boolean))) as string[];
+        setLocators(uniqueLocators);
+
+        // Convert long format to wide format for the existing processor
+        // Map partNumber + customer + city + date to a wide row
+        const wideMap = new Map<string, any>();
+        dbPipeline.forEach(row => {
+          const key = `${row.partNumber}|${row.customer}|${row.customerCity}|${row.date}`;
+          if (!wideMap.has(key)) {
+            wideMap.set(key, {
+              PartNumber: row.partNumber,
+              Customer: row.customer,
+              "Customer City": row.customerCity,
+              Date: row.date,
+              ...Object.fromEntries(uniqueLocators.map(l => [l, 0]))
+            });
+          }
+          const wideRow = wideMap.get(key);
+          if (row.wipLocator) {
+            wideRow[row.wipLocator] = (wideRow[row.wipLocator] || 0) + (row.qty || 0);
+          }
+        });
+        
+        const wideData = Array.from(wideMap.values());
+        setPipelineData(wideData);
+        
+        const uniqueDates = Array.from(new Set(dbPipeline.map(row => String(row.date)))).sort();
+        setDates(uniqueDates);
+        if (uniqueDates.length > 0 && !selectedDate) {
+          setSelectedDate(uniqueDates[0]);
+        }
+      }
+
+      setDailyRateData(ratesToUse);
+
+      // Locator Mapping
+      const mapping: Record<string, number> = {};
+      dbMappingRows.forEach(r => {
+        if (r.wipLocator) mapping[r.wipLocator] = r.daysFromShipment || 0;
+      });
+      setLocatorMapping(mapping);
+
+      setForecastGenerated(true);
+      notifications.show({
+        title: "Data Loaded",
+        message: `Successfully retrieved ${dbPipeline.length} records from MSSQL.`,
+        color: "green"
+      });
+    } catch (err) {
+      console.error(err);
+      notifications.show({
+        title: "Database Error",
+        message: typeof err === "string" ? err : "Failed to fetch data from the database.",
+        color: "red"
+      });
+    } finally {
+      setIsLoadingDb(false);
+    }
   };
 
   const handleExportMapping = async () => {
@@ -474,7 +548,6 @@ export default function ProductionForecaster() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans p-4 md:p-8 transition-colors duration-300">
-      <SyncManager />
       <div className="max-w-7xl mx-auto space-y-6">
         <header className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800">
           <div>
@@ -515,101 +588,45 @@ export default function ProductionForecaster() {
 
               {isConfigOpen && (
                 <div className="p-4 md:p-6 border-t border-slate-100 dark:border-slate-800 space-y-8">
-                  <div className="grid md:grid-cols-2 gap-6 relative">
-                    <div className="flex flex-col gap-2">
-                      <FileDropzone
-                        label="Upload Pipeline CSV"
-                        accept=".csv"
-                        onDrop={(f) => handleFileUpload(f, 'pipeline')}
-                        file={pipelineFile}
-                      />
-                      <div className="flex justify-center relative z-10 hover:z-20">
-                        <Button
-                          variant="light"
-                          size="xs"
-                          radius="xl"
-                          onClick={() => setIsUploaderModalOpen(true)}
-                          className="shadow-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700"
-                          leftSection={<LayoutList size={14} />}
+                  <div className="max-w-2xl mx-auto w-full space-y-4">
+                    {/* Database Option */}
+                    <div className="space-y-4">
+                      <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                        <LayoutList size={16} className="text-indigo-600" />
+                        Database Data Source (MSSQL)
+                      </h3>
+                      <div className="p-6 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl border border-indigo-100 dark:border-indigo-800/50 flex flex-col justify-between h-[180px]">
+                        <p className="text-sm text-slate-600 dark:text-slate-400">
+                          Pull the latest Pipeline, Daily Rate, and Mapping data directly from the configured SQL server.
+                        </p>
+                        <Button 
+                          fullWidth 
+                          size="md"
+                          variant="filled" 
+                          color="indigo" 
+                          onClick={fetchFromDatabase}
+                          loading={isLoadingDb}
+                          leftSection={<BarChart3 size={18} />}
                         >
-                          Merge Multiple Pipeline Files
+                          Generate from Database
                         </Button>
                       </div>
                     </div>
-                    <FileDropzone
-                      label="Upload Daily Rate CSV"
-                      accept=".csv"
-                      onDrop={(f) => handleFileUpload(f, 'dailyRate')}
-                      file={dailyRateFile}
-                    />
                   </div>
 
-                  {locators.length > 0 && (
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-md font-semibold text-slate-800 dark:text-slate-200">Locator Mapping</h3>
-                          <Tooltip
-                            label="Assign each WIP locator to &quot;X days from planned shipment&quot;. 0 = Today, 1 = Tomorrow, etc."
-                            multiline
-                            w={250}
-                            withArrow
-                          >
-                            <Info className="w-4 h-4 text-slate-400 cursor-help" />
-                          </Tooltip>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="file"
-                            accept=".csv"
-                            id="mapping-upload"
-                            className="hidden"
-                            onChange={handleImportMapping}
-                          />
-                          <label
-                            htmlFor="mapping-upload"
-                            className="cursor-pointer px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-medium rounded hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-1 shadow-sm"
-                          >
-                            <UploadCloud className="w-3 h-3" /> Import
-                          </label>
-                          <button
-                            onClick={handleExportMapping}
-                            className="px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-medium rounded hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-1 shadow-sm"
-                          >
-                            <DownloadCloud className="w-3 h-3" /> Export
-                          </button>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                        {locators.map(loc => (
-                          <div key={loc} className="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-lg border border-slate-200 dark:border-slate-700 flex flex-col gap-2">
-                            <label className="text-xs font-medium text-slate-600 dark:text-slate-400 truncate" title={loc}>{loc}</label>
-                            <input
-                              type="number"
-                              value={locatorMapping[loc]}
-                              onChange={(e) => handleMappingChange(loc, parseInt(e.target.value) || 0)}
-                              className="w-full px-3 py-1.5 text-sm border border-slate-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                            />
-                          </div>
-                        ))}
-                      </div>
+                  {!isLoadingDb && forecastGenerated && (
+                    <div className="pt-2">
+                      <Button
+                        fullWidth
+                        variant="light"
+                        color="indigo"
+                        onClick={() => setIsConfigOpen(false)}
+                        className="h-10 text-xs font-semibold uppercase tracking-wider"
+                      >
+                        Enter Analysis View
+                      </Button>
                     </div>
                   )}
-
-                  <div className="flex justify-end pt-4 border-t border-slate-100 dark:border-slate-800">
-                    <button
-                      onClick={handleGenerate}
-                      disabled={!pipelineFile || !dailyRateFile}
-                      className={cn(
-                        "px-6 py-2.5 rounded-lg font-medium text-sm transition-all shadow-sm",
-                        pipelineFile && dailyRateFile
-                          ? "bg-indigo-600 text-white hover:bg-indigo-700 hover:shadow-md"
-                          : "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed"
-                      )}
-                    >
-                      Generate Forecast
-                    </button>
-                  </div>
                 </div>
               )}
             </div>
@@ -1087,71 +1104,8 @@ export default function ProductionForecaster() {
         )}
       </div>
 
-      <Modal
-        opened={isUploaderModalOpen}
-        onClose={() => setIsUploaderModalOpen(false)}
-        title={
-          <div className="flex items-center gap-2">
-            <LayoutList className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-            <span className="font-semibold text-slate-800 dark:text-slate-200">Merge Pipeline Data</span>
-          </div>
-        }
-        size="xl"
-        radius="md"
-        padding="xl"
-        className="dark:bg-slate-900"
-      >
-        <MultiCsvUploader />
-      </Modal>
     </div>
   );
 }
 
-function FileDropzone({ label, accept, onDrop, file }: { label: string, accept: string, onDrop: (file: File) => void, file: File | null }) {
-  const [isDragging, setIsDragging] = useState(false);
 
-  return (
-    <div
-      className={cn(
-        "border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center transition-all cursor-pointer",
-        isDragging ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-950/30 scale-[1.02]" : "border-slate-300 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-slate-50 dark:hover:bg-slate-800/30",
-        file ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:border-emerald-500" : ""
-      )}
-      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-      onDragLeave={() => setIsDragging(false)}
-      onDrop={(e) => {
-        e.preventDefault();
-        setIsDragging(false);
-        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-          onDrop(e.dataTransfer.files[0]);
-        }
-      }}
-      onClick={() => {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = accept;
-        input.onchange = (e) => {
-          const target = e.target as HTMLInputElement;
-          if (target.files && target.files.length > 0) {
-            onDrop(target.files[0]);
-          }
-        };
-        input.click();
-      }}
-    >
-      {file ? (
-        <>
-          <CheckCircle2 className="w-10 h-10 text-emerald-500 mb-3" />
-          <span className="text-sm font-semibold text-emerald-800">{file.name}</span>
-          <span className="text-xs text-emerald-600 mt-1">{(file.size / 1024).toFixed(1)} KB</span>
-        </>
-      ) : (
-        <>
-          <UploadCloud className="w-10 h-10 text-slate-400 mb-3" />
-          <span className="text-sm font-semibold text-slate-700">{label}</span>
-          <span className="text-xs text-slate-500 mt-1">Drag & drop or click to select</span>
-        </>
-      )}
-    </div>
-  );
-}

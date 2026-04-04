@@ -2,8 +2,10 @@ import type { Metadata } from 'next';
 import { ColorSchemeScript, MantineProvider, mantineHtmlProps, createTheme, virtualColor } from '@mantine/core';
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
+import '@mantine/dates/styles.css';
 import { Notifications } from '@mantine/notifications';
 import { ZoomManager } from '../components/ZoomManager';
+import { StoreInitializer } from '../components/StoreInitializer';
 import './globals.css'; // Global styles
 
 export const metadata: Metadata = {
@@ -39,6 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <MantineProvider theme={theme}>
           <Notifications />
           <ZoomManager />
+          <StoreInitializer />
           {children}
         </MantineProvider>
       </body>

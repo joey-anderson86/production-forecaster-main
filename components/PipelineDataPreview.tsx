@@ -394,7 +394,7 @@ export function PipelineDataPreview() {
       <Modal
         opened={isPreviewModalOpen}
         onClose={() => setIsPreviewModalOpen(false)}
-        title={<Title order={4}>Review Transposed Pipeline Data</Title>}
+        title="Review Transposed Pipeline Data"
         size="90%"
         radius="md"
         styles={{ title: { width: '100%' } }}

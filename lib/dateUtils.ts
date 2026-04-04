@@ -98,3 +98,40 @@ export function getISODateForDay(weekId: string, day: DayOfWeek): string {
   const index = DAYS_OF_WEEK.indexOf(day);
   return formatISODate(dates[index]);
 }
+/**
+ * Gets the current ISO week ID (e.g., "2026-w13").
+ */
+export function getCurrentWeekId(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  
+  // ISO-8601 week number
+  const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  
+  return `${year}-w${String(weekNo).padStart(2, '0')}`;
+}
+
+/**
+ * Gets the ISO week identifier (e.g., "2026-w13") for a specific Date object.
+ */
+export function getWeekIdentifier(date: Date): string {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  return `${d.getUTCFullYear()}-w${String(weekNo).padStart(2, '0')}`;
+}
+
+/**
+ * Gets the abbreviated DayOfWeek label (e.g. "Mon") for a specific Date object.
+ */
+export function getDayOfWeekLabel(date: Date): DayOfWeek {
+  // Sunday is 0, Monday is 1, etc. in JS
+  const index = (date.getDay() + 6) % 7; 
+  return DAYS_OF_WEEK[index];
+}

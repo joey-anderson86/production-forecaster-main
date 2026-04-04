@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import {
   TextInput,
+  Select,
   Button,
   Group,
   Stack,
@@ -35,6 +36,8 @@ import {
   IconUpload,
   IconDownload
 } from "@tabler/icons-react";
+import { getCurrentWeekId } from "@/lib/dateUtils";
+import { useProcessStore } from "@/lib/processStore";
 
 
 
@@ -58,7 +61,20 @@ interface ProcessInfo {
   machineId?: string;
 }
 
+interface DailyRate {
+  partNumber?: string;
+  week?: number;
+  year?: number;
+  qty?: number;
+}
+
+interface Process {
+  processName: string;
+}
+
 export function DatabaseSettings() {
+  const fetchGlobalProcesses = useProcessStore((state) => state.fetchProcesses);
+  const globalProcesses = useProcessStore((state) => state.processes);
   const [connectionString, setConnectionString] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
@@ -68,16 +84,23 @@ export function DatabaseSettings() {
   const [locatorMappings, setLocatorMappings] = useState<LocatorMapping[]>([]);
   const [partInfos, setPartInfos] = useState<PartInfo[]>([]);
   const [processInfos, setProcessInfos] = useState<ProcessInfo[]>([]);
+  const [dailyRates, setDailyRates] = useState<DailyRate[]>([]);
+  const [processes, setProcesses] = useState<Process[]>([]);
+  const [allPartNumbers, setAllPartNumbers] = useState<string[]>([]);
   
   // Initial states for comparison
   const [initialLocatorMappings, setInitialLocatorMappings] = useState<string>("");
   const [initialPartInfos, setInitialPartInfos] = useState<string>("");
   const [initialProcessInfos, setInitialProcessInfos] = useState<string>("");
+  const [initialDailyRates, setInitialDailyRates] = useState<string>("");
+  const [initialProcesses, setInitialProcesses] = useState<string>("");
 
   // Deletion tracking
   const [deletedLocators, setDeletedLocators] = useState<string[]>([]);
   const [deletedPartInfos, setDeletedPartInfos] = useState<{partNumber: string, process: string}[]>([]);
   const [deletedProcessInfos, setDeletedProcessInfos] = useState<{process: string, date: string, machineId: string}[]>([]);
+  const [deletedDailyRates, setDeletedDailyRates] = useState<DailyRate[]>([]);
+  const [deletedProcesses, setDeletedProcesses] = useState<string[]>([]);
 
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [isSavingData, setIsSavingData] = useState(false);
@@ -86,20 +109,44 @@ export function DatabaseSettings() {
 
   // Detection of changes
   const hasChanges = useMemo(() => {
-    const tableDirty = activeTab === "locatorMapping" 
-      ? JSON.stringify(locatorMappings) !== initialLocatorMappings 
-      : activeTab === "partInfo" 
-      ? JSON.stringify(partInfos) !== initialPartInfos 
-      : JSON.stringify(processInfos) !== initialProcessInfos;
+    const isDeepEqual = (a: any, b: string) => {
+      try {
+        const aStr = JSON.stringify(a);
+        const bParsed = JSON.parse(b);
+        const bStr = JSON.stringify(bParsed);
+        return aStr === bStr;
+      } catch {
+        return false;
+      }
+    };
+
+    let tableDirty = false;
+    if (activeTab === "locatorMapping") {
+      tableDirty = !isDeepEqual(locatorMappings, initialLocatorMappings);
+    } else if (activeTab === "partInfo") {
+      tableDirty = !isDeepEqual(partInfos, initialPartInfos);
+    } else if (activeTab === "processInfo") {
+      tableDirty = !isDeepEqual(processInfos, initialProcessInfos);
+    } else if (activeTab === "dailyRate") {
+      tableDirty = !isDeepEqual(dailyRates, initialDailyRates);
+    } else if (activeTab === "process") {
+      tableDirty = !isDeepEqual(processes, initialProcesses);
+    }
 
     const deletionDirty = activeTab === "locatorMapping" 
       ? deletedLocators.length > 0 
       : activeTab === "partInfo" 
       ? deletedPartInfos.length > 0
-      : deletedProcessInfos.length > 0;
+      : activeTab === "processInfo"
+      ? deletedProcessInfos.length > 0
+      : activeTab === "dailyRate"
+      ? deletedDailyRates.length > 0
+      : activeTab === "process"
+      ? deletedProcesses.length > 0
+      : false;
 
     return tableDirty || deletionDirty;
-  }, [activeTab, locatorMappings, partInfos, processInfos, initialLocatorMappings, initialPartInfos, initialProcessInfos, deletedLocators, deletedPartInfos, deletedProcessInfos]);
+  }, [activeTab, locatorMappings, partInfos, processInfos, dailyRates, processes, initialLocatorMappings, initialPartInfos, initialProcessInfos, initialDailyRates, initialProcesses, deletedLocators, deletedPartInfos, deletedProcessInfos, deletedDailyRates, deletedProcesses]);
 
   useEffect(() => {
     async function init() {
@@ -141,6 +188,20 @@ export function DatabaseSettings() {
         setProcessInfos(data);
         setInitialProcessInfos(JSON.stringify(data));
         setDeletedProcessInfos([]);
+      } else if (tab === "dailyRate") {
+        const data = await invoke<DailyRate[]>("get_daily_rate_preview", { connectionString: activeConnStr });
+        setDailyRates(data);
+        setInitialDailyRates(JSON.stringify(data));
+        setDeletedDailyRates([]);
+
+        // Fetch part numbers for dropdown validation
+        const parts = await invoke<string[]>("get_all_part_numbers", { connectionString: activeConnStr });
+        setAllPartNumbers(parts);
+      } else if (tab === "process") {
+        const data = await invoke<Process[]>("get_processes_preview", { connectionString: activeConnStr });
+        setProcesses(data);
+        setInitialProcesses(JSON.stringify(data));
+        setDeletedProcesses([]);
       }
     } catch (err) {
       console.error(`Failed to fetch ${tab} data:`, err);
@@ -242,6 +303,35 @@ export function DatabaseSettings() {
         }
         // Handle upserts
         await invoke("upsert_process_info", { connectionString, records: processInfos });
+      } else if (activeTab === "dailyRate") {
+        // Handle deletions
+        if (deletedDailyRates.length > 0) {
+          const identifiers = deletedDailyRates.map(r => ({ 
+            partNumber: String(r.partNumber || "").trim(), 
+            week: Number(r.week || 0), 
+            year: Number(r.year || 0),
+            qty: Number(r.qty || 0)
+          }));
+          await invoke("delete_daily_rates", { connectionString, records: identifiers });
+        }
+        // Handle upserts
+        const upsertRecords = dailyRates.map(r => ({
+          partNumber: String(r.partNumber || "").trim(),
+          week: Number(r.week || 0),
+          year: Number(r.year || 0),
+          qty: Number(r.qty || 0)
+        }));
+        await invoke("upsert_daily_rate", { connectionString, records: upsertRecords });
+      } else if (activeTab === "process") {
+         // Handle deletions
+         if (deletedProcesses.length > 0) {
+           await invoke("delete_processes", { connectionString, processNames: deletedProcesses });
+         }
+         // Handle upserts
+          await invoke("upsert_process", { connectionString, records: processes });
+          
+          // Refresh global process store
+          await fetchGlobalProcesses(connectionString);
       }
       
       notifications.show({
@@ -299,6 +389,17 @@ export function DatabaseSettings() {
     } else if (activeTab === "processInfo") {
       const today = new Date().toISOString().split('T')[0];
       setProcessInfos(prev => [...prev, { process: "", date: today, hoursAvailable: 8, machineId: "" }]);
+    } else if (activeTab === "dailyRate") {
+      const currentWeekId = getCurrentWeekId();
+      const [currYear, currWeekStr] = currentWeekId.split("-w");
+      setDailyRates(prev => [...prev, { 
+        partNumber: "", 
+        week: parseInt(currWeekStr), 
+        year: parseInt(currYear), 
+        qty: 0 
+      }]);
+    } else if (activeTab === "process") {
+      setProcesses(prev => [...prev, { processName: "" }]);
     }
   };
 
@@ -315,14 +416,24 @@ export function DatabaseSettings() {
       const next = [...processInfos];
       next[index] = { ...next[index], [field]: value };
       setProcessInfos(next);
+    } else if (activeTab === "dailyRate") {
+      const next = [...dailyRates];
+      next[index] = { ...next[index], [field]: value };
+      setDailyRates(next);
+    } else if (activeTab === "process") {
+      const next = [...processes];
+      next[index] = { ...next[index], [field]: value };
+      setProcesses(next);
     }
   };
+
+  const normalize = (v: any) => v === null || v === undefined ? "" : v;
 
   const removeLocalRecord = (index: number) => {
     if (activeTab === "locatorMapping") {
       const record = locatorMappings[index];
       const initial = JSON.parse(initialLocatorMappings) as LocatorMapping[];
-      const wasInDb = initial.some(r => r.wipLocator === record.wipLocator);
+      const wasInDb = initial.some(r => normalize(r.wipLocator) === normalize(record.wipLocator));
       
       if (wasInDb && record.wipLocator) {
         setDeletedLocators(prev => [...prev, record.wipLocator!]);
@@ -331,7 +442,10 @@ export function DatabaseSettings() {
     } else if (activeTab === "partInfo") {
       const record = partInfos[index];
       const initial = JSON.parse(initialPartInfos) as PartInfo[];
-      const wasInDb = initial.some(r => r.partNumber === record.partNumber && r.process === record.process);
+      const wasInDb = initial.some(r => 
+        normalize(r.partNumber) === normalize(record.partNumber) && 
+        normalize(r.process) === normalize(record.process)
+      );
       
       if (wasInDb && record.partNumber && record.process) {
         setDeletedPartInfos(prev => [...prev, { partNumber: record.partNumber!, process: record.process! }]);
@@ -340,12 +454,42 @@ export function DatabaseSettings() {
     } else if (activeTab === "processInfo") {
       const record = processInfos[index];
       const initial = JSON.parse(initialProcessInfos) as ProcessInfo[];
-      const wasInDb = initial.some(r => r.process === record.process && r.date === record.date && r.machineId === record.machineId);
+      const wasInDb = initial.some(r => 
+        normalize(r.process) === normalize(record.process) && 
+        normalize(r.date) === normalize(record.date) && 
+        normalize(r.machineId) === normalize(record.machineId)
+      );
       
-      if (wasInDb && record.process && record.date && record.machineId) {
-        setDeletedProcessInfos(prev => [...prev, { process: record.process!, date: record.date!, machineId: record.machineId! }]);
+      if (wasInDb && (record.process || record.date)) {
+        setDeletedProcessInfos(prev => [...prev, { 
+          process: record.process || null as any, 
+          date: record.date || null as any, 
+          machineId: record.machineId || null as any
+        }]);
       }
       setProcessInfos(prev => prev.filter((_, i) => i !== index));
+    } else if (activeTab === "dailyRate") {
+      const record = dailyRates[index];
+      const initial = JSON.parse(initialDailyRates) as DailyRate[];
+      const wasInDb = initial.some(r => 
+        normalize(r.partNumber) === normalize(record.partNumber) &&
+        normalize(r.week) === normalize(record.week) &&
+        normalize(r.year) === normalize(record.year)
+      );
+      
+      if (wasInDb) {
+        setDeletedDailyRates(prev => [...prev, record]);
+      }
+      setDailyRates(prev => prev.filter((_, i) => i !== index));
+    } else if (activeTab === "process") {
+      const record = processes[index];
+      const initial = JSON.parse(initialProcesses) as Process[];
+      const wasInDb = initial.some(r => normalize(r.processName) === normalize(record.processName));
+      
+      if (wasInDb && record.processName) {
+        setDeletedProcesses(prev => [...prev, record.processName]);
+      }
+      setProcesses(prev => prev.filter((_, i) => i !== index));
     }
   };
 
@@ -384,6 +528,37 @@ export function DatabaseSettings() {
               machineId: r.MachineID || r.MachineId || r.machineId || ""
             }));
             await invoke("replace_process_infos", { connectionString, records: mapped });
+          } else if (activeTab === "dailyRate") {
+            const now = new Date();
+            const currentWeekId = getCurrentWeekId(); // e.g. "2026-w13"
+            const [currYear, currWeekStr] = currentWeekId.split("-w");
+            const defaultYear = parseInt(currYear);
+            const defaultWeek = parseInt(currWeekStr);
+
+            const mapped = rawData.map(r => {
+              const find = (options: string[]) => {
+                const key = Object.keys(r).find(k => 
+                  options.includes(k.toLowerCase().replace(/[^a-z0-9]/g, ''))
+                );
+                return key ? r[key] : undefined;
+              };
+
+              return {
+                partNumber: String(find(['partnumber', 'part', 'pn']) || ""),
+                week: parseInt(String(find(['week', 'wk']) || defaultWeek)),
+                year: parseInt(String(find(['year', 'yr']) || defaultYear)),
+                qty: parseInt(String(find(['qty', 'quantity', 'rate', 'dailyrate']) || "0"))
+              };
+            });
+            await invoke("replace_daily_rates", { connectionString, records: mapped });
+          } else if (activeTab === "process") {
+            const mapped = rawData.map(r => ({
+              processName: r.ProcessName || r.processName || r.Process || r.process || ""
+            }));
+            await invoke("replace_processes", { connectionString, records: mapped });
+            
+            // Refresh global process store
+            await fetchGlobalProcesses(connectionString);
           }
 
           notifications.show({
@@ -419,6 +594,12 @@ export function DatabaseSettings() {
     } else if (activeTab === "processInfo") {
       headers = "Process,Date,HoursAvailable,MachineID";
       fileName = "process_information_template.csv";
+    } else if (activeTab === "dailyRate") {
+      headers = "PartNumber,Week,Year,Qty";
+      fileName = "daily_rate_template.csv";
+    } else if (activeTab === "process") {
+      headers = "ProcessName";
+      fileName = "manufacturing_processes_template.csv";
     }
     
     if (!headers) return;
@@ -490,11 +671,15 @@ export function DatabaseSettings() {
                     />
                   </Table.Td>
                   <Table.Td>
-                    <TextInput 
-                      variant="unstyled" 
-                      size="xs" 
-                      value={row.process || ""} 
-                      onChange={(e) => updateRecord(i, "process", e.currentTarget.value)} 
+                    <Select
+                      variant="unstyled"
+                      size="xs"
+                      data={globalProcesses}
+                      value={row.process || ""}
+                      onChange={(val) => updateRecord(i, "process", val || "")}
+                      searchable
+                      clearable
+                      placeholder="Select process"
                     />
                   </Table.Td>
                   <Table.Td>
@@ -541,7 +726,16 @@ export function DatabaseSettings() {
                     <TextInput variant="unstyled" size="xs" value={row.partNumber || ""} onChange={(e) => updateRecord(i, "partNumber", e.currentTarget.value)} />
                   </Table.Td>
                   <Table.Td>
-                    <TextInput variant="unstyled" size="xs" value={row.process || ""} onChange={(e) => updateRecord(i, "process", e.currentTarget.value)} />
+                    <Select
+                      variant="unstyled"
+                      size="xs"
+                      data={globalProcesses}
+                      value={row.process || ""}
+                      onChange={(val) => updateRecord(i, "process", val || "")}
+                      searchable
+                      clearable
+                      placeholder="Select process"
+                    />
                   </Table.Td>
                   <Table.Td>
                     <NumberInput variant="unstyled" size="xs" value={row.batchSize} onChange={(val) => updateRecord(i, "batchSize", val)} />
@@ -582,7 +776,16 @@ export function DatabaseSettings() {
               {processInfos.map((row, i) => (
                 <Table.Tr key={i}>
                   <Table.Td>
-                    <TextInput variant="unstyled" size="xs" value={row.process || ""} onChange={(e) => updateRecord(i, "process", e.currentTarget.value)} />
+                    <Select
+                      variant="unstyled"
+                      size="xs"
+                      data={globalProcesses}
+                      value={row.process || ""}
+                      onChange={(val) => updateRecord(i, "process", val || "")}
+                      searchable
+                      clearable
+                      placeholder="Select process"
+                    />
                   </Table.Td>
                   <Table.Td>
                     <TextInput variant="unstyled" size="xs" value={row.date || ""} onChange={(e) => updateRecord(i, "date", e.currentTarget.value)} />
@@ -602,6 +805,98 @@ export function DatabaseSettings() {
               ))}
               {processInfos.length === 0 && (
                 <Table.Tr><Table.Td colSpan={5}><Text ta="center" c="dimmed">No records found</Text></Table.Td></Table.Tr>
+              )}
+            </Table.Tbody>
+          </Table>
+        </ScrollArea>
+      );
+    }
+
+    if (activeTab === "dailyRate") {
+      return (
+        <ScrollArea h={400} mt="md">
+          <Table striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="xs">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Part Number</Table.Th>
+                <Table.Th>Week</Table.Th>
+                <Table.Th>Year</Table.Th>
+                <Table.Th>Qty (Rate)</Table.Th>
+                <Table.Th w={50}></Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {dailyRates.map((row, i) => (
+                <Table.Tr key={i}>
+                  <Table.Td>
+                    <Select
+                      variant="unstyled"
+                      size="xs"
+                      data={allPartNumbers}
+                      value={row.partNumber || ""}
+                      onChange={(val) => updateRecord(i, "partNumber", val || "")}
+                      searchable
+                      clearable
+                      placeholder="Select part"
+                    />
+                  </Table.Td>
+                  <Table.Td>
+                    <NumberInput variant="unstyled" size="xs" value={row.week} onChange={(val) => updateRecord(i, "week", val)} />
+                  </Table.Td>
+                  <Table.Td>
+                    <NumberInput variant="unstyled" size="xs" value={row.year} onChange={(val) => updateRecord(i, "year", val)} />
+                  </Table.Td>
+                  <Table.Td>
+                    <NumberInput variant="unstyled" size="xs" value={row.qty} onChange={(val) => updateRecord(i, "qty", val)} />
+                  </Table.Td>
+                  <Table.Td>
+                    <ActionIcon variant="subtle" color="red" onClick={() => removeLocalRecord(i)}>
+                      <IconTrash size={14} />
+                    </ActionIcon>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+              {dailyRates.length === 0 && (
+                <Table.Tr><Table.Td colSpan={5}><Text ta="center" c="dimmed">No records found</Text></Table.Td></Table.Tr>
+              )}
+            </Table.Tbody>
+          </Table>
+        </ScrollArea>
+      );
+    }
+
+    if (activeTab === "process") {
+      return (
+        <ScrollArea h={400} mt="md">
+          <Table striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="xs">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Process Name</Table.Th>
+                <Table.Th w={50}></Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {processes.map((row, i) => (
+                <Table.Tr key={i}>
+                  <Table.Td>
+                    <TextInput 
+                      variant="unstyled" 
+                      size="xs" 
+                      p={0} 
+                      placeholder="e.g. Plating, Shipping..."
+                      value={row.processName || ""} 
+                      onChange={(e) => updateRecord(i, "processName", e.currentTarget.value)} 
+                    />
+                  </Table.Td>
+                  <Table.Td>
+                    <ActionIcon variant="subtle" color="red" onClick={() => removeLocalRecord(i)}>
+                      <IconTrash size={14} />
+                    </ActionIcon>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+              {processes.length === 0 && (
+                <Table.Tr><Table.Td colSpan={2}><Text ta="center" c="dimmed">No processes found. Click "Add Record" to initialize.</Text></Table.Td></Table.Tr>
               )}
             </Table.Tbody>
           </Table>
@@ -726,6 +1021,12 @@ export function DatabaseSettings() {
               <Tabs.Tab value="processInfo" leftSection={<IconTable size={14} />}>
                 Process Information
               </Tabs.Tab>
+              <Tabs.Tab value="dailyRate" leftSection={<IconTable size={14} />}>
+                Daily Rate
+              </Tabs.Tab>
+              <Tabs.Tab value="process" leftSection={<IconTable size={14} />}>
+                Processes
+              </Tabs.Tab>
             </Tabs.List>
 
             <Tabs.Panel value="locatorMapping">
@@ -737,6 +1038,14 @@ export function DatabaseSettings() {
             </Tabs.Panel>
 
             <Tabs.Panel value="processInfo">
+              {renderTable()}
+            </Tabs.Panel>
+
+            <Tabs.Panel value="dailyRate">
+              {renderTable()}
+            </Tabs.Panel>
+
+            <Tabs.Panel value="process">
               {renderTable()}
             </Tabs.Panel>
           </Tabs>

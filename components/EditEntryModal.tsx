@@ -6,13 +6,14 @@ import {
   Button, 
   Group, 
   NumberInput, 
-  TextInput, 
   Stack, 
   Text,
-  Divider
+  Divider,
+  Box,
+  Badge,
+  TextInput
 } from '@mantine/core';
 import { useScorecardStore, DayOfWeek, DailyScorecardRecord } from '@/lib/scorecardStore';
-import { invoke } from '@tauri-apps/api/core';
 import { notifications } from '@mantine/notifications';
 import { IconDeviceFloppy, IconX } from '@tabler/icons-react';
 
@@ -23,6 +24,7 @@ interface EditEntryModalProps {
   weekId: string;
   weekLabel: string;
   partNumber: string;
+  shift: string;
   dayOfWeek: DayOfWeek;
   initialData: DailyScorecardRecord;
 }
@@ -34,16 +36,28 @@ export function EditEntryModal({
   weekId,
   weekLabel,
   partNumber,
+  shift,
   dayOfWeek,
   initialData
 }: EditEntryModalProps) {
   const [target, setTarget] = useState<number | string>(initialData.target ?? '');
   const [actual, setActual] = useState<number | string>(initialData.actual ?? '');
-  const [reasonCode, setReasonCode] = useState(initialData.reasonCode || '');
+  const [reasonCode, setReasonCode] = useState<string>(initialData.reasonCode || '');
   const [isSaving, setIsSaving] = useState(false);
 
   const updateStore = useScorecardStore((state) => state.updateDailyRecord);
-  const syncFilePath = useScorecardStore((state) => state.syncFilePath);
+  const syncToDb = useScorecardStore((state) => state.syncToDb);
+  const [connectionString, setConnectionString] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function getConn() {
+      const { load } = await import('@tauri-apps/plugin-store');
+      const store = await load("store.json", { autoSave: false, defaults: {} });
+      const val = await store.get<string>("db_connection_string");
+      setConnectionString(val || null);
+    }
+    getConn();
+  }, []);
 
   // Reset local state when initialData changes or modal opens
   useEffect(() => {
@@ -71,27 +85,15 @@ export function EditEntryModal({
       const targetVal = target === '' ? null : Number(target);
       const actualVal = actual === '' ? null : Number(actual);
 
-      // 1. Update CSV via Rust if sync path exists
-      if (syncFilePath) {
-        await invoke('update_csv_entry', {
-          filePath: syncFilePath,
-          department: departmentName,
-          weekLabel: weekLabel,
-          partNumber: partNumber,
-          dayOfWeek: dayOfWeek,
-          newTarget: targetVal,
-          newActual: actualVal,
-          newReason: reasonCode,
-          newDate: initialData.date || "",
-          newNumericDate: initialData.numericDate || 0
-        });
-      }
+      // 1. Update Zustand store (UI updates immediately)
+      updateStore(departmentName, weekId, partNumber, shift, dayOfWeek, 'target', targetVal);
+      updateStore(departmentName, weekId, partNumber, shift, dayOfWeek, 'actual', actualVal);
+      updateStore(departmentName, weekId, partNumber, shift, dayOfWeek, 'reasonCode', reasonCode.trim() || null);
 
-      // 2. Update Zustand store (UI updates immediately)
-      // Note: We update individual fields
-      updateStore(departmentName, weekId, partNumber, dayOfWeek, 'target', targetVal);
-      updateStore(departmentName, weekId, partNumber, dayOfWeek, 'actual', actualVal);
-      updateStore(departmentName, weekId, partNumber, dayOfWeek, 'reasonCode', reasonCode);
+      // 2. Sync to DB if connection is available
+      if (connectionString) {
+        await syncToDb(connectionString);
+      }
 
       notifications.show({
         title: 'Success',
@@ -117,7 +119,7 @@ export function EditEntryModal({
     <Modal 
       opened={opened} 
       onClose={onClose} 
-      title={<Text fw={700}>Edit Production Entry</Text>}
+      title="Edit Production Entry"
       size="md"
       radius="md"
     >
@@ -130,6 +132,8 @@ export function EditEntryModal({
                 <Text size="sm" fw={600}>{weekLabel}</Text>
                 <Divider orientation="vertical" />
                 <Text size="sm" fw={600}>{partNumber}</Text>
+                <Divider orientation="vertical" />
+                <Badge variant="light" size="sm">Shift {shift}</Badge>
                 <Divider orientation="vertical" />
                 <Text size="sm" fw={600}>{dayOfWeek}</Text>
             </Group>
@@ -157,11 +161,18 @@ export function EditEntryModal({
         </Group>
 
         <TextInput
-          label="Reason for Variance"
-          placeholder="e.g. Machine downtime, quality issue..."
+          label="Reason Code"
+          placeholder="Enter reason for variance..."
+          description="E.g. Machine breakdown, material shortage (max 144 chars)"
           value={reasonCode}
-          onChange={(event) => setReasonCode(event.currentTarget.value)}
-          description={(actual !== '' && target !== '' && Number(actual) < Number(target)) ? "Reason is required for misses" : undefined}
+          onChange={(e) => setReasonCode(e.currentTarget.value)}
+          error={reasonCode.length > 144 ? 'Reason code cannot exceed 144 characters' : undefined}
+          rightSection={
+            <Text size="xs" c={reasonCode.length > 144 ? 'red' : 'dimmed'}>
+              {reasonCode.length}/144
+            </Text>
+          }
+          rightSectionWidth={60}
         />
 
         <Group justify="flex-end" mt="xl">
@@ -169,6 +180,7 @@ export function EditEntryModal({
           <Button 
             onClick={handleSave} 
             loading={isSaving}
+            disabled={reasonCode.length > 144}
             leftSection={<IconDeviceFloppy size={18} />}
             color="indigo"
           >
@@ -179,6 +191,3 @@ export function EditEntryModal({
     </Modal>
   );
 }
-
-// Helper to keep the file clean
-import { Box } from '@mantine/core';

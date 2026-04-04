@@ -9,12 +9,13 @@ import {
 import { 
   IconTable, IconRefresh, IconAlertCircle, 
   IconDatabase, IconDatabaseExport, IconUpload,
-  IconDownload, IconTrash, IconCalendarStats
+  IconDownload, IconTrash, IconCalendarStats, IconDatabaseSearch
 } from '@tabler/icons-react';
 import { invoke } from '@tauri-apps/api/core';
 import { load } from '@tauri-apps/plugin-store';
 import { notifications } from '@mantine/notifications';
 import Papa from 'papaparse';
+import { getWeekIdentifier, getDayOfWeekLabel } from '@/lib/dateUtils';
 
 interface PlanRow {
   date?: string;
@@ -22,6 +23,9 @@ interface PlanRow {
   partName?: string;
   process?: string;
   qty?: number;
+  shift?: string;
+  weekIdentifier?: string;
+  dayOfWeek?: string;
 }
 
 export function PlanDataPreview() {
@@ -96,13 +100,20 @@ export function PlanDataPreview() {
         setIsUploading(true);
         try {
           const rawData = results.data as any[];
-          const mapped: PlanRow[] = rawData.map(r => ({
-            date: r.Date || r.date || "",
-            partNumber: r.PartNumber || r.partNumber || "",
-            partName: r.PartName || r.partName || "",
-            process: r.Process || r.process || "",
-            qty: parseInt(r.Qty || r.qty || "0")
-          }));
+          const mapped: PlanRow[] = rawData.map(r => {
+            const dateStr = r.Date || r.date || "";
+            const dateObj = new Date(dateStr + 'T00:00:00'); // Ensure local date parsing
+            return {
+              date: dateStr,
+              partNumber: r.PartNumber || r.partNumber || "",
+              partName: "",
+              process: r.Process || r.process || "",
+              qty: parseInt(r.Qty || r.qty || "0"),
+              shift: r.Shift || r.shift || "",
+              weekIdentifier: isNaN(dateObj.getTime()) ? "" : getWeekIdentifier(dateObj),
+              dayOfWeek: isNaN(dateObj.getTime()) ? "" : getDayOfWeekLabel(dateObj)
+            };
+          });
 
           await invoke("append_plan_data", { 
             connectionString, 
@@ -166,7 +177,7 @@ export function PlanDataPreview() {
   const dateOptions = uniqueDates.map(d => ({ value: d!, label: d! }));
 
   const downloadTemplate = () => {
-    const headers = "Date,PartNumber,PartName,Process,Qty";
+    const headers = "Date,PartNumber,PartName,Process,Qty,Shift";
     const blob = new Blob([headers], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -185,8 +196,8 @@ export function PlanDataPreview() {
           <Group gap="xs">
             <IconCalendarStats size={24} color="var(--mantine-color-teal-6)" />
             <Stack gap={0}>
-              <Title order={4}>Daily Demand Plan (MSSQL)</Title>
-              <Text size="xs" c="dimmed">Displaying dbo.Plan</Text>
+              <Title order={4}>Production Plan Targets</Title>
+              <Text size="xs" c="dimmed">Displaying dbo.DeliveryData (Targets)</Text>
             </Stack>
           </Group>
           <Group gap="xs">
@@ -240,7 +251,7 @@ export function PlanDataPreview() {
         </Group>
 
         <Text size="sm" c="dimmed">
-          Preview of live demand and production plan from the MSSQL server. This central production plan replaces the Daily Rate CSV.
+          Preview of live demand and production plan from the MSSQL server. This central production plan pulls from the Targets in DeliveryData.
         </Text>
 
         <Divider variant="dashed" />
@@ -308,6 +319,7 @@ export function PlanDataPreview() {
                   <Table.Th>Part Number</Table.Th>
                   <Table.Th>Part Name</Table.Th>
                   <Table.Th>Process</Table.Th>
+                  <Table.Th ta="center">Shift</Table.Th>
                   <Table.Th ta="right">Plan Qty</Table.Th>
                 </Table.Tr>
               </Table.Thead>
@@ -325,6 +337,9 @@ export function PlanDataPreview() {
                     </Table.Td>
                     <Table.Td>
                       <Text size="xs" fw={700} color="teal">{row.process || '-'}</Text>
+                    </Table.Td>
+                    <Table.Td ta="center">
+                      <Badge size="xs" variant="outline" color="gray">{row.shift || '-'}</Badge>
                     </Table.Td>
                     <Table.Td ta="right">
                       <Text size="xs" fw={700}>{(row.qty ?? 0).toLocaleString()}</Text>
