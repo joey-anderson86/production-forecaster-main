@@ -175,7 +175,7 @@ const PlanRow = memo(({
             p={0} 
             style={{ 
               borderLeft: '1px solid var(--mantine-color-gray-2)',
-              backgroundColor: isDisabled ? 'var(--mantine-color-gray-1)' : 'transparent',
+              backgroundColor: isDisabled ? 'var(--mantine-color-gray-8)' : 'transparent',
               transition: 'background-color 0.2s ease'
             }}
           >

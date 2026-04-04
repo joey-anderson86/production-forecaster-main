@@ -5,6 +5,7 @@ import {
   Tabs, Select, Button, TextInput, NumberInput, Card, Grid, Group, Text, 
   ActionIcon, Divider, Box, Badge, Tooltip as MantineTooltip, Stack, Modal, Switch 
 } from '@mantine/core';
+import { useLocalStorage } from '@mantine/hooks';
 import { 
   IconFlask, IconBox, IconShip, IconPlus, IconTrash, 
   IconDownload, IconUpload, IconX, IconDatabase, 
@@ -41,7 +42,10 @@ export default function DeliveryScorecardManagement() {
       setActiveTab(processes[0]);
     }
   }, [processes, activeTab]);
-  const [selectedWeekId, setSelectedWeekId] = useState<string | null>(null);
+  const [selectedWeekId, setSelectedWeekId] = useLocalStorage<string | null>({
+    key: 'production-planner-selected-week',
+    defaultValue: null
+  });
   const [connectionString, setConnectionString] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -52,7 +56,10 @@ export default function DeliveryScorecardManagement() {
 
   const [availableParts, setAvailableParts] = useState<string[]>([]);
   const [isLoadingParts, setIsLoadingParts] = useState(false);
-  const [scheduleAllShifts, setScheduleAllShifts] = useState(false);
+  const [scheduleAllShifts, setScheduleAllShifts] = useLocalStorage<boolean>({
+    key: 'production-planner-all-shifts-toggle',
+    defaultValue: false
+  });
 
   // Initialize connection string and fetch data
   useEffect(() => {

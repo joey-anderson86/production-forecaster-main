@@ -23,6 +23,10 @@ import {
   ThemeIcon,
 } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
+import { useLocalStorage } from '@mantine/hooks';
+import dayjs from 'dayjs';
+import isoWeek from 'dayjs/plugin/isoWeek';
+dayjs.extend(isoWeek);
 import { notifications } from '@mantine/notifications';
 import {
   IconDeviceFloppy,
@@ -36,6 +40,7 @@ import {
 } from '@tabler/icons-react';
 import { useScorecardStore } from '@/lib/scorecardStore';
 import { useProcessStore } from '@/lib/processStore';
+import { isWorkingDay } from '@/lib/dateUtils';
 
 // ─── Type Interfaces ───────────────────────────────────────────────
 
@@ -100,26 +105,21 @@ const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 // ─── Utility Functions ─────────────────────────────────────────────
 
 /** Convert a Date to "YYYY-MM-DD" string */
-function toISODateString(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+function toISODateString(date: Date | string): string {
+  return dayjs(date).format('YYYY-MM-DD');
 }
 
-/** Get day-of-week label from a Date */
-function getDayOfWeek(date: Date): string {
-  return DAY_NAMES[date.getDay()];
+/** Get day-of-week label (e.g. "Mon") from a Date */
+function getDayOfWeek(date: Date | string): string {
+  return dayjs(date).format('ddd');
 }
 
 /** Get ISO-8601 week identifier "YYYY-wWW" from a Date */
-function getWeekIdentifier(date: Date): string {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const dayNum = d.getUTCDay() || 7; // treat Sunday as 7
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
-  return `${d.getUTCFullYear()}-w${String(weekNo).padStart(2, '0')}`;
+function getWeekIdentifier(date: Date | string): string {
+  const d = dayjs(date);
+  if (!d.isValid()) return 'Invalid Date';
+  // Use dayjs format for ISO week: YYYY-[w]WW
+  return d.format('YYYY-[w]WW');
 }
 
 /** Generate a unique id */
@@ -137,7 +137,15 @@ export function ShiftProductionEntryModal({
 }: ShiftProductionEntryModalProps) {
   // ── Selector State ──
   const processes = useProcessStore((s) => s.processes);
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const shiftSettings = useScorecardStore((s) => s.shiftSettings);
+  
+  // Retrieve the global active week from local storage
+  const [activeWeekId] = useLocalStorage<string | null>({
+    key: 'production-planner-selected-week',
+    defaultValue: null,
+  });
+
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedDept, setSelectedDept] = useState<string | null>(null);
   const [selectedShift, setSelectedShift] = useState<string | null>(null);
 
@@ -159,6 +167,36 @@ export function ShiftProductionEntryModal({
 
   const syncToDb = useScorecardStore((s) => s.syncToDb);
   const fetchFromDb = useScorecardStore((s) => s.fetchFromDb);
+
+  // ── Calculate Week Boundaries ──
+  const weekRange = React.useMemo(() => {
+    if (!activeWeekId) return null;
+    try {
+      const [year, week] = activeWeekId.split('-w');
+      // dayjs isoWeek start is Monday
+      const start = dayjs().year(parseInt(year)).isoWeek(parseInt(week)).startOf('isoWeek');
+      const end = start.clone().endOf('isoWeek');
+      return { start, end };
+    } catch (e) {
+      return null;
+    }
+  }, [activeWeekId]);
+
+  // ── Date Filtering Logic ──
+  const shouldExcludeDate = React.useCallback((date: any) => {
+    const d = dayjs(date);
+    // 1. Must be within the active week
+    if (!weekRange) return true;
+    const isOutsideWeek = d.isBefore(weekRange.start, 'day') || d.isAfter(weekRange.end, 'day');
+    if (isOutsideWeek) return true;
+
+    // 2. Must be a working day for the selected shift
+    if (selectedShift && shiftSettings[selectedShift]) {
+      return !isWorkingDay(d.toDate(), shiftSettings[selectedShift]);
+    }
+
+    return false;
+  }, [weekRange, selectedShift, shiftSettings]);
 
   // Load connection string on mount
   useEffect(() => {
@@ -204,9 +242,10 @@ export function ShiftProductionEntryModal({
     }
 
     setIsLoadingPlan(true);
+    setIsLoadingPlan(true);
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const dateStr = selectedDate; // already YYYY-MM-DD string
+      const dateStr = dayjs(selectedDate).format('YYYY-MM-DD');
 
       const planRows = await invoke<PlanRow[]>('get_plan_data_for_shift', {
         connectionString,
@@ -377,8 +416,8 @@ export function ShiftProductionEntryModal({
     setIsSubmitting(true);
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const dateStr = selectedDate; // already YYYY-MM-DD
-      const parsedDate = new Date(selectedDate + 'T00:00:00');
+      const dateStr = dayjs(selectedDate).format('YYYY-MM-DD');
+      const parsedDate = selectedDate!;
       const weekId = getWeekIdentifier(parsedDate);
       const dayOfWeek = getDayOfWeek(parsedDate);
 
@@ -429,7 +468,7 @@ export function ShiftProductionEntryModal({
 
   // ── Derived State ──
   const canLoadPlan = !!selectedDate && !!selectedDept && !!selectedShift;
-  const parsedDateForDisplay = selectedDate ? new Date(selectedDate + 'T00:00:00') : null;
+  const parsedDateForDisplay = selectedDate;
   const totalTarget = entries.reduce((sum, e) => sum + e.target, 0);
   const totalActual = entries.reduce((sum, e) => sum + (typeof e.actual === 'number' ? e.actual : 0), 0);
   const totalVariance = totalActual - totalTarget;
@@ -464,19 +503,36 @@ export function ShiftProductionEntryModal({
             Step 1 — Select Shift Parameters
           </Text>
           <Group grow align="flex-end">
-            <DatePickerInput
-              label="Production Date"
-              placeholder="Pick a date"
-              value={selectedDate}
+            <Select
+              label="Shift"
+              placeholder="Select shift first"
+              data={SHIFTS}
+              value={selectedShift}
               onChange={(val) => {
-                setSelectedDate(val);
+                setSelectedShift(val);
+                setSelectedDate(null); // Reset date when shift changes to force re-validation
                 setPlanLoaded(false);
                 setEntries([]);
               }}
+              size="sm"
+            />
+            <DatePickerInput
+              label="Production Date"
+              placeholder={selectedShift ? "Pick a working day" : "Select shift first"}
+              value={selectedDate}
+              onChange={(val) => {
+                setSelectedDate(val as Date | null);
+                setPlanLoaded(false);
+                setEntries([]);
+              }}
+              disabled={!selectedShift}
+              excludeDate={shouldExcludeDate as any}
               maxDate={new Date()}
               size="sm"
               valueFormat="YYYY-MM-DD"
               clearable
+              allowDeselect={false}
+              leftSection={<IconClipboardList size={16} stroke={1.5} />}
             />
             <Select
               label="Department"
@@ -490,18 +546,6 @@ export function ShiftProductionEntryModal({
               }}
               size="sm"
               searchable
-            />
-            <Select
-              label="Shift"
-              placeholder="Select shift"
-              data={SHIFTS}
-              value={selectedShift}
-              onChange={(val) => {
-                setSelectedShift(val);
-                setPlanLoaded(false);
-                setEntries([]);
-              }}
-              size="sm"
             />
           </Group>
           <Button
