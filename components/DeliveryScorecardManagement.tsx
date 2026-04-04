@@ -11,6 +11,7 @@ import {
   IconRefresh, IconDeviceFloppy, IconClipboardCheck 
 } from '@tabler/icons-react';
 import { useScorecardStore, DayOfWeek, PartScorecard, BulkImportGroup } from '@/lib/scorecardStore';
+import WeeklyPlanTable from './WeeklyPlanTable';
 import { notifications } from '@mantine/notifications';
 import Papa from 'papaparse';
 import { getISODateForDay, getCurrentWeekId } from '@/lib/dateUtils';
@@ -72,10 +73,10 @@ export default function DeliveryScorecardManagement() {
     init();
   }, []);
 
-  // Fetch available parts for the active tab when the modal opens
+  // Fetch available parts for the active tab whenever it changes
   useEffect(() => {
     async function fetchParts() {
-      if (!addPartModalOpened || !activeTab || !connectionString) return;
+      if (!activeTab || !connectionString) return;
       setIsLoadingParts(true);
       try {
         const { invoke } = await import('@tauri-apps/api/core');
@@ -91,7 +92,7 @@ export default function DeliveryScorecardManagement() {
       }
     }
     fetchParts();
-  }, [addPartModalOpened, activeTab, connectionString]);
+  }, [activeTab, connectionString]);
 
   // Ensure all current processes are in the scorecard store
   useEffect(() => {
@@ -405,69 +406,23 @@ export default function DeliveryScorecardManagement() {
              </Group>
           </Card>
 
-          <Box className="space-y-4 mb-xl">
-            {activeWeek.parts.map(part => (
-              <Card key={`${part.partNumber}_${part.shift}`} withBorder shadow="sm" radius="md">
-                <Group justify="space-between" mb="sm">
-                  <Group gap="xl">
-                    <TextInput
-                      label={<Text size="xs" fw={700} c="dimmed">PART NUMBER</Text>}
-                      value={part.partNumber}
-                      readOnly
-                      variant="unstyled"
-                      styles={{ input: { color: 'var(--mantine-color-indigo-7)', fontWeight: 600, fontSize: 16 } }}
-                    />
-                    <Badge variant="light" color="blue" size="lg" mt="sm">Shift {part.shift}</Badge>
-                  </Group>
-                  <ActionIcon 
-                    variant="subtle" 
-                    color="red" 
-                    onClick={() => store.removePartNumber(activeTab!, selectedWeekId!, part.partNumber, part.shift)}
-                  >
-                    <IconX size={20} />
-                  </ActionIcon>
-                </Group>
-                <Divider mb="md" />
-
-                <Grid columns={7} gutter="xs">
-                  {DAYS_OF_WEEK.map((day) => {
-                    const record = part.dailyRecords.find(r => r.dayOfWeek === day);
-                    if (!record) return null;
-
-                    return (
-                      <Grid.Col span={1} key={day}>
-                         <Card withBorder padding="xs" radius="sm">
-                          <Stack gap={0} align="center" mb="xs">
-                            <Text size="sm" fw={600} c="dimmed" lh={1}>{day}</Text>
-                            {record.date && <Text size="10px" c="indigo.4" fw={700}>{new Date(record.date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</Text>}
-                          </Stack>
-                           <Group gap="xs" mb={4} wrap="nowrap">
-                              <Text size="xs" fw={500} c="dimmed" w={20}>Act</Text>
-                              <NumberInput
-                                 size="xs"
-                                 hideControls
-                                 value={record.actual !== null ? record.actual : ''}
-                                 onChange={(val) => store.updateDailyRecord(activeTab!, selectedWeekId!, part.partNumber, part.shift, day, 'actual', typeof val === 'number' ? val : null)}
-                                 styles={{ input: { fontSize: '11px' } }}
-                              />
-                           </Group>
-                           <Group gap="xs" mb="xs" wrap="nowrap">
-                              <Text size="xs" fw={500} c="dimmed" w={20}>Tgt</Text>
-                              <NumberInput
-                                 size="xs"
-                                 hideControls
-                                 value={record.target !== null ? record.target : ''}
-                                 onChange={(val) => store.updateDailyRecord(activeTab!, selectedWeekId!, part.partNumber, part.shift, day, 'target', typeof val === 'number' ? val : null)}
-                                 styles={{ input: { fontSize: '11px' } }}
-                              />
-                           </Group>
-                        </Card>
-                      </Grid.Col>
-                    );
-                  })}
-                </Grid>
-              </Card>
-            ))}
+          <Box className="mb-md">
+            <WeeklyPlanTable 
+              department={activeTab!}
+              weekId={selectedWeekId!}
+              parts={activeWeek.parts}
+              availableParts={availableParts}
+              isLoadingParts={isLoadingParts}
+              onUpdateRecord={(partNum: string, shift: string, day: DayOfWeek, field: 'target', val: number | null) => 
+                store.updateDailyRecord(activeTab!, selectedWeekId!, partNum, shift, day, field, val)
+              }
+              onRemovePart={(partNum: string, shift: string) => 
+                store.removePartNumber(activeTab!, selectedWeekId!, partNum, shift)
+              }
+              onAddPart={(partNum: string, shift: string) => 
+                store.addPartNumber(activeTab!, selectedWeekId!, partNum, shift)
+              }
+            />
           </Box>
 
           <Button 
