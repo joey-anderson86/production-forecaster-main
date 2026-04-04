@@ -7,7 +7,7 @@ import {
   Badge, FileButton, Select, Divider, Modal,
   Skeleton
 } from '@mantine/core';
-import { open } from '@tauri-apps/plugin-dialog';
+import { open, ask } from '@tauri-apps/plugin-dialog';
 import { 
   IconTable, IconRefresh, IconAlertCircle, 
   IconDatabase, IconDatabaseExport, IconUpload,
@@ -183,7 +183,12 @@ export function PipelineDataPreview() {
   const handleDeleteDate = async () => {
     if (!selectedDeleteDate || !connectionString) return;
 
-    if (!confirm(`Are you sure you want to delete all data for ${selectedDeleteDate}?`)) {
+    const confirmed = await ask(`Are you sure you want to delete all data for ${selectedDeleteDate}?`, {
+      title: 'Confirm Deletion',
+      kind: 'warning'
+    });
+
+    if (!confirmed) {
       return;
     }
 

@@ -13,6 +13,7 @@ import {
 } from '@tabler/icons-react';
 import { invoke } from '@tauri-apps/api/core';
 import { load } from '@tauri-apps/plugin-store';
+import { ask } from '@tauri-apps/plugin-dialog';
 import { notifications } from '@mantine/notifications';
 import Papa from 'papaparse';
 import { getWeekIdentifier, getDayOfWeekLabel } from '@/lib/dateUtils';
@@ -147,7 +148,12 @@ export function PlanDataPreview() {
   const handleDeleteDate = async () => {
     if (!selectedDeleteDate || !connectionString) return;
 
-    if (!confirm(`Are you sure you want to delete all plan data for ${selectedDeleteDate}?`)) {
+    const confirmed = await ask(`Are you sure you want to delete all plan data for ${selectedDeleteDate}?`, {
+      title: 'Confirm Deletion',
+      kind: 'warning'
+    });
+
+    if (!confirmed) {
       return;
     }
 

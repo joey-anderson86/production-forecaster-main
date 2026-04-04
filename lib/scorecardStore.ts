@@ -41,6 +41,7 @@ export interface BulkImportGroup {
 export interface ScorecardState {
   departments: Record<string, DepartmentScorecard>;
   isLoading: boolean;
+  syncStatus: 'saved' | 'saving' | 'error';
   error: string | null;
 }
 
@@ -65,6 +66,20 @@ interface ScorecardActions {
   bulkImportCsv: (groups: BulkImportGroup[]) => void;
   fetchFromDb: (connectionString: string) => Promise<void>;
   syncToDb: (connectionString: string, departmentName?: string, weekId?: string) => Promise<void>;
+  saveRecordToDb: (
+    connectionString: string, 
+    departmentName: string, 
+    weekId: string, 
+    rowId: string,
+    dayOfWeek: DayOfWeek
+  ) => Promise<void>;
+  deletePartFromDb: (
+    connectionString: string,
+    departmentName: string,
+    weekId: string,
+    partNumber: string,
+    shift: string
+  ) => Promise<void>;
 }
 
 export type ScorecardStore = ScorecardState & ScorecardActions;
@@ -85,6 +100,7 @@ export const useScorecardStore = create<ScorecardStore>()(
     (set, get) => ({
       departments: {},
       isLoading: false,
+      syncStatus: 'saved',
       error: null,
 
       addDepartment: (departmentName) => set((state) => {
@@ -487,8 +503,69 @@ export const useScorecardStore = create<ScorecardStore>()(
           set({ error: err.toString() });
           throw err;
         }
-      }
+      },
 
+      saveRecordToDb: async (connectionString: string, departmentName: string, weekId: string, rowId: string, dayOfWeek: DayOfWeek) => {
+        const { departments } = get();
+        const dept = departments[departmentName];
+        if (!dept || !dept.weeks[weekId]) return;
+
+        const week = dept.weeks[weekId];
+        const part = week.parts.find(p => p.id === rowId);
+        if (!part) return;
+
+        const record = part.dailyRecords.find(r => r.dayOfWeek === dayOfWeek);
+        if (!record) return;
+
+        set({ syncStatus: 'saving', error: null });
+
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          
+          // Construct the DB record. Note the field mapping to ScorecardRow in Rust
+          const dbRecord = {
+            department: departmentName,
+            weekIdentifier: weekId,
+            partNumber: part.partNumber,
+            dayOfWeek: record.dayOfWeek,
+            target: record.target,
+            actual: record.actual,
+            date: record.date,
+            shift: part.shift,
+            reasonCode: record.reasonCode
+          };
+
+          await invoke('upsert_scorecard_data', { 
+            connectionString: connectionString, 
+            records: [dbRecord] 
+          });
+          
+          set({ syncStatus: 'saved' });
+        } catch (err: any) {
+          console.error("Auto-save failed:", err);
+          set({ syncStatus: 'error', error: err.toString() });
+          throw err;
+        }
+      },
+
+      deletePartFromDb: async (connectionString, departmentName, weekId, partNumber, shift) => {
+        set({ syncStatus: 'saving', error: null });
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          await invoke('delete_scorecard_row', { 
+            connectionString, 
+            department: departmentName, 
+            weekIdentifier: weekId, 
+            partNumber: partNumber, 
+            shift: shift 
+          });
+          set({ syncStatus: 'saved' });
+        } catch (err: any) {
+          console.error("Delete record failed:", err);
+          set({ syncStatus: 'error', error: err.toString() });
+          throw err;
+        }
+      }
     }),
     {
       name: 'scorecard-storage', // Key for local storage persistence

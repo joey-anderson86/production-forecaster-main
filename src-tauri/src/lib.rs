@@ -196,6 +196,29 @@ async fn delete_scorecard_week(
     Ok(())
 }
 
+#[tauri::command]
+async fn delete_scorecard_row(
+    connection_string: String,
+    department: String,
+    week_identifier: String,
+    part_number: String,
+    shift: String,
+) -> Result<(), String> {
+    let mut client = create_client(&connection_string).await?;
+    client
+        .execute(
+            "DELETE FROM dbo.DeliveryData 
+             WHERE Department = @p1 
+               AND WeekIdentifier = @p2 
+               AND PartNumber = @p3 
+               AND (Shift = @p4 OR (Shift IS NULL AND @p4 = ''))",
+            &[&department, &week_identifier, &part_number, &shift],
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 async fn create_client(
     connection_string: &str,
 ) -> Result<Client<tokio_util::compat::Compat<TcpStream>>, String> {
@@ -1193,6 +1216,7 @@ pub fn run() {
             get_scorecard_data,
             upsert_scorecard_data,
             delete_scorecard_week,
+            delete_scorecard_row,
             test_mssql_connection,
             get_locator_mapping_preview,
             get_part_info_preview,

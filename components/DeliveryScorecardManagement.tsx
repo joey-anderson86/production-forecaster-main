@@ -8,7 +8,8 @@ import {
 import { 
   IconFlask, IconBox, IconShip, IconPlus, IconTrash, 
   IconDownload, IconUpload, IconX, IconDatabase, 
-  IconRefresh, IconDeviceFloppy, IconClipboardCheck 
+  IconRefresh, IconDeviceFloppy, IconClipboardCheck,
+  IconCloudCheck, IconCloudDownload, IconAlertTriangle
 } from '@tabler/icons-react';
 import { useScorecardStore, DayOfWeek, PartScorecard, BulkImportGroup } from '@/lib/scorecardStore';
 import WeeklyPlanTable from './WeeklyPlanTable';
@@ -16,6 +17,7 @@ import { notifications } from '@mantine/notifications';
 import Papa from 'papaparse';
 import { getISODateForDay, getCurrentWeekId } from '@/lib/dateUtils';
 import { useProcessStore } from '@/lib/processStore';
+import { ask } from '@tauri-apps/plugin-dialog';
 
 const PROCESS_ICONS: Record<string, React.ReactNode> = {
   'Plating': <IconFlask size={16} />,
@@ -140,7 +142,13 @@ export default function DeliveryScorecardManagement() {
 
   const handleDeleteWeek = async () => {
     if (!activeTab || !selectedWeekId) return;
-    if (confirm("Are you sure you want to delete this entire week's data?")) {
+    
+    const confirmed = await ask("Are you sure you want to delete this entire week's data?", {
+      title: 'Confirm Deletion',
+      kind: 'warning'
+    });
+
+    if (confirmed) {
       const weekId = selectedWeekId;
       store.deleteWeek(activeTab, weekId);
       setSelectedWeekId(null);
@@ -184,17 +192,59 @@ export default function DeliveryScorecardManagement() {
   };
 
 
-  const handleSyncToDb = async () => {
-    if (!connectionString) {
-      notifications.show({ title: 'Config Missing', message: 'Database connection string not found', color: 'yellow' });
-      return;
+  const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const coreHandleUpdateRecord = (rowId: string, day: DayOfWeek, field: 'target' | 'actual', val: number | null) => {
+    if (!activeTab || !selectedWeekId) return;
+    
+    // 1. Optimistic Update in Store
+    store.updateDailyRecord(activeTab, selectedWeekId, rowId, day, field, val);
+
+    // 2. Debounced Save to DB
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
     }
-    try {
-      // Pass active scope to ensure deletions in the current week are reflected in DB
-      await store.syncToDb(connectionString, activeTab || undefined, selectedWeekId || undefined);
-      notifications.show({ title: 'Synced', message: 'All scorecard data saved to MSSQL', color: 'green', icon: <IconDeviceFloppy size={18} /> });
-    } catch (err: any) {
-      notifications.show({ title: 'Sync Failed', message: err.toString(), color: 'red' });
+
+    autoSaveTimeoutRef.current = setTimeout(async () => {
+      if (!connectionString) return;
+      try {
+        await store.saveRecordToDb(connectionString, activeTab, selectedWeekId, rowId, day);
+      } catch (err: any) {
+        notifications.show({
+          title: 'Auto-save Failed',
+          message: `Could not save change for ${day}: ${err.toString()}`,
+          color: 'red',
+          autoClose: 5000
+        });
+      }
+    }, 750);
+  };
+
+  const SyncStatusIndicator = () => {
+    switch (store.syncStatus) {
+      case 'saving':
+        return (
+          <Group gap="xs">
+            <IconCloudDownload size={16} className="animate-pulse" color="var(--mantine-color-blue-5)" />
+            <Text size="xs" fw={600} c="blue.6">Saving...</Text>
+          </Group>
+        );
+      case 'error':
+        return (
+          <MantineTooltip label={store.error || "Unknown error during sync"}>
+            <Group gap="xs" style={{ cursor: 'help' }}>
+              <IconAlertTriangle size={16} color="var(--mantine-color-red-6)" />
+              <Text size="xs" fw={700} c="red.6">Unsaved Changes</Text>
+            </Group>
+          </MantineTooltip>
+        );
+      case 'saved':
+      default:
+        return (
+          <Group gap="xs">
+            <IconCloudCheck size={16} color="var(--mantine-color-teal-6)" />
+            <Text size="xs" fw={600} c="teal.7">Saved</Text>
+          </Group>
+        );
     }
   };
 
@@ -317,6 +367,8 @@ export default function DeliveryScorecardManagement() {
             size="md"
           />
           <Group gap="sm">
+            <SyncStatusIndicator />
+            <Divider orientation="vertical" />
             <Button 
               leftSection={<IconRefresh size={16} />} 
               variant="outline" 
@@ -326,15 +378,6 @@ export default function DeliveryScorecardManagement() {
               onClick={handleFetchFromDb}
             >
               Sync from DB
-            </Button>
-            <Button 
-              leftSection={<IconDeviceFloppy size={16} />} 
-              variant="filled" 
-              color="indigo"
-              size="md"
-              onClick={handleSyncToDb}
-            >
-              Save to DB
             </Button>
             <Button 
               leftSection={<IconPlus size={16} />} 
@@ -410,12 +453,22 @@ export default function DeliveryScorecardManagement() {
               parts={activeWeek.parts}
               availableParts={availableParts}
               isLoadingParts={isLoadingParts}
-              onUpdateRecord={(rowId: string, day: DayOfWeek, field: 'target', val: number | null) => 
-                store.updateDailyRecord(activeTab!, selectedWeekId!, rowId, day, field, val)
-              }
-              onRemovePart={(rowId: string) => 
-                store.removePartNumber(activeTab!, selectedWeekId!, rowId)
-              }
+              onUpdateRecord={coreHandleUpdateRecord}
+              onRemovePart={async (rowId: string) => {
+                const confirmed = await ask("Are you sure you want to remove this row? This will also delete it from the database.", {
+                  title: 'Confirm Deletion',
+                  kind: 'warning'
+                });
+
+                if (confirmed) {
+                  const partRow = activeWeek?.parts.find(p => p.id === rowId);
+                  if (partRow && partRow.partNumber && connectionString) {
+                    store.deletePartFromDb(connectionString, activeTab!, selectedWeekId!, partRow.partNumber, partRow.shift)
+                      .catch(err => console.error("Sync delete failed:", err));
+                  }
+                  store.removePartNumber(activeTab!, selectedWeekId!, rowId);
+                }
+              }}
               onUpdatePartIdentity={(rowId: string, updates) =>
                 store.updatePartIdentity(activeTab!, selectedWeekId!, rowId, updates)
               }
