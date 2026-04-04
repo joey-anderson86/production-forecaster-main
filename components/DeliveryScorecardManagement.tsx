@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { 
   Tabs, Select, Button, TextInput, NumberInput, Card, Grid, Group, Text, 
-  ActionIcon, Divider, Box, Badge, Tooltip as MantineTooltip, Stack, Modal 
+  ActionIcon, Divider, Box, Badge, Tooltip as MantineTooltip, Stack, Modal, Switch 
 } from '@mantine/core';
 import { 
   IconFlask, IconBox, IconShip, IconPlus, IconTrash, 
@@ -50,6 +50,7 @@ export default function DeliveryScorecardManagement() {
 
   const [availableParts, setAvailableParts] = useState<string[]>([]);
   const [isLoadingParts, setIsLoadingParts] = useState(false);
+  const [scheduleAllShifts, setScheduleAllShifts] = useState(false);
 
   // Initialize connection string and fetch data
   useEffect(() => {
@@ -162,8 +163,22 @@ export default function DeliveryScorecardManagement() {
 
   const handleAddPart = () => {
     if (!activeTab || !selectedWeekId) return;
-    store.addPartNumber(activeTab, selectedWeekId, '', '');
-    notifications.show({ title: 'Success', message: 'New row added to table', color: 'green' });
+    
+    if (scheduleAllShifts) {
+      const groupId = crypto.randomUUID();
+      // Inject all 4 shifts at once
+      ['A', 'B', 'C', 'D'].forEach(shift => {
+        store.addPartNumber(activeTab, selectedWeekId, '', shift, groupId);
+      });
+      notifications.show({ 
+        title: 'Success', 
+        message: 'Multiple shifts added for new part', 
+        color: 'green' 
+      });
+    } else {
+      store.addPartNumber(activeTab, selectedWeekId, '', '');
+      notifications.show({ title: 'Success', message: 'New row added to table', color: 'green' });
+    }
   };
 
 
@@ -173,7 +188,8 @@ export default function DeliveryScorecardManagement() {
       return;
     }
     try {
-      await store.syncToDb(connectionString);
+      // Pass active scope to ensure deletions in the current week are reflected in DB
+      await store.syncToDb(connectionString, activeTab || undefined, selectedWeekId || undefined);
       notifications.show({ title: 'Synced', message: 'All scorecard data saved to MSSQL', color: 'green', icon: <IconDeviceFloppy size={18} /> });
     } catch (err: any) {
       notifications.show({ title: 'Sync Failed', message: err.toString(), color: 'red' });
@@ -401,19 +417,38 @@ export default function DeliveryScorecardManagement() {
               onUpdatePartIdentity={(rowId: string, updates) =>
                 store.updatePartIdentity(activeTab!, selectedWeekId!, rowId, updates)
               }
+              onUpdatePartGroupIdentity={(groupId: string, partNum: string) =>
+                store.updatePartGroupIdentity(activeTab!, selectedWeekId!, groupId, partNum)
+              }
               onAddPart={(partNum: string, shift: string) => 
                 store.addPartNumber(activeTab!, selectedWeekId!, partNum, shift)
               }
             />
           </Box>
 
+          <Group mb="sm" justify="flex-end">
+            <Stack gap={0} align="flex-end">
+              <Group gap="xs">
+                <Text size="sm" fw={600}>Schedule All Shifts</Text>
+                <Switch 
+                  checked={scheduleAllShifts} 
+                  onChange={(event) => setScheduleAllShifts(event.currentTarget.checked)}
+                  color="indigo"
+                  size="md"
+                />
+              </Group>
+              <Text size="xs" c="dimmed">Automatically add Shifts A, B, C, and D</Text>
+            </Stack>
+          </Group>
+
           <Button 
             fullWidth 
             variant="light" 
             color="indigo" 
-            size="md" 
-            leftSection={<IconPlus size={16} />}
+            size="xl" 
+            leftSection={<IconPlus size={20} />}
             onClick={handleAddPart}
+            style={{ borderStyle: 'dashed', borderWidth: '2px' }}
           >
             Add Part Number Row
           </Button>

@@ -424,48 +424,40 @@ export default function DeliveryScorecardDisplay() {
                           </Table.Td>
                           {DAYS_OF_WEEK.map(day => {
                             const record = part.dailyRecords.find(r => r.dayOfWeek === day);
-                            if (!record || record.actual === null || record.target === null) {
-                              return (
-                                <Table.Td 
-                                  key={day} 
-                                  ta="center"
-                                  className="cursor-pointer hover:bg-white"
-                                  onClick={() => record && handleCellClick(part.id, part.partNumber, part.shift, day, record)}
-                                >
-                                  <Box py="xs" px="xs">
-                                    <Text size="sm" fw={500} c="gray.4">-</Text>
-                                    <Text size="10px" c="dimmed">Tgt: -</Text>
-                                  </Box>
-                                </Table.Td>
-                              );
-                            }
-
-                            const styles = getCellStyles(record.actual, record.target);
+                            const actualValue = record?.actual ?? null;
+                            const targetValue = record?.target ?? null;
+                            
+                            // Apply color styles only if actual production is recorded
+                            const styles = (actualValue !== null && targetValue !== null) 
+                              ? getCellStyles(actualValue, targetValue) 
+                              : {};
 
                             return (
                               <Table.Td 
                                 key={day} 
                                 ta="center" 
-                                bg={styles.bg} 
+                                bg={styles.bg || 'transparent'} 
                                 p={0}
-                                className="cursor-pointer hover:opacity-80"
-                                onClick={() => handleCellClick(part.id, part.partNumber, part.shift, day, record)}
+                                className="cursor-pointer hover:bg-gray-50 transition-colors"
+                                onClick={() => record && handleCellClick(part.id, part.partNumber, part.shift, day, record)}
                               >
                                 <Tooltip 
                                   label={
                                     <Stack gap={2}>
                                       <Text size="xs" fw={700}>Part: {part.partNumber} (Shift {part.shift})</Text>
-                                      <Text size="xs">Actual: {record.actual}</Text>
-                                      <Text size="xs">Target: {record.target}</Text>
-                                      <Text size="xs" c="indigo.4" mt={4} fw={700}>Click to Edit</Text>
+                                      <Text size="xs">Actual: {actualValue ?? 'Not recorded'}</Text>
+                                      <Text size="xs">Target: {targetValue ?? 0}</Text>
+                                      <Text size="xs" c="indigo.4" mt={4} fw={700}>Click to Record Actual</Text>
                                     </Stack>
                                   }
                                   withArrow
                                   position="top"
                                 >
                                   <Box py="xs" px="xs">
-                                    <Text size="sm" fw={styles.fw} c={styles.color}>{record.actual}</Text>
-                                    <Text size="10px" c="dimmed">Tgt: {record.target}</Text>
+                                    <Text size="sm" fw={styles.fw || 500} c={styles.color || (actualValue === null ? 'gray.4' : 'black')}>
+                                      {actualValue ?? '-'}
+                                    </Text>
+                                    <Text size="10px" c="dimmed">Tgt: {targetValue ?? 0}</Text>
                                   </Box>
                                 </Tooltip>
                               </Table.Td>

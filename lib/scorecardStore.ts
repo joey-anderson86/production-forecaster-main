@@ -18,6 +18,7 @@ export interface PartScorecard {
   partNumber: string;
   shift: string;
   dailyRecords: DailyScorecardRecord[]; // Always length 7
+  groupId?: string; // New field for grouping newly added rows
 }
 
 export interface WeeklyScorecard {
@@ -48,9 +49,10 @@ interface ScorecardActions {
   removeDepartment: (departmentName: string) => void;
   addWeek: (departmentName: string, weekId: string, weekLabel: string) => void;
   deleteWeek: (departmentName: string, weekId: string) => void;
-  addPartNumber: (departmentName: string, weekId: string, partNumber?: string, shift?: string) => void;
+  addPartNumber: (departmentName: string, weekId: string, partNumber?: string, shift?: string, groupId?: string) => void;
   removePartNumber: (departmentName: string, weekId: string, rowId: string) => void;
   updatePartIdentity: (departmentName: string, weekId: string, rowId: string, updates: { partNumber?: string, shift?: string }) => void;
+  updatePartGroupIdentity: (departmentName: string, weekId: string, groupId: string, partNumber: string) => void;
   updateDailyRecord: (
     departmentName: string, 
     weekId: string, 
@@ -62,7 +64,7 @@ interface ScorecardActions {
   importWeeklyCsv: (departmentName: string, weekId: string, data: PartScorecard[]) => void;
   bulkImportCsv: (groups: BulkImportGroup[]) => void;
   fetchFromDb: (connectionString: string) => Promise<void>;
-  syncToDb: (connectionString: string) => Promise<void>;
+  syncToDb: (connectionString: string, departmentName?: string, weekId?: string) => Promise<void>;
 }
 
 export type ScorecardStore = ScorecardState & ScorecardActions;
@@ -140,7 +142,7 @@ export const useScorecardStore = create<ScorecardStore>()(
         };
       }),
 
-      addPartNumber: (departmentName, weekId, partNumber = '', shift = '') => set((state) => {
+      addPartNumber: (departmentName, weekId, partNumber = '', shift = '', groupId?: string) => set((state) => {
         const dept = state.departments[departmentName];
         if (!dept || !dept.weeks[weekId]) return state;
 
@@ -155,7 +157,8 @@ export const useScorecardStore = create<ScorecardStore>()(
           id: crypto.randomUUID(),
           partNumber,
           shift,
-          dailyRecords: emptyDailyRecords(weekId)
+          dailyRecords: emptyDailyRecords(weekId),
+          groupId
         };
 
         return {
@@ -205,6 +208,33 @@ export const useScorecardStore = create<ScorecardStore>()(
         const updatedParts = week.parts.map(part => {
           if (part.id !== rowId) return part;
           return { ...part, ...updates };
+        });
+
+        return {
+          departments: {
+            ...state.departments,
+            [departmentName]: {
+              ...dept,
+              weeks: {
+                ...dept.weeks,
+                [weekId]: {
+                  ...week,
+                  parts: updatedParts
+                }
+              }
+            }
+          }
+        };
+      }),
+
+      updatePartGroupIdentity: (departmentName, weekId, groupId, partNumber) => set((state) => {
+        const dept = state.departments[departmentName];
+        if (!dept || !dept.weeks[weekId]) return state;
+
+        const week = dept.weeks[weekId];
+        const updatedParts = week.parts.map(part => {
+          if (part.groupId !== groupId) return part;
+          return { ...part, partNumber };
         });
 
         return {
@@ -405,17 +435,38 @@ export const useScorecardStore = create<ScorecardStore>()(
         }
       },
 
-      syncToDb: async (connectionString: string) => {
+      syncToDb: async (connectionString: string, departmentName?: string, weekId?: string) => {
         const { departments } = get();
+        const { invoke } = await import('@tauri-apps/api/core');
         const records: any[] = [];
         
+        // If a specific week is targeted, clear its data in DB first to handle any deletions
+        if (departmentName && weekId) {
+          try {
+            await invoke('delete_scorecard_week', { 
+              connectionString, 
+              department: departmentName, 
+              weekIdentifier: weekId 
+            });
+          } catch (err) {
+            console.error("Failed to clear week data before sync:", err);
+            // We continue anyway—the upsert might still work for edits/adds
+          }
+        }
+        
         Object.values(departments).forEach(dept => {
+          // If we are scoped, only collect records for that department
+          if (departmentName && dept.departmentName !== departmentName) return;
+
           Object.values(dept.weeks).forEach(week => {
+            // If we are scoped, only collect records for that week
+            if (weekId && week.weekId !== weekId) return;
+
             week.parts.forEach(part => {
               part.dailyRecords.forEach(record => {
                 records.push({
                   department: dept.departmentName,
-                  weekIdentifier: week.weekId, // Use weekId for DB
+                  weekIdentifier: week.weekId,
                   partNumber: part.partNumber,
                   shift: part.shift,
                   dayOfWeek: record.dayOfWeek,

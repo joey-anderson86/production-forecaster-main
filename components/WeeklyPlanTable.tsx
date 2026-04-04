@@ -7,10 +7,10 @@ import {
 } from '@mantine/core';
 import { 
   IconTrash, IconAlertCircle, IconCalculator, 
-  IconArrowUp, IconArrowDown, IconArrowLeft, IconArrowRight 
+  IconChevronRight, IconChevronDown 
 } from '@tabler/icons-react';
 import { DayOfWeek, DAYS_OF_WEEK, getWeekDates } from '@/lib/dateUtils';
-import { PartScorecard, DailyScorecardRecord } from '@/lib/scorecardStore';
+import { PartScorecard } from '@/lib/scorecardStore';
 
 interface WeeklyPlanTableProps {
   department: string;
@@ -20,59 +20,123 @@ interface WeeklyPlanTableProps {
   onUpdateRecord: (rowId: string, day: DayOfWeek, field: 'target', value: number | null) => void;
   onRemovePart: (rowId: string) => void;
   onUpdatePartIdentity: (rowId: string, updates: { partNumber?: string, shift?: string }) => void;
+  onUpdatePartGroupIdentity: (groupId: string, partNumber: string) => void;
   onAddPart: (partNumber: string, shift: string) => void;
   isLoadingParts?: boolean;
 }
 
 /**
- * Highly optimized individual row component to prevent full table re-renders.
+ * Parent row component showing aggregate sums for a group of shirts.
+ */
+const ParentRow = ({ 
+  partNumber, 
+  childRows, 
+  isExpanded, 
+  availableParts,
+  onToggle,
+  onUpdatePartGroupIdentity
+}: { 
+  partNumber: string; 
+  childRows: PartScorecard[]; 
+  isExpanded: boolean; 
+  availableParts: string[];
+  onToggle: () => void;
+  onUpdatePartGroupIdentity: WeeklyPlanTableProps['onUpdatePartGroupIdentity'];
+}) => {
+  const dailyTotals = useMemo(() => {
+    return DAYS_OF_WEEK.map(day => 
+      childRows.reduce((sum, part) => {
+        const record = part.dailyRecords.find(r => r.dayOfWeek === day);
+        return sum + (record?.target || 0);
+      }, 0)
+    );
+  }, [childRows]);
+
+  const grandTotal = useMemo(() => dailyTotals.reduce((a, b) => a + b, 0), [dailyTotals]);
+  
+  // Check if this is a "New Batch" (no part number but has a groupId)
+  const groupId = childRows[0]?.groupId;
+  const isNewBatch = !partNumber && groupId;
+
+  return (
+    <Table.Tr bg="indigo.0" style={{ cursor: 'pointer' }} onClick={onToggle}>
+      <Table.Td>
+        <Group gap="xs" wrap="nowrap">
+          <ActionIcon variant="subtle" size="sm" color="indigo" onClick={(e) => { e.stopPropagation(); onToggle(); }}>
+            {isExpanded ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
+          </ActionIcon>
+          
+          {isNewBatch ? (
+            <Box onClick={(e) => e.stopPropagation()} style={{ flex: 1, minWidth: 200 }}>
+              <Select
+                placeholder="Select part for this batch..."
+                data={availableParts}
+                searchable
+                size="xs"
+                comboboxProps={{ withinPortal: true }}
+                onChange={(val) => val && onUpdatePartGroupIdentity(groupId!, val)}
+                styles={{ 
+                  input: { 
+                    fontWeight: 700,
+                    backgroundColor: 'white',
+                    borderColor: 'var(--mantine-color-indigo-2)'
+                  } 
+                }}
+              />
+            </Box>
+          ) : (
+            <Text fw={700} size="sm" c="indigo.9">
+              {partNumber || <Text span c="dimmed" fs="italic">Unassigned Part</Text>}
+            </Text>
+          )}
+        </Group>
+      </Table.Td>
+      <Table.Td ta="center">
+        <Badge variant="light" color="indigo" size="sm">ALL SHIFTS</Badge>
+      </Table.Td>
+      {dailyTotals.map((total, i) => (
+        <Table.Td key={i} ta="center" style={{ borderLeft: '1px solid var(--mantine-color-indigo-1)' }}>
+          <Text fw={700} size="xs" c={total > 0 ? "indigo.7" : "dimmed"}>
+            {total.toLocaleString()}
+          </Text>
+        </Table.Td>
+      ))}
+      <Table.Td bg="indigo.1" style={{ borderLeft: '2px solid var(--mantine-color-indigo-2)' }}>
+        <Text fw={800} ta="center" size="sm" c="indigo.9">
+          {grandTotal.toLocaleString()}
+        </Text>
+      </Table.Td>
+      <Table.Td></Table.Td>
+    </Table.Tr>
+  );
+};
+
+/**
+ * Highly optimized individual row component for individual shift data entry.
  */
 const PlanRow = memo(({ 
   part, 
-  index,
-  availableParts,
   onUpdateRecord, 
   onRemovePart,
   onUpdatePartIdentity,
-  onCellKeyDown
 }: { 
   part: PartScorecard;
-  index: number;
-  availableParts: string[];
   onUpdateRecord: WeeklyPlanTableProps['onUpdateRecord'];
   onRemovePart: WeeklyPlanTableProps['onRemovePart'];
   onUpdatePartIdentity: WeeklyPlanTableProps['onUpdatePartIdentity'];
-  onCellKeyDown: (e: React.KeyboardEvent, rowIndex: number, cellIndex: number) => void;
 }) => {
   const rowTotal = useMemo(() => {
     return part.dailyRecords.reduce((sum, rec) => sum + (rec.target || 0), 0);
   }, [part.dailyRecords]);
 
-  // Handle local change before propagating to store for snappier UI
-  // Note: Since this is a "senior" implementation, we still rely on parent state 
-  // but ensure ONLY this row re-renders when its specific part data changes.
-  
   return (
     <Table.Tr>
-      {/* Part Number Column */}
-      <Table.Td style={{ minWidth: 200 }}>
-        <Select
-          data={availableParts}
-          value={part.partNumber}
-          placeholder="Select part..."
-          onChange={(val) => onUpdatePartIdentity(part.id, { partNumber: val || '' })}
-          searchable
-          comboboxProps={{ withinPortal: true }}
-          styles={{ 
-            input: { 
-              fontWeight: 600, 
-              color: part.partNumber ? 'var(--mantine-color-indigo-7)' : undefined,
-            } 
-          }}
-        />
+      <Table.Td pl={50} style={{ minWidth: 200 }}>
+        <Text size="xs" fw={500} c="dimmed">
+          {part.partNumber || "Not assigned"}
+        </Text>
       </Table.Td>
 
-      {/* Shift Column */}
       <Table.Td style={{ width: 100 }}>
         <Select
           data={['A', 'B', 'C', 'D']}
@@ -80,12 +144,12 @@ const PlanRow = memo(({
           placeholder="Shift"
           onChange={(val) => onUpdatePartIdentity(part.id, { shift: val || '' })}
           comboboxProps={{ withinPortal: true }}
-          styles={{ input: { fontWeight: 600, textAlign: 'center' } }}
+          variant="unstyled"
+          styles={{ input: { fontWeight: 700, textAlign: 'center', fontSize: '13px' } }}
         />
       </Table.Td>
 
-      {/* Monday - Sunday Target Inputs */}
-      {DAYS_OF_WEEK.map((day, cellIndex) => {
+      {DAYS_OF_WEEK.map((day) => {
         const record = part.dailyRecords.find(r => r.dayOfWeek === day);
         return (
           <Table.Td key={day} p={0} style={{ borderLeft: '1px solid var(--mantine-color-gray-2)' }}>
@@ -95,40 +159,38 @@ const PlanRow = memo(({
               hideControls
               variant="unstyled"
               min={0}
-              placeholder="0"
+              placeholder="-"
               styles={{ 
                 input: { 
                   textAlign: 'center', 
-                  height: 40,
-                  fontSize: '14px',
+                  height: 36,
+                  fontSize: '13px',
                   fontWeight: 500,
                   '&:focus': {
                     backgroundColor: 'var(--mantine-color-indigo-0)',
                   }
                 } 
               }}
-              onKeyDown={(e) => onCellKeyDown(e, index, cellIndex + 2)} // +2 for Part # and Shift cols
             />
           </Table.Td>
         );
       })}
 
-      {/* Row Total Column */}
       <Table.Td bg="gray.0" style={{ borderLeft: '2px solid var(--mantine-color-gray-3)' }}>
-        <Text fw={700} ta="center" size="sm" c={rowTotal > 0 ? "indigo.7" : "dimmed"}>
+        <Text fw={600} ta="center" size="xs" c={rowTotal > 0 ? "indigo.7" : "dimmed"}>
           {rowTotal.toLocaleString()}
         </Text>
       </Table.Td>
 
-      {/* Actions Column */}
       <Table.Td style={{ width: 50 }}>
         <Tooltip label="Remove Row" position="left" withArrow>
           <ActionIcon 
             variant="subtle" 
             color="red" 
+            size="sm"
             onClick={() => onRemovePart(part.id)}
           >
-            <IconTrash size={16} />
+            <IconTrash size={14} />
           </ActionIcon>
         </Tooltip>
       </Table.Td>
@@ -139,18 +201,51 @@ const PlanRow = memo(({
 PlanRow.displayName = 'PlanRow';
 
 export default function WeeklyPlanTable({ 
-  department, 
   weekId, 
   parts, 
   availableParts,
   onUpdateRecord,
   onRemovePart,
   onUpdatePartIdentity,
-  onAddPart,
-  isLoadingParts
+  onUpdatePartGroupIdentity,
 }: WeeklyPlanTableProps) {
   
-  // Calculate dates for the header
+  const [expandedParts, setExpandedParts] = useState<Set<string>>(new Set());
+
+  // Group parts by Part Number OR Group ID if part is unassigned
+  const groupedParts = useMemo(() => {
+    const groups: Record<string, PartScorecard[]> = {};
+    parts.forEach(part => {
+      const key = part.partNumber || part.groupId || 'Unassigned';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(part);
+    });
+    return groups;
+  }, [parts]);
+
+  // Expand new part groups automatically when rows are added
+  useEffect(() => {
+    const partKeys = Object.keys(groupedParts);
+    if (partKeys.length > 0) {
+      setExpandedParts(prev => {
+        const next = new Set(prev);
+        partKeys.forEach(k => {
+          if (!prev.has(k)) next.add(k);
+        });
+        return next;
+      });
+    }
+  }, [Object.keys(groupedParts).length]);
+
+  const toggleExpand = (key: string) => {
+    setExpandedParts(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
   const weekDates = useMemo(() => {
     try {
       return getWeekDates(weekId);
@@ -159,45 +254,10 @@ export default function WeeklyPlanTable({
     }
   }, [weekId]);
 
-  // Ref-based management for arrow key navigation
-  const tableRef = useRef<HTMLTableElement>(null);
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent, rowIndex: number, cellIndex: number) => {
-    if (!tableRef.current) return;
-
-    const inputs = tableRef.current.querySelectorAll('input');
-    const colsCount = 11; // PartNo + Shift + 7 days + Total + Action (but total/action don't have inputs)
-    // Actually, only cells with inputs matter. 
-    // Inputs are in: PartNo(0), Mon(1), Tue(2), ..., Sun(7). Shift is Select but might not have standard input.
-    // Let's count actual input elements.
-    
-    // Simplistic focal point shift:
-    let nextIndex = -1;
-    const currentIndex = Array.from(inputs).indexOf(e.target as HTMLInputElement);
-
-    if (e.key === 'ArrowDown') {
-      nextIndex = currentIndex + (DAYS_OF_WEEK.length); // Assuming Mon-Sun are editable. 
-      // PartNumber Select might have an input too. 
-    } else if (e.key === 'ArrowUp') {
-      nextIndex = currentIndex - (DAYS_OF_WEEK.length);
-    } else if (e.key === 'ArrowRight' && (e.target as HTMLInputElement).selectionEnd === (e.target as HTMLInputElement).value.length) {
-      nextIndex = currentIndex + 1;
-    } else if (e.key === 'ArrowLeft' && (e.target as HTMLInputElement).selectionStart === 0) {
-      nextIndex = currentIndex - 1;
-    }
-
-    if (nextIndex >= 0 && nextIndex < inputs.length) {
-      e.preventDefault();
-      (inputs[nextIndex] as HTMLInputElement).focus();
-      (inputs[nextIndex] as HTMLInputElement).select();
-    }
-  }, []);
-
   return (
     <Box style={{ border: '1px solid var(--mantine-color-gray-3)', borderRadius: '8px', overflow: 'hidden' }}>
       <Table 
-        ref={tableRef}
-        verticalSpacing="sm" 
+        verticalSpacing="xs" 
         highlightOnHover 
         withTableBorder
         styles={{ 
@@ -212,7 +272,7 @@ export default function WeeklyPlanTable({
             {DAYS_OF_WEEK.map((day, idx) => {
               const dateStr = weekDates[idx] ? weekDates[idx].toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }) : '';
               return (
-                <Table.Th key={day} ta="center" style={{ width: 90 }}>
+                <Table.Th key={day} ta="center" style={{ width: 85 }}>
                   <Stack gap={0} align="center">
                     <Text size="xs" fw={700} c="dimmed">{day.toUpperCase()}</Text>
                     {dateStr && <Text size="10px" c="indigo.4" fw={700}>{dateStr}</Text>}
@@ -220,7 +280,7 @@ export default function WeeklyPlanTable({
                 </Table.Th>
               );
             })}
-            <Table.Th key="total" ta="center" bg="gray.1" style={{ width: 100 }}>
+            <Table.Th key="total" ta="center" bg="gray.1" style={{ width: 90 }}>
               <Group gap={4} justify="center">
                 <IconCalculator size={14} />
                 <Text size="xs" fw={700}>TOTAL</Text>
@@ -231,17 +291,26 @@ export default function WeeklyPlanTable({
         </Table.Thead>
 
         <Table.Tbody>
-          {parts.map((part, idx) => (
-            <PlanRow 
-              key={part.id}
-              part={part}
-              index={idx}
-              availableParts={availableParts}
-              onUpdateRecord={onUpdateRecord}
-              onRemovePart={onRemovePart}
-              onUpdatePartIdentity={onUpdatePartIdentity}
-              onCellKeyDown={handleKeyDown}
-            />
+          {Object.entries(groupedParts).map(([groupKey, childRows]) => (
+            <React.Fragment key={groupKey}>
+              <ParentRow 
+                partNumber={childRows[0].partNumber} 
+                childRows={childRows} 
+                isExpanded={expandedParts.has(groupKey)}
+                availableParts={availableParts}
+                onToggle={() => toggleExpand(groupKey)}
+                onUpdatePartGroupIdentity={onUpdatePartGroupIdentity}
+              />
+              {expandedParts.has(groupKey) && childRows.map((part) => (
+                <PlanRow 
+                  key={part.id}
+                  part={part}
+                  onUpdateRecord={onUpdateRecord}
+                  onRemovePart={onRemovePart}
+                  onUpdatePartIdentity={onUpdatePartIdentity}
+                />
+              ))}
+            </React.Fragment>
           ))}
 
           {parts.length === 0 && (
