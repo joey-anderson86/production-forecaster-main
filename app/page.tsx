@@ -631,10 +631,7 @@ export default function ProductionForecaster() {
               )}
             </div>
 
-            <div className="mt-8 space-y-8">
-              <PipelineDataPreview />
-              <PlanDataPreview />
-            </div>
+
 
             {/* Dashboard */}
             {forecastGenerated && processedData && summary && (
@@ -1098,8 +1095,10 @@ export default function ProductionForecaster() {
         )}
 
         {mainTab === 'settings' && (
-          <div className="max-w-3xl mx-auto w-full mt-4">
+          <div className="max-w-7xl mx-auto w-full mt-4 space-y-8">
             <DatabaseSettings />
+            <PipelineDataPreview />
+            <PlanDataPreview />
           </div>
         )}
       </div>
