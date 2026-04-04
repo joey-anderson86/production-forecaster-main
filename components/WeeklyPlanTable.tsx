@@ -17,8 +17,9 @@ interface WeeklyPlanTableProps {
   weekId: string;
   parts: PartScorecard[];
   availableParts: string[];
-  onUpdateRecord: (partNumber: string, shift: string, day: DayOfWeek, field: 'target', value: number | null) => void;
-  onRemovePart: (partNumber: string, shift: string) => void;
+  onUpdateRecord: (rowId: string, day: DayOfWeek, field: 'target', value: number | null) => void;
+  onRemovePart: (rowId: string) => void;
+  onUpdatePartIdentity: (rowId: string, updates: { partNumber?: string, shift?: string }) => void;
   onAddPart: (partNumber: string, shift: string) => void;
   isLoadingParts?: boolean;
 }
@@ -32,6 +33,7 @@ const PlanRow = memo(({
   availableParts,
   onUpdateRecord, 
   onRemovePart,
+  onUpdatePartIdentity,
   onCellKeyDown
 }: { 
   part: PartScorecard;
@@ -39,6 +41,7 @@ const PlanRow = memo(({
   availableParts: string[];
   onUpdateRecord: WeeklyPlanTableProps['onUpdateRecord'];
   onRemovePart: WeeklyPlanTableProps['onRemovePart'];
+  onUpdatePartIdentity: WeeklyPlanTableProps['onUpdatePartIdentity'];
   onCellKeyDown: (e: React.KeyboardEvent, rowIndex: number, cellIndex: number) => void;
 }) => {
   const rowTotal = useMemo(() => {
@@ -57,32 +60,26 @@ const PlanRow = memo(({
           data={availableParts}
           value={part.partNumber}
           placeholder="Select part..."
-          onChange={(val) => {
-             // In a real spreadsheet, if they change the part number, 
-             // we might want to handle it as a new part or swap.
-             // For now, we'll assume they are selecting for a new row 
-             // or it's read-only if it's an existing row.
-          }}
-          readOnly={!!part.partNumber}
-          variant={part.partNumber ? "unstyled" : "default"}
+          onChange={(val) => onUpdatePartIdentity(part.id, { partNumber: val || '' })}
           searchable
+          comboboxProps={{ withinPortal: true }}
           styles={{ 
             input: { 
               fontWeight: 600, 
               color: part.partNumber ? 'var(--mantine-color-indigo-7)' : undefined,
-              paddingLeft: part.partNumber ? 0 : undefined
             } 
           }}
         />
       </Table.Td>
 
       {/* Shift Column */}
-      <Table.Td style={{ width: 80 }}>
+      <Table.Td style={{ width: 100 }}>
         <Select
           data={['A', 'B', 'C', 'D']}
           value={part.shift}
-          variant="unstyled"
-          readOnly
+          placeholder="Shift"
+          onChange={(val) => onUpdatePartIdentity(part.id, { shift: val || '' })}
+          comboboxProps={{ withinPortal: true }}
           styles={{ input: { fontWeight: 600, textAlign: 'center' } }}
         />
       </Table.Td>
@@ -94,7 +91,7 @@ const PlanRow = memo(({
           <Table.Td key={day} p={0} style={{ borderLeft: '1px solid var(--mantine-color-gray-2)' }}>
             <NumberInput
               value={record?.target ?? ''}
-              onChange={(val) => onUpdateRecord(part.partNumber, part.shift, day, 'target', typeof val === 'number' ? val : null)}
+              onChange={(val) => onUpdateRecord(part.id, day, 'target', typeof val === 'number' ? val : null)}
               hideControls
               variant="unstyled"
               min={0}
@@ -129,7 +126,7 @@ const PlanRow = memo(({
           <ActionIcon 
             variant="subtle" 
             color="red" 
-            onClick={() => onRemovePart(part.partNumber, part.shift)}
+            onClick={() => onRemovePart(part.id)}
           >
             <IconTrash size={16} />
           </ActionIcon>
@@ -148,6 +145,7 @@ export default function WeeklyPlanTable({
   availableParts,
   onUpdateRecord,
   onRemovePart,
+  onUpdatePartIdentity,
   onAddPart,
   isLoadingParts
 }: WeeklyPlanTableProps) {
@@ -235,12 +233,13 @@ export default function WeeklyPlanTable({
         <Table.Tbody>
           {parts.map((part, idx) => (
             <PlanRow 
-              key={`${part.partNumber}-${part.shift}`}
+              key={part.id}
               part={part}
               index={idx}
               availableParts={availableParts}
               onUpdateRecord={onUpdateRecord}
               onRemovePart={onRemovePart}
+              onUpdatePartIdentity={onUpdatePartIdentity}
               onCellKeyDown={handleKeyDown}
             />
           ))}

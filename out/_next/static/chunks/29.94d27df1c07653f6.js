@@ -1,1 +1,0 @@
-"use strict";(self.webpackChunk_N_E=self.webpackChunk_N_E||[]).push([[29],{58029:(e,n,t)=>{t.d(n,{open:()=>c,save:()=>o});var a=t(68267);async function c(e={}){return"object"==typeof e&&Object.freeze(e),await (0,a.lA)("plugin:dialog|open",{options:e})}async function o(e={}){return"object"==typeof e&&Object.freeze(e),await (0,a.lA)("plugin:dialog|save",{options:e})}}}]);

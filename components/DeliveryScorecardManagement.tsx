@@ -48,10 +48,6 @@ export default function DeliveryScorecardManagement() {
   const [newWeekId, setNewWeekId] = useState('');
   const [newWeekLabel, setNewWeekLabel] = useState('');
 
-  // Add Part Modal State
-  const [addPartModalOpened, setAddPartModalOpened] = useState(false);
-  const [newPartNumber, setNewPartNumber] = useState<string | null>(null);
-  const [newPartShift, setNewPartShift] = useState<string | null>('A');
   const [availableParts, setAvailableParts] = useState<string[]>([]);
   const [isLoadingParts, setIsLoadingParts] = useState(false);
 
@@ -166,27 +162,10 @@ export default function DeliveryScorecardManagement() {
 
   const handleAddPart = () => {
     if (!activeTab || !selectedWeekId) return;
-    setNewPartNumber(null);
-    setNewPartShift('A');
-    setAddPartModalOpened(true);
+    store.addPartNumber(activeTab, selectedWeekId, '', '');
+    notifications.show({ title: 'Success', message: 'New row added to table', color: 'green' });
   };
 
-  const handleConfirmAddPart = () => {
-    if (!newPartNumber?.trim()) {
-        notifications.show({ title: 'Invalid Part Number', message: 'Please select a part number', color: 'red' });
-        return;
-    }
-    if (!newPartShift?.trim()) {
-       notifications.show({ title: 'Invalid Shift', message: 'Shift is required', color: 'red' });
-       return;
-    }
-    
-    if (!newPartNumber || !newPartShift) return;
-    
-    store.addPartNumber(activeTab!, selectedWeekId!, newPartNumber.trim(), newPartShift.trim());
-    setAddPartModalOpened(false);
-    notifications.show({ title: 'Success', message: 'Part number added to current week', color: 'green' });
-  };
 
   const handleSyncToDb = async () => {
     if (!connectionString) {
@@ -413,11 +392,14 @@ export default function DeliveryScorecardManagement() {
               parts={activeWeek.parts}
               availableParts={availableParts}
               isLoadingParts={isLoadingParts}
-              onUpdateRecord={(partNum: string, shift: string, day: DayOfWeek, field: 'target', val: number | null) => 
-                store.updateDailyRecord(activeTab!, selectedWeekId!, partNum, shift, day, field, val)
+              onUpdateRecord={(rowId: string, day: DayOfWeek, field: 'target', val: number | null) => 
+                store.updateDailyRecord(activeTab!, selectedWeekId!, rowId, day, field, val)
               }
-              onRemovePart={(partNum: string, shift: string) => 
-                store.removePartNumber(activeTab!, selectedWeekId!, partNum, shift)
+              onRemovePart={(rowId: string) => 
+                store.removePartNumber(activeTab!, selectedWeekId!, rowId)
+              }
+              onUpdatePartIdentity={(rowId: string, updates) =>
+                store.updatePartIdentity(activeTab!, selectedWeekId!, rowId, updates)
               }
               onAddPart={(partNum: string, shift: string) => 
                 store.addPartNumber(activeTab!, selectedWeekId!, partNum, shift)
@@ -474,40 +456,6 @@ export default function DeliveryScorecardManagement() {
         </Stack>
       </Modal>
 
-      {/* Add Part Modal */}
-      <Modal 
-        opened={addPartModalOpened} 
-        onClose={() => setAddPartModalOpened(false)} 
-        title={<Text fw={700}>Add New Part Row</Text>}
-        size="sm"
-        radius="md"
-      >
-        <Stack gap="md">
-           <Select
-             label="Part Number"
-             placeholder={isLoadingParts ? "Loading parts..." : "Select a part..."}
-             data={availableParts}
-             value={newPartNumber}
-             onChange={setNewPartNumber}
-             searchable
-             required
-             disabled={isLoadingParts}
-             nothingFoundMessage="No parts found for this process"
-           />
-           <Select
-             label="Shift"
-             placeholder="Select shift"
-             data={['A', 'B', 'C', 'D']}
-             value={newPartShift}
-             onChange={setNewPartShift}
-             required
-           />
-           <Group justify="flex-end" mt="md">
-             <Button variant="default" onClick={() => setAddPartModalOpened(false)}>Cancel</Button>
-             <Button color="indigo" onClick={handleConfirmAddPart}>Add Part</Button>
-           </Group>
-        </Stack>
-      </Modal>
     </Box>
   );
 }

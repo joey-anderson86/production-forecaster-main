@@ -25,6 +25,7 @@ interface EditEntryModalProps {
   weekLabel: string;
   partNumber: string;
   shift: string;
+  rowId: string;
   dayOfWeek: DayOfWeek;
   initialData: DailyScorecardRecord;
 }
@@ -37,6 +38,7 @@ export function EditEntryModal({
   weekLabel,
   partNumber,
   shift,
+  rowId,
   dayOfWeek,
   initialData
 }: EditEntryModalProps) {
@@ -86,9 +88,9 @@ export function EditEntryModal({
       const actualVal = actual === '' ? null : Number(actual);
 
       // 1. Update Zustand store (UI updates immediately)
-      updateStore(departmentName, weekId, partNumber, shift, dayOfWeek, 'target', targetVal);
-      updateStore(departmentName, weekId, partNumber, shift, dayOfWeek, 'actual', actualVal);
-      updateStore(departmentName, weekId, partNumber, shift, dayOfWeek, 'reasonCode', reasonCode.trim() || null);
+      updateStore(departmentName, weekId, rowId, dayOfWeek, 'target', targetVal);
+      updateStore(departmentName, weekId, rowId, dayOfWeek, 'actual', actualVal);
+      updateStore(departmentName, weekId, rowId, dayOfWeek, 'reasonCode', reasonCode.trim() || null);
 
       // 2. Sync to DB if connection is available
       if (connectionString) {

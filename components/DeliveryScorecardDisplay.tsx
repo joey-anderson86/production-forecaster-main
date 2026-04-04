@@ -73,6 +73,7 @@ export default function DeliveryScorecardDisplay() {
   const [editingEntry, setEditingEntry] = useState<{
     partNumber: string;
     shift: string;
+    rowId: string;
     dayOfWeek: DayOfWeek;
     record: DailyScorecardRecord;
   } | null>(null);
@@ -120,8 +121,8 @@ export default function DeliveryScorecardDisplay() {
 
   const activeDeptIcon = activeTab ? getProcessIcon(activeTab) : <IconBox size={20} />;
 
-  const handleCellClick = (partNumber: string, shift: string, dayOfWeek: DayOfWeek, record: DailyScorecardRecord) => {
-    setEditingEntry({ partNumber, shift, dayOfWeek, record });
+  const handleCellClick = (rowId: string, partNumber: string, shift: string, dayOfWeek: DayOfWeek, record: DailyScorecardRecord) => {
+    setEditingEntry({ rowId, partNumber, shift, dayOfWeek, record });
     setEditModalOpened(true);
   };
 
@@ -411,7 +412,7 @@ export default function DeliveryScorecardDisplay() {
                       const gap = totalActual - totalTarget;
 
                       return (
-                        <Table.Tr key={`${part.partNumber}_${part.shift}`} bg="var(--mantine-color-gray-0)">
+                        <Table.Tr key={part.id} bg="var(--mantine-color-gray-0)">
                           <Table.Td pl={40}>
                             <Group gap="xs" wrap="nowrap">
                                <Text size="xs" c="dimmed" fw={500} style={{ width: 14 }}></Text>
@@ -429,7 +430,7 @@ export default function DeliveryScorecardDisplay() {
                                   key={day} 
                                   ta="center"
                                   className="cursor-pointer hover:bg-white"
-                                  onClick={() => record && handleCellClick(part.partNumber, part.shift, day, record)}
+                                  onClick={() => record && handleCellClick(part.id, part.partNumber, part.shift, day, record)}
                                 >
                                   <Box py="xs" px="xs">
                                     <Text size="sm" fw={500} c="gray.4">-</Text>
@@ -448,7 +449,7 @@ export default function DeliveryScorecardDisplay() {
                                 bg={styles.bg} 
                                 p={0}
                                 className="cursor-pointer hover:opacity-80"
-                                onClick={() => handleCellClick(part.partNumber, part.shift, day, record)}
+                                onClick={() => handleCellClick(part.id, part.partNumber, part.shift, day, record)}
                               >
                                 <Tooltip 
                                   label={
@@ -515,6 +516,7 @@ export default function DeliveryScorecardDisplay() {
           weekLabel={activeWeek.weekLabel}
           partNumber={editingEntry.partNumber}
           shift={editingEntry.shift}
+          rowId={editingEntry.rowId}
           dayOfWeek={editingEntry.dayOfWeek}
           initialData={editingEntry.record}
         />

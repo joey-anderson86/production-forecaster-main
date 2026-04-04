@@ -14,6 +14,7 @@ export interface DailyScorecardRecord {
 }
 
 export interface PartScorecard {
+  id: string; // New field for stable identity
   partNumber: string;
   shift: string;
   dailyRecords: DailyScorecardRecord[]; // Always length 7
@@ -47,13 +48,13 @@ interface ScorecardActions {
   removeDepartment: (departmentName: string) => void;
   addWeek: (departmentName: string, weekId: string, weekLabel: string) => void;
   deleteWeek: (departmentName: string, weekId: string) => void;
-  addPartNumber: (departmentName: string, weekId: string, partNumber: string, shift: string) => void;
-  removePartNumber: (departmentName: string, weekId: string, partNumber: string, shift: string) => void;
+  addPartNumber: (departmentName: string, weekId: string, partNumber?: string, shift?: string) => void;
+  removePartNumber: (departmentName: string, weekId: string, rowId: string) => void;
+  updatePartIdentity: (departmentName: string, weekId: string, rowId: string, updates: { partNumber?: string, shift?: string }) => void;
   updateDailyRecord: (
     departmentName: string, 
     weekId: string, 
-    partNumber: string, 
-    shift: string,
+    rowId: string,
     dayOfWeek: DayOfWeek, 
     field: keyof DailyScorecardRecord, 
     value: any
@@ -139,18 +140,19 @@ export const useScorecardStore = create<ScorecardStore>()(
         };
       }),
 
-      addPartNumber: (departmentName, weekId, partNumber, shift) => set((state) => {
+      addPartNumber: (departmentName, weekId, partNumber = '', shift = '') => set((state) => {
         const dept = state.departments[departmentName];
         if (!dept || !dept.weeks[weekId]) return state;
 
         const week = dept.weeks[weekId];
         
-        // Don't add if part+shift combination already exists
-        if (week.parts.some(p => p.partNumber === partNumber && p.shift === shift)) {
+        // Only prevent duplicates if values are provided
+        if (partNumber && shift && week.parts.some(p => p.partNumber === partNumber && p.shift === shift)) {
           return state;
         }
 
         const newPart: PartScorecard = {
+          id: crypto.randomUUID(),
           partNumber,
           shift,
           dailyRecords: emptyDailyRecords(weekId)
@@ -173,7 +175,7 @@ export const useScorecardStore = create<ScorecardStore>()(
         };
       }),
 
-      removePartNumber: (departmentName, weekId, partNumber, shift) => set((state) => {
+      removePartNumber: (departmentName, weekId, rowId) => set((state) => {
          const dept = state.departments[departmentName];
          if (!dept || !dept.weeks[weekId]) return state;
 
@@ -187,7 +189,7 @@ export const useScorecardStore = create<ScorecardStore>()(
                  ...dept.weeks,
                  [weekId]: {
                    ...week,
-                   parts: week.parts.filter(p => !(p.partNumber === partNumber && p.shift === shift))
+                   parts: week.parts.filter(p => p.id !== rowId)
                  }
                }
              }
@@ -195,13 +197,40 @@ export const useScorecardStore = create<ScorecardStore>()(
          };
       }),
 
-      updateDailyRecord: (departmentName, weekId, partNumber, shift, dayOfWeek, field, value) => set((state) => {
+      updatePartIdentity: (departmentName, weekId, rowId, updates) => set((state) => {
         const dept = state.departments[departmentName];
         if (!dept || !dept.weeks[weekId]) return state;
 
         const week = dept.weeks[weekId];
         const updatedParts = week.parts.map(part => {
-          if (part.partNumber !== partNumber || part.shift !== shift) return part;
+          if (part.id !== rowId) return part;
+          return { ...part, ...updates };
+        });
+
+        return {
+          departments: {
+            ...state.departments,
+            [departmentName]: {
+              ...dept,
+              weeks: {
+                ...dept.weeks,
+                [weekId]: {
+                  ...week,
+                  parts: updatedParts
+                }
+              }
+            }
+          }
+        };
+      }),
+
+      updateDailyRecord: (departmentName, weekId, rowId, dayOfWeek, field, value) => set((state) => {
+        const dept = state.departments[departmentName];
+        if (!dept || !dept.weeks[weekId]) return state;
+
+        const week = dept.weeks[weekId];
+        const updatedParts = week.parts.map(part => {
+          if (part.id !== rowId) return part;
           
           return {
             ...part,
@@ -236,9 +265,10 @@ export const useScorecardStore = create<ScorecardStore>()(
 
         const week = dept.weeks[weekId];
         
-        // Ensure imported data has dates populated
+        // Ensure imported data has dates populated and IDs
         const augmentedData = data.map(part => ({
           ...part,
+          id: part.id || crypto.randomUUID(),
           dailyRecords: part.dailyRecords.map(record => ({
             ...record,
             date: record.date || getISODateForDay(weekId, record.dayOfWeek)
@@ -280,9 +310,10 @@ export const useScorecardStore = create<ScorecardStore>()(
 
           const weekIdToUse = existingWeekId || `week-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
-          // Ensure imported data has dates populated
+          // Ensure imported data has dates populated and IDs
           const augmentedParts = group.parts.map(part => ({
             ...part,
+            id: part.id || crypto.randomUUID(),
             dailyRecords: part.dailyRecords.map(record => ({
               ...record,
               date: record.date || getISODateForDay(weekIdToUse, record.dayOfWeek)
@@ -343,6 +374,7 @@ export const useScorecardStore = create<ScorecardStore>()(
             
             if (!part) {
               part = {
+                id: crypto.randomUUID(),
                 partNumber: pNum,
                 shift,
                 dailyRecords: [
