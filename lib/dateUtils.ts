@@ -135,3 +135,27 @@ export function getDayOfWeekLabel(date: Date): DayOfWeek {
   const index = (date.getDay() + 6) % 7; 
   return DAYS_OF_WEEK[index];
 }
+
+/**
+ * Determines if a given date is a working day for a shift based on a 14-day 2-2-3 Panama schedule.
+ * Cycle (14 days): 2 ON, 2 OFF, 3 ON, 2 OFF, 2 ON, 3 OFF
+ * Working days: Day 0, 1, 4, 5, 6, 9, 10
+ */
+export function isWorkingDay(targetDate: Date, anchorDateString: string): boolean {
+  if (!anchorDateString) return true; // Default to working if no anchor is set
+  
+  const PANAMA_WORKING_DAYS = [0, 1, 4, 5, 6, 9, 10];
+  const anchor = new Date(anchorDateString);
+  
+  // Normalize both to midnight local time to avoid DST and time-of-day issues
+  const t = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
+  const a = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());
+  
+  const diffTime = t.getTime() - a.getTime();
+  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+  
+  // Handle cycle (0-13)
+  const cycleDay = ((diffDays % 14) + 14) % 14;
+  
+  return PANAMA_WORKING_DAYS.includes(cycleDay);
+}

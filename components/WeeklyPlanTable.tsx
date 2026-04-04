@@ -9,8 +9,8 @@ import {
   IconTrash, IconAlertCircle, IconCalculator, 
   IconChevronRight, IconChevronDown 
 } from '@tabler/icons-react';
-import { DayOfWeek, DAYS_OF_WEEK, getWeekDates } from '@/lib/dateUtils';
-import { PartScorecard } from '@/lib/scorecardStore';
+import { DayOfWeek, DAYS_OF_WEEK, getWeekDates, isWorkingDay } from '@/lib/dateUtils';
+import { PartScorecard, useScorecardStore } from '@/lib/scorecardStore';
 
 interface WeeklyPlanTableProps {
   department: string;
@@ -129,11 +129,15 @@ const PlanRow = memo(({
   onUpdateRecord, 
   onRemovePart,
   onUpdatePartIdentity,
+  weekDates,
+  shiftSettings,
 }: { 
   part: PartScorecard;
   onUpdateRecord: WeeklyPlanTableProps['onUpdateRecord'];
   onRemovePart: WeeklyPlanTableProps['onRemovePart'];
   onUpdatePartIdentity: WeeklyPlanTableProps['onUpdatePartIdentity'];
+  weekDates: Date[];
+  shiftSettings: Record<string, string>;
 }) => {
   const rowTotal = useMemo(() => {
     return part.dailyRecords.reduce((sum, rec) => sum + (rec.target || 0), 0);
@@ -159,29 +163,53 @@ const PlanRow = memo(({
         />
       </Table.Td>
 
-      {DAYS_OF_WEEK.map((day) => {
+      {DAYS_OF_WEEK.map((day, idx) => {
         const record = part.dailyRecords.find(r => r.dayOfWeek === day);
+        const date = weekDates[idx];
+        const isWorking = date ? isWorkingDay(date, shiftSettings[part.shift] || '') : true;
+        const isDisabled = !isWorking;
+
         return (
-          <Table.Td key={day} p={0} style={{ borderLeft: '1px solid var(--mantine-color-gray-2)' }}>
-            <NumberInput
-              value={record?.target ?? ''}
-              onChange={(val) => onUpdateRecord(part.id, day, 'target', typeof val === 'number' ? val : null)}
-              hideControls
-              variant="unstyled"
-              min={0}
-              placeholder="-"
-              styles={{ 
-                input: { 
-                  textAlign: 'center', 
-                  height: 36,
-                  fontSize: '13px',
-                  fontWeight: 500,
-                  '&:focus': {
-                    backgroundColor: 'var(--mantine-color-indigo-0)',
-                  }
-                } 
-              }}
-            />
+          <Table.Td 
+            key={day} 
+            p={0} 
+            style={{ 
+              borderLeft: '1px solid var(--mantine-color-gray-2)',
+              backgroundColor: isDisabled ? 'var(--mantine-color-gray-1)' : 'transparent',
+              transition: 'background-color 0.2s ease'
+            }}
+          >
+            <Tooltip 
+              label={isDisabled ? `Shift ${part.shift} is OFF on this day` : ""} 
+              disabled={!isDisabled}
+              position="top"
+              withinPortal
+            >
+              <Box>
+                <NumberInput
+                  value={record?.target ?? ''}
+                  onChange={(val) => onUpdateRecord(part.id, day, 'target', typeof val === 'number' ? val : null)}
+                  hideControls
+                  variant="unstyled"
+                  min={0}
+                  placeholder={isDisabled ? "" : "-"}
+                  disabled={isDisabled}
+                  styles={{ 
+                    input: { 
+                      textAlign: 'center', 
+                      height: 36,
+                      fontSize: '13px',
+                      fontWeight: isDisabled ? 400 : 500,
+                      color: isDisabled ? 'var(--mantine-color-gray-5)' : 'inherit',
+                      cursor: isDisabled ? 'not-allowed' : 'text',
+                      '&:focus': {
+                        backgroundColor: 'var(--mantine-color-indigo-0)',
+                      }
+                    } 
+                  }}
+                />
+              </Box>
+            </Tooltip>
           </Table.Td>
         );
       })}
@@ -220,6 +248,7 @@ export default function WeeklyPlanTable({
   onUpdatePartGroupIdentity,
 }: WeeklyPlanTableProps) {
   
+  const shiftSettings = useScorecardStore(state => state.shiftSettings);
   const [expandedParts, setExpandedParts] = useState<Set<string>>(new Set());
 
   // Group parts by Part Number OR Group ID if part is unassigned
@@ -325,6 +354,8 @@ export default function WeeklyPlanTable({
                       onUpdateRecord={onUpdateRecord}
                       onRemovePart={onRemovePart}
                       onUpdatePartIdentity={onUpdatePartIdentity}
+                      weekDates={weekDates}
+                      shiftSettings={shiftSettings}
                     />
                   ))
               }

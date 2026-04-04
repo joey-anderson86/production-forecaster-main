@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   TextInput,
   Select,
@@ -19,11 +19,14 @@ import {
   ActionIcon,
   NumberInput,
   FileButton,
+  Grid,
 } from "@mantine/core";
+import { DatePickerInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
 import { invoke } from "@tauri-apps/api/core";
 import { load } from "@tauri-apps/plugin-store";
 import Papa from "papaparse";
+import dayjs from "dayjs";
 import {
   IconDatabase,
   IconTable,
@@ -34,10 +37,13 @@ import {
   IconDeviceFloppy,
   IconTrash,
   IconUpload,
-  IconDownload
+  IconDownload,
+  IconCalendar,
+  IconInfoCircle,
 } from "@tabler/icons-react";
 import { getCurrentWeekId } from "@/lib/dateUtils";
 import { useProcessStore } from "@/lib/processStore";
+import { useScorecardStore } from "@/lib/scorecardStore";
 
 
 
@@ -75,6 +81,8 @@ interface Process {
 export function DatabaseSettings() {
   const fetchGlobalProcesses = useProcessStore((state) => state.fetchProcesses);
   const globalProcesses = useProcessStore((state) => state.processes);
+  const shiftSettings = useScorecardStore((state) => state.shiftSettings);
+  const updateShiftSettings = useScorecardStore((state) => state.updateShiftSettings);
   const [connectionString, setConnectionString] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
@@ -165,7 +173,7 @@ export function DatabaseSettings() {
     init();
   }, []);
 
-  const fetchData = async (tab: string | null, connStr?: string) => {
+  const fetchData = useCallback(async (tab: string | null, connStr?: string) => {
     const activeConnStr = connStr || connectionString;
     if (!activeConnStr) return;
     
@@ -209,7 +217,7 @@ export function DatabaseSettings() {
     } finally {
       setIsLoadingData(false);
     }
-  };
+  }, [connectionString]);
 
   useEffect(() => {
     // This handles tab changes. 
@@ -621,6 +629,17 @@ export function DatabaseSettings() {
     });
   };
 
+  const parseOrNull = (isoStr: string | undefined): Date | null => {
+    if (!isoStr) return null;
+    const d = new Date(isoStr);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
+  const formatIso = (date: Date | null | undefined): string => {
+    if (!date) return "";
+    return dayjs(date).format("YYYY-MM-DD");
+  };
+
   const renderTable = () => {
 
 
@@ -934,6 +953,64 @@ export function DatabaseSettings() {
               Save Connection
             </Button>
           </Group>
+        </Stack>
+      </Card>
+
+      {/* Work Shift Schedule Section */}
+      <Card shadow="sm" p="lg" radius="md" withBorder>
+        <Stack gap="md">
+          <Group justify="space-between" align="flex-start">
+            <Stack gap={4}>
+              <Group gap="xs">
+                <IconCalendar size={22} color="var(--mantine-color-indigo-6)" />
+                <Title order={4}>Work Shift Schedule (Panama 2-2-3)</Title>
+              </Group>
+              <Text size="sm" c="dimmed">
+                Configure the 14-day cycle "Anchor Date" (Day 0) for each shift pair.
+              </Text>
+            </Stack>
+            <Alert icon={<IconInfoCircle size={16} />} variant="light" color="indigo" p="xs" style={{ maxWidth: 350 }}>
+              <Text size="xs">
+                The Panama schedule follows a 14-day rotation: <b>2 ON, 2 OFF, 3 ON, 2 OFF, 2 ON, 3 OFF.</b> 
+                The Anchor Date defines Day 0 of this cycle.
+              </Text>
+            </Alert>
+          </Group>
+
+          <Grid gutter="xl">
+            <Grid.Col span={{ base: 12, sm: 6 }}>
+              <DatePickerInput
+                label="Shifts A & B Anchor Date"
+                placeholder="Pick anchor date for A & B"
+                value={parseOrNull(shiftSettings['A'])}
+                onChange={(val) => {
+                  const d = formatIso(Array.isArray(val) ? val[0] : val);
+                  updateShiftSettings('A', d);
+                  updateShiftSettings('B', d);
+                }}
+                leftSection={<IconCalendar size={18} stroke={1.5} />}
+                clearable
+                dropdownType="popover"
+                valueFormat="YYYY-MM-DD"
+              />
+            </Grid.Col>
+            <Grid.Col span={{ base: 12, sm: 6 }}>
+              <DatePickerInput
+                label="Shifts C & D Anchor Date"
+                placeholder="Pick anchor date for C & D"
+                value={parseOrNull(shiftSettings['C'])}
+                onChange={(val) => {
+                  const d = formatIso(Array.isArray(val) ? val[0] : val);
+                  updateShiftSettings('C', d);
+                  updateShiftSettings('D', d);
+                }}
+                leftSection={<IconCalendar size={18} stroke={1.5} />}
+                clearable
+                dropdownType="popover"
+                valueFormat="YYYY-MM-DD"
+              />
+            </Grid.Col>
+          </Grid>
         </Stack>
       </Card>
 

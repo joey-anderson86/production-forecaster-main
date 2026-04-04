@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { getISODateForDay } from './dateUtils';
+import { getISODateForDay, isWorkingDay } from './dateUtils';
 
 export type DayOfWeek = 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat' | 'Sun';
 
@@ -40,6 +40,7 @@ export interface BulkImportGroup {
 
 export interface ScorecardState {
   departments: Record<string, DepartmentScorecard>;
+  shiftSettings: Record<string, string>; // Shift -> Anchor Date (ISO)
   isLoading: boolean;
   syncStatus: 'saved' | 'saving' | 'error';
   error: string | null;
@@ -80,6 +81,7 @@ interface ScorecardActions {
     partNumber: string,
     shift: string
   ) => Promise<void>;
+  updateShiftSettings: (shift: string, anchorDate: string) => void;
 }
 
 export type ScorecardStore = ScorecardState & ScorecardActions;
@@ -99,6 +101,12 @@ export const useScorecardStore = create<ScorecardStore>()(
   persist(
     (set, get) => ({
       departments: {},
+      shiftSettings: {
+        'A': '2026-03-23',
+        'B': '2026-03-23',
+        'C': '2026-03-30',
+        'D': '2026-03-30',
+      },
       isLoading: false,
       syncStatus: 'saved',
       error: null,
@@ -223,7 +231,24 @@ export const useScorecardStore = create<ScorecardStore>()(
         const week = dept.weeks[weekId];
         const updatedParts = week.parts.map(part => {
           if (part.id !== rowId) return part;
-          return { ...part, ...updates };
+          
+          let updatedPart = { ...part, ...updates };
+
+          // Panama Schedule: Force non-working days to null if shift changes
+          if (updates.shift && updates.shift !== part.shift) {
+            const newAnchor = state.shiftSettings[updates.shift];
+            if (newAnchor) {
+              updatedPart.dailyRecords = updatedPart.dailyRecords.map(record => {
+                const targetDate = record.date ? new Date(record.date) : null;
+                if (targetDate && !isWorkingDay(targetDate, newAnchor)) {
+                  return { ...record, target: null };
+                }
+                return record;
+              });
+            }
+          }
+
+          return updatedPart;
         });
 
         return {
@@ -565,7 +590,14 @@ export const useScorecardStore = create<ScorecardStore>()(
           set({ syncStatus: 'error', error: err.toString() });
           throw err;
         }
-      }
+      },
+
+      updateShiftSettings: (shift, anchorDate) => set((state) => ({
+        shiftSettings: {
+          ...state.shiftSettings,
+          [shift]: anchorDate
+        }
+      }))
     }),
     {
       name: 'scorecard-storage', // Key for local storage persistence
