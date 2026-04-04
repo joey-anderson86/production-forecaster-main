@@ -7,11 +7,13 @@ import {
 } from '@mantine/core';
 import { 
   IconFlask, IconBox, IconShip, IconClipboardCheck, IconPlus, 
-  IconChevronDown, IconChevronRight, IconSearch, IconArrowsSort, IconSortAscending, IconSortDescending 
+  IconChevronDown, IconChevronRight, IconSearch, IconArrowsSort, IconSortAscending, IconSortDescending,
+  IconChartBar, IconTarget
 } from '@tabler/icons-react';
 import { EditEntryModal } from './EditEntryModal';
 import { ShiftProductionEntryModal } from './ShiftProductionEntryModal';
 import { DeliveryLossPareto } from './DeliveryLossPareto';
+import { ShiftAttainmentChart } from './ShiftAttainmentChart';
 import { getTodayNumeric, getWeekDates } from '@/lib/dateUtils';
 import { useProcessStore } from '@/lib/processStore';
 import { TextInput } from '@mantine/core';
@@ -406,7 +408,12 @@ export default function DeliveryScorecardDisplay() {
                     </Table.Tr>
 
                     {/* Child Rows */}
-                    {isExpanded && group.shifts.map(part => {
+                    {isExpanded && [...group.shifts]
+                      .sort((a, b) => {
+                        const order: Record<string, number> = { 'A': 1, 'B': 2, 'C': 3, 'D': 4 };
+                        return (order[a.shift] || 99) - (order[b.shift] || 99);
+                      })
+                      .map(part => {
                       const totalActual = part.dailyRecords.reduce((sum, r) => sum + (r.actual || 0), 0);
                       const totalTarget = part.dailyRecords.reduce((sum, r) => sum + (r.target || 0), 0);
                       const gap = totalActual - totalTarget;
@@ -523,10 +530,26 @@ export default function DeliveryScorecardDisplay() {
       />
 
       {activeTab && (
-        <DeliveryLossPareto 
-          weekData={activeWeek}
-          departmentName={activeTab}
-        />
+        <Tabs defaultValue="pareto" mt="xl" variant="outline">
+          <Tabs.List>
+            <Tabs.Tab value="pareto" leftSection={<IconChartBar size={16} />}>Loss Pareto</Tabs.Tab>
+            <Tabs.Tab value="attainment" leftSection={<IconTarget size={16} />}>Shift Attainment</Tabs.Tab>
+          </Tabs.List>
+
+          <Tabs.Panel value="pareto">
+            <DeliveryLossPareto 
+              weekData={activeWeek}
+              departmentName={activeTab}
+            />
+          </Tabs.Panel>
+
+          <Tabs.Panel value="attainment">
+            <ShiftAttainmentChart 
+              weekData={activeWeek}
+              departmentName={activeTab}
+            />
+          </Tabs.Panel>
+        </Tabs>
       )}
     </Box>
   );

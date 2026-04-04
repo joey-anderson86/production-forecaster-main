@@ -34,7 +34,8 @@ const ParentRow = ({
   isExpanded, 
   availableParts,
   onToggle,
-  onUpdatePartGroupIdentity
+  onUpdatePartGroupIdentity,
+  onUpdatePartIdentity
 }: { 
   partNumber: string; 
   childRows: PartScorecard[]; 
@@ -42,6 +43,7 @@ const ParentRow = ({
   availableParts: string[];
   onToggle: () => void;
   onUpdatePartGroupIdentity: WeeklyPlanTableProps['onUpdatePartGroupIdentity'];
+  onUpdatePartIdentity: WeeklyPlanTableProps['onUpdatePartIdentity'];
 }) => {
   const dailyTotals = useMemo(() => {
     return DAYS_OF_WEEK.map(day => 
@@ -54,9 +56,9 @@ const ParentRow = ({
 
   const grandTotal = useMemo(() => dailyTotals.reduce((a, b) => a + b, 0), [dailyTotals]);
   
-  // Check if this is a "New Batch" (no part number but has a groupId)
+  // Check if this is a "New Batch" (no part number)
   const groupId = childRows[0]?.groupId;
-  const isNewBatch = !partNumber && groupId;
+  const isNewBatch = !partNumber;
 
   return (
     <Table.Tr bg="indigo.0" style={{ cursor: 'pointer' }} onClick={onToggle}>
@@ -74,7 +76,15 @@ const ParentRow = ({
                 searchable
                 size="xs"
                 comboboxProps={{ withinPortal: true }}
-                onChange={(val) => val && onUpdatePartGroupIdentity(groupId!, val)}
+                onChange={(val) => {
+                  if (!val) return;
+                  if (groupId) {
+                    onUpdatePartGroupIdentity(groupId, val);
+                  } else {
+                    // Fallback: This group doesn't have a groupId, update all child rows individually
+                    childRows.forEach(row => onUpdatePartIdentity(row.id, { partNumber: val }));
+                  }
+                }}
                 styles={{ 
                   input: { 
                     fontWeight: 700,
@@ -300,16 +310,24 @@ export default function WeeklyPlanTable({
                 availableParts={availableParts}
                 onToggle={() => toggleExpand(groupKey)}
                 onUpdatePartGroupIdentity={onUpdatePartGroupIdentity}
+                onUpdatePartIdentity={onUpdatePartIdentity}
               />
-              {expandedParts.has(groupKey) && childRows.map((part) => (
-                <PlanRow 
-                  key={part.id}
-                  part={part}
-                  onUpdateRecord={onUpdateRecord}
-                  onRemovePart={onRemovePart}
-                  onUpdatePartIdentity={onUpdatePartIdentity}
-                />
-              ))}
+              {expandedParts.has(groupKey) && 
+                [...childRows]
+                  .sort((a, b) => {
+                    const order: Record<string, number> = { 'A': 1, 'B': 2, 'C': 3, 'D': 4 };
+                    return (order[a.shift] || 99) - (order[b.shift] || 99);
+                  })
+                  .map((part) => (
+                    <PlanRow 
+                      key={part.id}
+                      part={part}
+                      onUpdateRecord={onUpdateRecord}
+                      onRemovePart={onRemovePart}
+                      onUpdatePartIdentity={onUpdatePartIdentity}
+                    />
+                  ))
+              }
             </React.Fragment>
           ))}
 

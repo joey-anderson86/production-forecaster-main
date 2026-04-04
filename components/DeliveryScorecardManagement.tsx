@@ -176,7 +176,9 @@ export default function DeliveryScorecardManagement() {
         color: 'green' 
       });
     } else {
-      store.addPartNumber(activeTab, selectedWeekId, '', '');
+      // Still generate a groupId so it can be assigned via parent row selection
+      const groupId = crypto.randomUUID();
+      store.addPartNumber(activeTab, selectedWeekId, '', '', groupId);
       notifications.show({ title: 'Success', message: 'New row added to table', color: 'green' });
     }
   };
