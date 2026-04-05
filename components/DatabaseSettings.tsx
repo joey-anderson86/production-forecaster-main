@@ -88,7 +88,7 @@ export function DatabaseSettings() {
   const [isTesting, setIsTesting] = useState(false);
 
   // Preview States
-  const [activeTab, setActiveTab] = useState<string | null>("locatorMapping");
+  const [activeTab, setActiveTab] = useState<string | null>("process");
   const [locatorMappings, setLocatorMappings] = useState<LocatorMapping[]>([]);
   const [partInfos, setPartInfos] = useState<PartInfo[]>([]);
   const [processInfos, setProcessInfos] = useState<ProcessInfo[]>([]);
@@ -1089,8 +1089,8 @@ export function DatabaseSettings() {
 
           <Tabs value={activeTab} onChange={setActiveTab} color="indigo">
             <Tabs.List>
-              <Tabs.Tab value="locatorMapping" leftSection={<IconTable size={14} />}>
-                Locator Mapping
+              <Tabs.Tab value="process" leftSection={<IconTable size={14} />}>
+                Processes
               </Tabs.Tab>
               <Tabs.Tab value="partInfo" leftSection={<IconTable size={14} />}>
                 Part Information
@@ -1101,12 +1101,12 @@ export function DatabaseSettings() {
               <Tabs.Tab value="dailyRate" leftSection={<IconTable size={14} />}>
                 Daily Rate
               </Tabs.Tab>
-              <Tabs.Tab value="process" leftSection={<IconTable size={14} />}>
-                Processes
+              <Tabs.Tab value="locatorMapping" leftSection={<IconTable size={14} />}>
+                Locator Mapping
               </Tabs.Tab>
             </Tabs.List>
 
-            <Tabs.Panel value="locatorMapping">
+            <Tabs.Panel value="process">
               {renderTable()}
             </Tabs.Panel>
 
@@ -1122,7 +1122,7 @@ export function DatabaseSettings() {
               {renderTable()}
             </Tabs.Panel>
 
-            <Tabs.Panel value="process">
+            <Tabs.Panel value="locatorMapping">
               {renderTable()}
             </Tabs.Panel>
           </Tabs>

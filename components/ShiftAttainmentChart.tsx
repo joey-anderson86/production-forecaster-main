@@ -76,8 +76,7 @@ export function ShiftAttainmentChart({ weekData, departmentName }: ShiftAttainme
             ]}
             tickLine="xy"
             gridAxis="xy"
-            yAxisProps={{ domain: [0, 100] }}
-            unit="%"
+            yAxisProps={{ domain: [0, 110] }}
             valueFormatter={(value) => `${value}%`}
             tooltipProps={{
               cursor: false,

@@ -57,7 +57,7 @@ export default function ProductionForecaster() {
   const [dates, setDates] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
-  const [mainTab, setMainTab] = useState<string>('forecaster');
+  const [mainTab, setMainTab] = useState<string>('scorecard-dash');
 
   const { toggle: toggleFullscreen, fullscreen, ref: tableRef } = useFullscreen<HTMLDivElement>();
 
@@ -563,9 +563,9 @@ export default function ProductionForecaster() {
         <div className="flex justify-center mb-6">
           <Tabs value={mainTab} onChange={(val) => setMainTab(val as string)} variant="pills" color="indigo" radius="md">
             <Tabs.List>
-              <Tabs.Tab value="forecaster">Production Forecaster</Tabs.Tab>
-              <Tabs.Tab value="scorecard-mgmt">Production Planning</Tabs.Tab>
               <Tabs.Tab value="scorecard-dash">Delivery Dashboard</Tabs.Tab>
+              <Tabs.Tab value="scorecard-mgmt">Production Planner</Tabs.Tab>
+              <Tabs.Tab value="forecaster">Production Forecaster</Tabs.Tab>
               <Tabs.Tab value="settings">Settings</Tabs.Tab>
             </Tabs.List>
           </Tabs>
