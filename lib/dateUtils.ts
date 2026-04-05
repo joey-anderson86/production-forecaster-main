@@ -2,6 +2,11 @@
  * Utility functions for date manipulation in the context of the Production Forecaster.
  */
 
+import dayjs from 'dayjs';
+import isoWeek from 'dayjs/plugin/isoWeek';
+
+dayjs.extend(isoWeek);
+
 export type DayOfWeek = 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat' | 'Sun';
 
 export const DAYS_OF_WEEK: DayOfWeek[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -168,4 +173,32 @@ export function parseISOLocal(dateStr: string): Date {
   if (!dateStr) return new Date();
   const [year, month, day] = dateStr.split('-').map(Number);
   return new Date(year, month - 1, day);
+}
+
+/**
+ * Generates a display label for a week identifier (e.g., "2026-w14").
+ * Format: Week {WW} ({M/D/YYYY} - {M/D/YYYY})
+ */
+export function generateWeekLabel(weekString: string): string {
+  const isoWeekRegex = /^\d{4}-w\d{2}$/i;
+  
+  if (!weekString || !isoWeekRegex.test(weekString)) {
+    return 'Enter a valid week identifier...';
+  }
+
+  try {
+    const [yearStr, weekStr] = weekString.split('-w');
+    const year = parseInt(yearStr);
+    const week = parseInt(weekStr);
+
+    // Use dayjs with isoWeek to find the Monday and Sunday
+    const monday = dayjs().year(year).isoWeek(week).startOf('isoWeek');
+    const sunday = monday.endOf('isoWeek');
+
+    // Format: Week 14 (3/30/2026 - 4/5/2026)
+    return `Week ${week} (${monday.format('M/D/YYYY')} - ${sunday.format('M/D/YYYY')})`;
+  } catch (err) {
+    console.error("Failed to generate week label:", err);
+    return 'Invalid week identifier';
+  }
 }

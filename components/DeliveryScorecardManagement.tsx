@@ -16,7 +16,7 @@ import { useScorecardStore, DayOfWeek, PartScorecard, BulkImportGroup } from '@/
 import WeeklyPlanTable from './WeeklyPlanTable';
 import { notifications } from '@mantine/notifications';
 import Papa from 'papaparse';
-import { getISODateForDay, getCurrentWeekId } from '@/lib/dateUtils';
+import { getISODateForDay, getCurrentWeekId, generateWeekLabel } from '@/lib/dateUtils';
 import { useProcessStore } from '@/lib/processStore';
 import { ask } from '@tauri-apps/plugin-dialog';
 import { generateSmartCopy } from '@/lib/copyUtils';
@@ -53,9 +53,10 @@ export default function DeliveryScorecardManagement() {
   // Add Week Modal State
   const [addWeekModalOpened, setAddWeekModalOpened] = useState(false);
   const [newWeekId, setNewWeekId] = useState('');
-  const [newWeekLabel, setNewWeekLabel] = useState('');
   const [copySourceWeekId, setCopySourceWeekId] = useState<string | null>('none');
   const [isSubmittingWeek, setIsSubmittingWeek] = useState(false);
+
+  const derivedWeekLabel = React.useMemo(() => generateWeekLabel(newWeekId), [newWeekId]);
 
   const [availableParts, setAvailableParts] = useState<string[]>([]);
   const [isLoadingParts, setIsLoadingParts] = useState(false);
@@ -147,19 +148,13 @@ export default function DeliveryScorecardManagement() {
 
   const handleAddWeek = () => {
     if (!activeTab) return;
-    const weekId = getCurrentWeekId();
-    setNewWeekId(weekId);
-    setNewWeekLabel(`Week ${weekId.split('-w')[1]} (Month Day Range)`);
+    setNewWeekId(getCurrentWeekId());
     setAddWeekModalOpened(true);
   };
 
   const handleConfirmAddWeek = async () => {
-    if (!newWeekId?.trim()) {
+    if (!newWeekId?.trim() || derivedWeekLabel.startsWith('Enter a valid')) {
        notifications.show({ title: 'Invalid ID', message: 'Week ID is required', color: 'red' });
-       return;
-    }
-    if (!newWeekLabel?.trim()) {
-       notifications.show({ title: 'Invalid Label', message: 'Week Label is required', color: 'red' });
        return;
     }
     if (!activeTab) return;
@@ -178,7 +173,7 @@ export default function DeliveryScorecardManagement() {
         );
 
         // Add the week skeleton to store first (prevents missing week errors)
-        store.addWeek(activeTab, newWeekId.trim(), newWeekLabel.trim());
+        store.addWeek(activeTab, newWeekId.trim(), derivedWeekLabel.trim());
 
         if (dbRecordsToUpsert.length > 0 && connectionString) {
           const { invoke } = await import('@tauri-apps/api/core');
@@ -195,7 +190,7 @@ export default function DeliveryScorecardManagement() {
         setIsSubmittingWeek(false);
       }
     } else {
-      store.addWeek(activeTab, newWeekId.trim(), newWeekLabel.trim());
+      store.addWeek(activeTab, newWeekId.trim(), derivedWeekLabel.trim());
       setSelectedWeekId(newWeekId.trim());
       setAddWeekModalOpened(false);
       notifications.show({ title: 'Success', message: 'New week added to store', color: 'green' });
@@ -665,9 +660,10 @@ export default function DeliveryScorecardManagement() {
              label="Display Label"
              description="Used for selection dropdowns"
              placeholder="e.g. Week 41 (Oct 05 - Oct 11)"
-             value={newWeekLabel}
-             onChange={(e) => setNewWeekLabel(e.currentTarget.value)}
-             required
+             value={derivedWeekLabel}
+             readOnly
+             variant="filled"
+             tabIndex={-1}
            />
            <Select
              label="Copy schedule from... (Optional)"
