@@ -225,10 +225,6 @@ export default function DeliveryScorecardManagement() {
 
     // 3. Debounced Save to DB (Per-cell basis to prevent race conditions during rapid entry)
     const cellKey = `${rowId}-${day}`;
-    if (autoSaveTimeoutsRef.current[cellKey]) {
-      clearTimeout(autoSaveTimeoutsRef.current[cellKey]);
-    }
-
     autoSaveTimeoutsRef.current[cellKey] = setTimeout(async () => {
       if (!connectionString) return;
       try {
@@ -243,6 +239,42 @@ export default function DeliveryScorecardManagement() {
         });
       }
     }, 750);
+  };
+
+  const handleBatchUpdateRecords = (updates: { rowId: string, day: DayOfWeek, field: 'target' | 'actual', value: number | null }[]) => {
+    if (!activeTab || !selectedWeekId) return;
+
+    const recordsToSave: any[] = [];
+    
+    // 1. Optimistic Update
+    updates.forEach(({ rowId, day, field, value }) => {
+      store.updateDailyRecord(activeTab, selectedWeekId, rowId, day, field, value);
+
+      // 2. Prepare DB Record (Identity Gate)
+      const part = activeWeek?.parts.find(p => p.id === rowId);
+      if (part?.partNumber && part?.shift) {
+        const record = part.dailyRecords.find(r => r.dayOfWeek === day);
+        recordsToSave.push({
+            department: activeTab,
+            weekIdentifier: selectedWeekId,
+            partNumber: part.partNumber,
+            dayOfWeek: day,
+            target: field === 'target' ? value : record?.target,
+            actual: field === 'actual' ? value : record?.actual,
+            date: record?.date,
+            shift: part.shift,
+            reasonCode: record?.reasonCode
+        });
+      }
+    });
+
+    // 3. Batch DB Save
+    if (recordsToSave.length > 0 && connectionString) {
+      import('@tauri-apps/api/core').then(({ invoke }) => {
+         invoke('upsert_scorecard_data', { connectionString, records: recordsToSave })
+           .catch(e => notifications.show({ title: 'Batch Save Failed', message: e.toString(), color: 'red' }));
+      });
+    }
   };
 
   const SyncStatusIndicator = () => {
@@ -480,6 +512,7 @@ export default function DeliveryScorecardManagement() {
               availableParts={availableParts}
               isLoadingParts={isLoadingParts}
               onUpdateRecord={coreHandleUpdateRecord}
+              onBatchUpdateRecords={handleBatchUpdateRecords}
               onRemovePart={async (rowId: string) => {
                 const confirmed = await ask("Are you sure you want to remove this row? This will also delete it from the database.", {
                   title: 'Confirm Deletion',

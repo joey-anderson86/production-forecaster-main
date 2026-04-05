@@ -7,7 +7,7 @@ import {
 } from '@mantine/core';
 import { 
   IconTrash, IconAlertCircle, IconCalculator, 
-  IconChevronRight, IconChevronDown 
+  IconChevronRight, IconChevronDown, IconWand
 } from '@tabler/icons-react';
 import { DayOfWeek, DAYS_OF_WEEK, getWeekDates, isWorkingDay } from '@/lib/dateUtils';
 import { PartScorecard, useScorecardStore } from '@/lib/scorecardStore';
@@ -18,11 +18,46 @@ interface WeeklyPlanTableProps {
   parts: PartScorecard[];
   availableParts: string[];
   onUpdateRecord: (rowId: string, day: DayOfWeek, field: 'target', value: number | null) => void;
+  onBatchUpdateRecords?: (updates: { rowId: string, day: DayOfWeek, field: 'target' | 'actual', value: number | null }[]) => void;
   onRemovePart: (rowId: string) => void;
   onUpdatePartIdentity: (rowId: string, updates: { partNumber?: string, shift?: string }) => void;
   onUpdatePartGroupIdentity: (groupId: string, partNumber: string) => void;
   onAddPart: (partNumber: string, shift: string) => void;
   isLoadingParts?: boolean;
+}
+
+export function distributeDemand(
+  totalDemand: number, 
+  childRows: PartScorecard[], 
+  weekDates: Date[], 
+  anchorDates: Record<string, string>
+) {
+  const validSlots: { rowId: string, day: DayOfWeek }[] = [];
+  
+  // Sort childRows by Shift (A, B, C, D) to ensure consistent ordering per day
+  const sortedRows = [...childRows].sort((a, b) => a.shift.localeCompare(b.shift));
+
+  DAYS_OF_WEEK.forEach((day, idx) => {
+    const date = weekDates[idx];
+    if (!date) return;
+
+    sortedRows.forEach(part => {
+      const anchorDate = anchorDates[part.shift] || '';
+      if (isWorkingDay(date, anchorDate)) {
+        validSlots.push({ rowId: part.id, day });
+      }
+    });
+  });
+
+  if (validSlots.length === 0) return [];
+
+  const baseAmount = Math.floor(totalDemand / validSlots.length);
+  const remainder = totalDemand % validSlots.length;
+
+  return validSlots.map((slot, index) => ({
+    ...slot,
+    value: baseAmount + (index < remainder ? 1 : 0)
+  }));
 }
 
 /**
@@ -35,7 +70,8 @@ const ParentRow = ({
   availableParts,
   onToggle,
   onUpdatePartGroupIdentity,
-  onUpdatePartIdentity
+  onUpdatePartIdentity,
+  onLevelLoad
 }: { 
   partNumber: string; 
   childRows: PartScorecard[]; 
@@ -44,7 +80,9 @@ const ParentRow = ({
   onToggle: () => void;
   onUpdatePartGroupIdentity: WeeklyPlanTableProps['onUpdatePartGroupIdentity'];
   onUpdatePartIdentity: WeeklyPlanTableProps['onUpdatePartIdentity'];
+  onLevelLoad?: (childRows: PartScorecard[], totalDemand: number) => void;
 }) => {
+  const [weeklyTarget, setWeeklyTarget] = useState<number | ''>('');
   const dailyTotals = useMemo(() => {
     return DAYS_OF_WEEK.map(day => 
       childRows.reduce((sum, part) => {
@@ -104,6 +142,37 @@ const ParentRow = ({
       <Table.Td ta="center">
         <Badge variant="light" color="indigo" size="sm">ALL SHIFTS</Badge>
       </Table.Td>
+      <Table.Td ta="center">
+        <Group gap={4} justify="center" wrap="nowrap">
+          <NumberInput
+            value={weeklyTarget}
+            onChange={(val) => setWeeklyTarget(typeof val === 'number' ? val : '')}
+            hideControls
+            min={0}
+            placeholder="Total"
+            size="xs"
+            styles={{ input: { width: 60, textAlign: 'center', fontWeight: 600 } }}
+            onClick={(e) => e.stopPropagation()}
+          />
+          {onLevelLoad && (
+            <Tooltip label="Auto Level Load" withinPortal>
+              <ActionIcon 
+                variant="light" 
+                color="indigo" 
+                size="sm"
+                onClick={(e) => {
+                   e.stopPropagation();
+                   if (typeof weeklyTarget === 'number' && weeklyTarget > 0) {
+                     onLevelLoad(childRows, weeklyTarget);
+                   }
+                }}
+              >
+                <IconWand size={16} />
+              </ActionIcon>
+            </Tooltip>
+          )}
+        </Group>
+      </Table.Td>
       {dailyTotals.map((total, i) => (
         <Table.Td key={i} ta="center" style={{ borderLeft: '1px solid var(--mantine-color-indigo-1)' }}>
           <Text fw={700} size="xs" c={total > 0 ? "indigo.7" : "dimmed"}>
@@ -162,6 +231,8 @@ const PlanRow = memo(({
           styles={{ input: { fontWeight: 700, textAlign: 'center', fontSize: '13px' } }}
         />
       </Table.Td>
+      
+      <Table.Td></Table.Td>
 
       {DAYS_OF_WEEK.map((day, idx) => {
         const record = part.dailyRecords.find(r => r.dayOfWeek === day);
@@ -250,6 +321,7 @@ export default function WeeklyPlanTable({
   parts, 
   availableParts,
   onUpdateRecord,
+  onBatchUpdateRecords,
   onRemovePart,
   onUpdatePartIdentity,
   onUpdatePartGroupIdentity,
@@ -300,6 +372,13 @@ export default function WeeklyPlanTable({
     }
   }, [weekId]);
 
+  const handleLevelLoad = useCallback((childRows: PartScorecard[], totalDemand: number) => {
+    const distributions = distributeDemand(totalDemand, childRows, weekDates, shiftSettings);
+    if (onBatchUpdateRecords) {
+      onBatchUpdateRecords(distributions.map(d => ({ ...d, field: 'target' })));
+    }
+  }, [weekDates, shiftSettings, onBatchUpdateRecords]);
+
   return (
     <Box style={{ border: '1px solid var(--mantine-color-gray-3)', borderRadius: '8px', overflow: 'hidden' }}>
       <Table 
@@ -315,6 +394,7 @@ export default function WeeklyPlanTable({
           <Table.Tr>
             <Table.Th key="part"><Text size="xs" fw={700} c="dimmed">PART NUMBER</Text></Table.Th>
             <Table.Th key="shift" ta="center"><Text size="xs" fw={700} c="dimmed">SHIFT</Text></Table.Th>
+            <Table.Th key="weekly-target" ta="center"><Text size="xs" fw={700} c="dimmed">WEEKLY TARGET</Text></Table.Th>
             {DAYS_OF_WEEK.map((day, idx) => {
               const dateStr = weekDates[idx] ? weekDates[idx].toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }) : '';
               return (
@@ -347,6 +427,7 @@ export default function WeeklyPlanTable({
                 onToggle={() => toggleExpand(groupKey)}
                 onUpdatePartGroupIdentity={onUpdatePartGroupIdentity}
                 onUpdatePartIdentity={onUpdatePartIdentity}
+                onLevelLoad={handleLevelLoad}
               />
               {expandedParts.has(groupKey) && 
                 [...childRows]
