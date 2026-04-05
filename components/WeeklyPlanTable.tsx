@@ -448,16 +448,30 @@ export default function WeeklyPlanTable({
 
   return (
     <Box style={{ border: '1px solid var(--mantine-color-gray-3)', borderRadius: '8px', overflow: 'hidden' }}>
-      <Table 
-        verticalSpacing="xs" 
-        highlightOnHover 
-        withTableBorder
-        styles={{ 
-          thead: { backgroundColor: 'var(--mantine-color-gray-0)' },
-          th: { borderBottom: '2px solid var(--mantine-color-gray-3)' }
-        }}
-      >
-        <Table.Thead>
+      <Box style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+        <Table 
+          verticalSpacing="xs" 
+          highlightOnHover 
+          withTableBorder
+          styles={{ 
+            thead: { 
+              backgroundColor: 'var(--mantine-color-gray-0)',
+              position: 'sticky',
+              top: 0,
+              zIndex: 10,
+              boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+            },
+            tfoot: {
+              backgroundColor: 'var(--mantine-color-gray-0)',
+              position: 'sticky',
+              bottom: 0,
+              zIndex: 10,
+              boxShadow: '0 -2px 4px rgba(0,0,0,0.05)'
+            },
+            th: { borderBottom: '2px solid var(--mantine-color-gray-3)' }
+          }}
+        >
+          <Table.Thead>
           <Table.Tr>
             <Table.Th key="part"><Text size="xs" fw={700} c="dimmed">PART NUMBER</Text></Table.Th>
             <Table.Th key="shift" ta="center"><Text size="xs" fw={700} c="dimmed">SHIFT</Text></Table.Th>
@@ -569,6 +583,7 @@ export default function WeeklyPlanTable({
           </Table.Tr>
         </Table.Tfoot>
       </Table>
+      </Box>
     </Box>
   );
 }
