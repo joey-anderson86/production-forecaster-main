@@ -169,13 +169,15 @@ const PlanRow = memo(({
         const isWorking = date ? isWorkingDay(date, shiftSettings[part.shift] || '') : true;
         const isDisabled = !isWorking;
 
+        const showEmDash = isDisabled && (record?.target === 0 || record?.target === null);
+
         return (
           <Table.Td 
             key={day} 
             p={0} 
             style={{ 
               borderLeft: '1px solid var(--mantine-color-gray-2)',
-              backgroundColor: isDisabled ? 'var(--mantine-color-gray-8)' : 'transparent',
+              backgroundColor: isDisabled ? 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))' : 'transparent',
               transition: 'background-color 0.2s ease'
             }}
           >
@@ -185,29 +187,34 @@ const PlanRow = memo(({
               position="top"
               withinPortal
             >
-              <Box>
-                <NumberInput
-                  value={record?.target ?? ''}
-                  onChange={(val) => onUpdateRecord(part.id, day, 'target', typeof val === 'number' ? val : null)}
-                  hideControls
-                  variant="unstyled"
-                  min={0}
-                  placeholder={isDisabled ? "" : "-"}
-                  disabled={isDisabled}
-                  styles={{ 
-                    input: { 
-                      textAlign: 'center', 
-                      height: 36,
-                      fontSize: '13px',
-                      fontWeight: isDisabled ? 400 : 500,
-                      color: isDisabled ? 'var(--mantine-color-gray-5)' : 'inherit',
-                      cursor: isDisabled ? 'not-allowed' : 'text',
-                      '&:focus': {
-                        backgroundColor: 'var(--mantine-color-indigo-0)',
-                      }
-                    } 
-                  }}
-                />
+              <Box style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 36 }}>
+                {showEmDash ? (
+                  <Text c="dimmed" size="sm" fw={400}>—</Text>
+                ) : (
+                  <NumberInput
+                    value={record?.target ?? ''}
+                    onChange={(val) => onUpdateRecord(part.id, day, 'target', typeof val === 'number' ? val : null)}
+                    hideControls
+                    variant="unstyled"
+                    min={0}
+                    placeholder={isDisabled ? "" : "-"}
+                    disabled={isDisabled}
+                    styles={{ 
+                      input: { 
+                        textAlign: 'center', 
+                        height: 36,
+                        fontSize: '13px',
+                        fontWeight: isDisabled ? 400 : 500,
+                        color: isDisabled ? 'inherit' : 'inherit',
+                        opacity: isDisabled ? 0.7 : 1,
+                        cursor: isDisabled ? 'not-allowed' : 'text',
+                        '&:focus': {
+                          backgroundColor: 'var(--mantine-color-indigo-0)',
+                        }
+                      } 
+                    }}
+                  />
+                )}
               </Box>
             </Tooltip>
           </Table.Td>

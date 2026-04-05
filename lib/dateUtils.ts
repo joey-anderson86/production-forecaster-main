@@ -159,3 +159,13 @@ export function isWorkingDay(targetDate: Date, anchorDateString: string): boolea
   
   return PANAMA_WORKING_DAYS.includes(cycleDay);
 }
+
+/**
+ * Parses a YYYY-MM-DD string as a local Date object (midnight).
+ * Avoids the "UTC trap" of new Date('YYYY-MM-DD').
+ */
+export function parseISOLocal(dateStr: string): Date {
+  if (!dateStr) return new Date();
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}

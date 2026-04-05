@@ -199,22 +199,41 @@ export default function DeliveryScorecardManagement() {
   };
 
 
-  const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const autoSaveTimeoutsRef = useRef<Record<string, NodeJS.Timeout>>({});
+
+  // Cleanup effect for pending saves
+  useEffect(() => {
+    const currentTimeouts = autoSaveTimeoutsRef.current;
+    return () => {
+      Object.values(currentTimeouts).forEach(clearTimeout);
+    };
+  }, []);
+
   const coreHandleUpdateRecord = (rowId: string, day: DayOfWeek, field: 'target' | 'actual', val: number | null) => {
     if (!activeTab || !selectedWeekId) return;
     
-    // 1. Optimistic Update in Store
+    // 1. Optimistic Update in Store (UI Updates immediately)
     store.updateDailyRecord(activeTab, selectedWeekId, rowId, day, field, val);
 
-    // 2. Debounced Save to DB
-    if (autoSaveTimeoutRef.current) {
-      clearTimeout(autoSaveTimeoutRef.current);
+    // 2. IDENTITY GATE: Do not attempt to save to DB if Part Number or Shift is missing.
+    // The database requires these to establish a unique identity for the record.
+    const part = activeWeek?.parts.find(p => p.id === rowId);
+    if (!part?.partNumber || !part?.shift) {
+      console.log("Postponing DB save: Identity incomplete (no Part Number or Shift)");
+      return;
     }
 
-    autoSaveTimeoutRef.current = setTimeout(async () => {
+    // 3. Debounced Save to DB (Per-cell basis to prevent race conditions during rapid entry)
+    const cellKey = `${rowId}-${day}`;
+    if (autoSaveTimeoutsRef.current[cellKey]) {
+      clearTimeout(autoSaveTimeoutsRef.current[cellKey]);
+    }
+
+    autoSaveTimeoutsRef.current[cellKey] = setTimeout(async () => {
       if (!connectionString) return;
       try {
         await store.saveRecordToDb(connectionString, activeTab, selectedWeekId, rowId, day);
+        delete autoSaveTimeoutsRef.current[cellKey];
       } catch (err: any) {
         notifications.show({
           title: 'Auto-save Failed',
@@ -469,19 +488,33 @@ export default function DeliveryScorecardManagement() {
 
                 if (confirmed) {
                   const partRow = activeWeek?.parts.find(p => p.id === rowId);
-                  if (partRow && partRow.partNumber && connectionString) {
-                    store.deletePartFromDb(connectionString, activeTab!, selectedWeekId!, partRow.partNumber, partRow.shift)
+                  // Relaxing the guard to allow deleting rows even if partNumber is missing (anonymous records)
+                  if (partRow && connectionString) {
+                    store.deletePartFromDb(connectionString, activeTab!, selectedWeekId!, partRow.partNumber || "", partRow.shift || "")
                       .catch(err => console.error("Sync delete failed:", err));
                   }
                   store.removePartNumber(activeTab!, selectedWeekId!, rowId);
                 }
               }}
-              onUpdatePartIdentity={(rowId: string, updates) =>
-                store.updatePartIdentity(activeTab!, selectedWeekId!, rowId, updates)
-              }
-              onUpdatePartGroupIdentity={(groupId: string, partNum: string) =>
-                store.updatePartGroupIdentity(activeTab!, selectedWeekId!, groupId, partNum)
-              }
+              onUpdatePartIdentity={(rowId: string, updates) => {
+                store.updatePartIdentity(activeTab!, selectedWeekId!, rowId, updates);
+                // Trigger a full row sync once identity is established/updated
+                if (connectionString) {
+                  store.saveRowToDb(connectionString, activeTab!, selectedWeekId!, rowId)
+                    .catch(e => console.error("Identity sync failed:", e));
+                }
+              }}
+              onUpdatePartGroupIdentity={(groupId: string, partNum: string) => {
+                store.updatePartGroupIdentity(activeTab!, selectedWeekId!, groupId, partNum);
+                // Trigger sync for all group members if connection is available
+                if (connectionString) {
+                   const rowsToSync = activeWeek?.parts.filter(p => p.groupId === groupId);
+                   rowsToSync?.forEach(row => {
+                      store.saveRowToDb(connectionString, activeTab!, selectedWeekId!, row.id)
+                        .catch(e => console.error("Group identity sync failed:", e));
+                   });
+                }
+              }}
               onAddPart={(partNum: string, shift: string) => 
                 store.addPartNumber(activeTab!, selectedWeekId!, partNum, shift)
               }

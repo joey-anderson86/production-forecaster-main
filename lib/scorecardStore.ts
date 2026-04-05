@@ -74,6 +74,12 @@ interface ScorecardActions {
     rowId: string,
     dayOfWeek: DayOfWeek
   ) => Promise<void>;
+  saveRowToDb: (
+    connectionString: string, 
+    departmentName: string, 
+    weekId: string, 
+    rowId: string
+  ) => Promise<void>;
   deletePartFromDb: (
     connectionString: string,
     departmentName: string,
@@ -551,12 +557,12 @@ export const useScorecardStore = create<ScorecardStore>()(
           const dbRecord = {
             department: departmentName,
             weekIdentifier: weekId,
-            partNumber: part.partNumber,
+            partNumber: part.partNumber || "", // Allow empty string but better to gate at UI
             dayOfWeek: record.dayOfWeek,
             target: record.target,
             actual: record.actual,
             date: record.date,
-            shift: part.shift,
+            shift: part.shift || "",
             reasonCode: record.reasonCode
           };
 
@@ -568,6 +574,45 @@ export const useScorecardStore = create<ScorecardStore>()(
           set({ syncStatus: 'saved' });
         } catch (err: any) {
           console.error("Auto-save failed:", err);
+          set({ syncStatus: 'error', error: err.toString() });
+          throw err;
+        }
+      },
+
+      saveRowToDb: async (connectionString: string, departmentName: string, weekId: string, rowId: string) => {
+        const { departments } = get();
+        const dept = departments[departmentName];
+        if (!dept || !dept.weeks[weekId]) return;
+
+        const week = dept.weeks[weekId];
+        const part = week.parts.find(p => p.id === rowId);
+        if (!part || !part.partNumber || !part.shift) return;
+
+        set({ syncStatus: 'saving', error: null });
+
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          
+          const records = part.dailyRecords.map(record => ({
+            department: departmentName,
+            weekIdentifier: weekId,
+            partNumber: part.partNumber,
+            dayOfWeek: record.dayOfWeek,
+            target: record.target,
+            actual: record.actual,
+            date: record.date,
+            shift: part.shift,
+            reasonCode: record.reasonCode
+          }));
+
+          await invoke('upsert_scorecard_data', { 
+            connectionString: connectionString, 
+            records: records 
+          });
+          
+          set({ syncStatus: 'saved' });
+        } catch (err: any) {
+          console.error("Auto-save row failed:", err);
           set({ syncStatus: 'error', error: err.toString() });
           throw err;
         }

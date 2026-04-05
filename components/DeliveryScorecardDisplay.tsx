@@ -14,7 +14,7 @@ import { EditEntryModal } from './EditEntryModal';
 import { ShiftProductionEntryModal } from './ShiftProductionEntryModal';
 import { DeliveryLossPareto } from './DeliveryLossPareto';
 import { ShiftAttainmentChart } from './ShiftAttainmentChart';
-import { getTodayNumeric, getWeekDates } from '@/lib/dateUtils';
+import { DAYS_OF_WEEK, getTodayNumeric, getWeekDates, isWorkingDay, parseISOLocal } from '@/lib/dateUtils';
 import { useProcessStore } from '@/lib/processStore';
 import { TextInput } from '@mantine/core';
 
@@ -26,8 +26,6 @@ const PROCESS_ICONS: Record<string, React.ReactNode> = {
 };
 
 const getProcessIcon = (name: string) => PROCESS_ICONS[name] || <IconBox size={20} />;
-
-const DAYS_OF_WEEK: DayOfWeek[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 interface GroupedPartScorecard {
   partNumber: string;
@@ -434,35 +432,56 @@ export default function DeliveryScorecardDisplay() {
                             const actualValue = record?.actual ?? null;
                             const targetValue = record?.target ?? null;
                             
+                            // Panama Schedule Logic
+                            const anchorDate = store.shiftSettings[part.shift];
+                            const targetDate = record?.date ? parseISOLocal(record.date) : null;
+                            const isWorking = targetDate ? isWorkingDay(targetDate, anchorDate) : true;
+                            const isDayOff = !isWorking;
+
                             // Apply color styles only if actual production is recorded
-                            const styles = (actualValue !== null && targetValue !== null) 
+                            const performanceStyles = (actualValue !== null && targetValue !== null) 
                               ? getCellStyles(actualValue, targetValue) 
                               : {};
+
+                            // Final Background Logic: Recede scheduled off days
+                            let cellBg = performanceStyles.bg || 'transparent';
+                            if (isDayOff) {
+                              cellBg = 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))';
+                            }
+
+                            // Content Logic: Muted em-dash for empty off days
+                            const isInactiveOffDay = isDayOff && (actualValue === 0 || actualValue === null) && (targetValue === 0 || targetValue === null);
+                            const displayValue = isInactiveOffDay ? '—' : (actualValue ?? '-');
+                            const textColor = isInactiveOffDay ? 'dimmed' : (performanceStyles.color || (actualValue === null ? 'gray.4' : 'black'));
 
                             return (
                               <Table.Td 
                                 key={day} 
                                 ta="center" 
-                                bg={styles.bg || 'transparent'} 
+                                bg={cellBg} 
                                 p={0}
-                                className="cursor-pointer hover:bg-gray-50 transition-colors"
-                                onClick={() => record && handleCellClick(part.id, part.partNumber, part.shift, day, record)}
+                                className={`${isDayOff ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-gray-50'} transition-colors`}
+                                onClick={() => !isDayOff && record && handleCellClick(part.id, part.partNumber, part.shift, day, record)}
                               >
                                 <Tooltip 
                                   label={
                                     <Stack gap={2}>
-                                      <Text size="xs" fw={700}>Part: {part.partNumber} (Shift {part.shift})</Text>
+                                      <Group gap="xs" justify="space-between">
+                                        <Text size="xs" fw={700}>Part: {part.partNumber} (Shift {part.shift})</Text>
+                                        {isDayOff && <Badge size="9px" variant="light" color="gray">Off Schedule</Badge>}
+                                      </Group>
                                       <Text size="xs">Actual: {actualValue ?? 'Not recorded'}</Text>
                                       <Text size="xs">Target: {targetValue ?? 0}</Text>
-                                      <Text size="xs" c="indigo.4" mt={4} fw={700}>Click to Record Actual</Text>
+                                      {!isDayOff && <Text size="xs" c="indigo.4" mt={4} fw={700}>Click to Record Actual</Text>}
+                                      {isDayOff && <Text size="xs" c="red.4" mt={4} fw={700}>Off Schedule - Entry Locked</Text>}
                                     </Stack>
                                   }
                                   withArrow
                                   position="top"
                                 >
                                   <Box py="xs" px="xs">
-                                    <Text size="sm" fw={styles.fw || 500} c={styles.color || (actualValue === null ? 'gray.4' : 'black')}>
-                                      {actualValue ?? '-'}
+                                    <Text size="sm" fw={performanceStyles.fw || 500} c={textColor}>
+                                      {displayValue}
                                     </Text>
                                     <Text size="10px" c="dimmed">Tgt: {targetValue ?? 0}</Text>
                                   </Box>
