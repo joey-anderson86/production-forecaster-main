@@ -40,7 +40,7 @@ import {
 } from '@tabler/icons-react';
 import { useScorecardStore } from '@/lib/scorecardStore';
 import { useProcessStore } from '@/lib/processStore';
-import { isWorkingDay, getWeekIdentifier, getDayOfWeekLabel } from '@/lib/dateUtils';
+import { isWorkingDay, getWeekIdentifier, getDayOfWeekLabel, getWeekDates } from '@/lib/dateUtils';
 
 // ─── Type Interfaces ───────────────────────────────────────────────
 
@@ -169,10 +169,11 @@ export function ShiftProductionEntryModal({
   const weekRange = React.useMemo(() => {
     if (!activeWeekId) return null;
     try {
-      const [year, week] = activeWeekId.split('-w');
-      // dayjs isoWeek start is Monday
-      const start = dayjs().year(parseInt(year)).isoWeek(parseInt(week)).startOf('isoWeek');
-      const end = start.clone().endOf('isoWeek');
+      const dates = getWeekDates(activeWeekId);
+      if (dates.length === 0) return null;
+      // Start is Monday, end is Sunday
+      const start = dayjs(dates[0]).startOf('day');
+      const end = dayjs(dates[6]).endOf('day');
       return { start, end };
     } catch (e) {
       return null;
@@ -467,7 +468,10 @@ export function ShiftProductionEntryModal({
   const canLoadPlan = !!selectedDate && !!selectedDept && !!selectedShift;
   const parsedDateForDisplay = selectedDate;
   const totalTarget = entries.reduce((sum, e) => sum + e.target, 0);
-  const totalActual = entries.reduce((sum, e) => sum + (typeof e.actual === 'number' ? e.actual : 0), 0);
+  const totalActual = entries.reduce((sum, e) => {
+    const val = typeof e.actual === 'number' ? e.actual : 0;
+    return sum + val;
+  }, 0);
   const totalVariance = totalActual - totalTarget;
 
   // ── Render ──
