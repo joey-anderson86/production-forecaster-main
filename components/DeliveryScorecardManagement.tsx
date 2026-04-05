@@ -56,6 +56,8 @@ export default function DeliveryScorecardManagement() {
 
   const [availableParts, setAvailableParts] = useState<string[]>([]);
   const [isLoadingParts, setIsLoadingParts] = useState(false);
+  const [processInfo, setProcessInfo] = useState<any[]>([]);
+  const [partInfo, setPartInfo] = useState<any[]>([]);
   const [scheduleAllShifts, setScheduleAllShifts] = useLocalStorage<boolean>({
     key: 'production-planner-all-shifts-toggle',
     defaultValue: false
@@ -99,6 +101,23 @@ export default function DeliveryScorecardManagement() {
     }
     fetchParts();
   }, [activeTab, connectionString]);
+
+  // Fetch processInfo and partInfo globally
+  useEffect(() => {
+    async function fetchGlobalInfo() {
+      if (!connectionString) return;
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const processes = await invoke<any[]>("get_process_info_preview", { connectionString });
+        const parts = await invoke<any[]>("get_part_info_preview", { connectionString });
+        setProcessInfo(processes);
+        setPartInfo(parts);
+      } catch (err) {
+        console.error("Failed to fetch global capacity info:", err);
+      }
+    }
+    fetchGlobalInfo();
+  }, [connectionString]);
 
   // Ensure all current processes are in the scorecard store
   useEffect(() => {
@@ -511,6 +530,8 @@ export default function DeliveryScorecardManagement() {
               parts={activeWeek.parts}
               availableParts={availableParts}
               isLoadingParts={isLoadingParts}
+              processInfo={processInfo}
+              partInfo={partInfo}
               onUpdateRecord={coreHandleUpdateRecord}
               onBatchUpdateRecords={handleBatchUpdateRecords}
               onRemovePart={async (rowId: string) => {

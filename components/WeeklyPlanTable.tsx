@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect, useRef, memo, useCallback } from 'react';
 import { 
   Table, Select, NumberInput, ActionIcon, Group, Text, 
-  Box, Stack, Tooltip, Badge 
+  Box, Stack, Tooltip, Badge, Progress
 } from '@mantine/core';
 import { 
   IconTrash, IconAlertCircle, IconCalculator, 
@@ -11,6 +11,19 @@ import {
 } from '@tabler/icons-react';
 import { DayOfWeek, DAYS_OF_WEEK, getWeekDates, isWorkingDay } from '@/lib/dateUtils';
 import { PartScorecard, useScorecardStore } from '@/lib/scorecardStore';
+
+export interface ProcessInfoRecord {
+  process: string;
+  date: string;
+  hoursAvailable: number;
+  machineId: string;
+}
+
+export interface PartInfoRecord {
+  partNumber: string;
+  process: string;
+  processingTime: number; // Processing time in minutes
+}
 
 interface WeeklyPlanTableProps {
   department: string;
@@ -24,6 +37,8 @@ interface WeeklyPlanTableProps {
   onUpdatePartGroupIdentity: (groupId: string, partNumber: string) => void;
   onAddPart: (partNumber: string, shift: string) => void;
   isLoadingParts?: boolean;
+  processInfo?: ProcessInfoRecord[];
+  partInfo?: PartInfoRecord[];
 }
 
 export function distributeDemand(
@@ -317,6 +332,7 @@ const PlanRow = memo(({
 PlanRow.displayName = 'PlanRow';
 
 export default function WeeklyPlanTable({ 
+  department,
   weekId, 
   parts, 
   availableParts,
@@ -325,6 +341,8 @@ export default function WeeklyPlanTable({
   onRemovePart,
   onUpdatePartIdentity,
   onUpdatePartGroupIdentity,
+  processInfo,
+  partInfo,
 }: WeeklyPlanTableProps) {
   
   const shiftSettings = useScorecardStore(state => state.shiftSettings);
@@ -378,6 +396,55 @@ export default function WeeklyPlanTable({
       onBatchUpdateRecords(distributions.map(d => ({ ...d, field: 'target' })));
     }
   }, [weekDates, shiftSettings, onBatchUpdateRecords]);
+
+  // Capacity calculations
+  const dailyCapacityHours = useMemo(() => {
+    if (!processInfo) return 24; // Fallback
+    
+    // Filter records by Department (Process), mapping unique MachineIDs to avoid overcounting 
+    const uniqueMachines = new Map<string, number>();
+    processInfo.forEach(record => {
+      if (record.process === department) {
+        // If we see the same machineId multiple times (e.g. across multiple dates),
+        // we assume the first one represents its generic daily template value.
+        if (!uniqueMachines.has(record.machineId)) {
+          uniqueMachines.set(record.machineId, record.hoursAvailable);
+        }
+      }
+    });
+
+    const totalCapacity = Array.from(uniqueMachines.values()).reduce((sum, h) => sum + h, 0);
+    return totalCapacity > 0 ? totalCapacity : 24; // fallback if 0
+  }, [processInfo, department]);
+
+  const dailyLoads = useMemo(() => {
+    const loads: Record<DayOfWeek, number> = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
+    
+    // Create an O(1) lookup map for Part Processing Times
+    const partMap = new Map<string, number>();
+    if (partInfo) {
+      partInfo.forEach(p => {
+        // Optional: filter by Process if the array contains all parts for all departments.
+        // It's safe to just map PartNumber -> ProcessingTime.
+        partMap.set(p.partNumber, p.processingTime);
+      });
+    }
+
+    parts.forEach(part => {
+      // Look up processing time; gracefully default to 0 to ignore unmapped parts
+      const processingTimeMins = partMap.get(part.partNumber) || 0;
+      
+      if (processingTimeMins > 0) {
+        part.dailyRecords.forEach(record => {
+          if (record.target && record.target > 0) {
+            loads[record.dayOfWeek] += (record.target * processingTimeMins) / 60;
+          }
+        });
+      }
+    });
+
+    return loads;
+  }, [parts, partInfo]);
 
   return (
     <Box style={{ border: '1px solid var(--mantine-color-gray-3)', borderRadius: '8px', overflow: 'hidden' }}>
@@ -461,6 +528,46 @@ export default function WeeklyPlanTable({
             </Table.Tr>
           )}
         </Table.Tbody>
+
+        <Table.Tfoot>
+          <Table.Tr bg="gray.0" style={{ borderTop: '2px solid var(--mantine-color-gray-3)' }}>
+            <Table.Td colSpan={3}>
+              <Group justify="flex-end" px="sm">
+                <Text size="xs" fw={800} c="dimmed">DAILY CAPACITY UTILIZATION</Text>
+              </Group>
+            </Table.Td>
+            {DAYS_OF_WEEK.map((day) => {
+              const load = dailyLoads[day];
+              const utilization = dailyCapacityHours > 0 ? (load / dailyCapacityHours) * 100 : 0;
+              
+              let color = "teal";
+              if (utilization > 100) color = "red";
+              else if (utilization >= 80) color = "yellow";
+
+              return (
+                <Table.Td key={day} ta="center" p="xs">
+                  {dailyCapacityHours > 0 ? (
+                    <Stack gap={4} align="center">
+                      <Progress 
+                        value={Math.min(utilization, 100)} 
+                        color={color} 
+                        size="md" 
+                        radius="xl"
+                        w="100%"
+                      />
+                      <Text size="10px" fw={700} c="dimmed" style={{ whiteSpace: 'nowrap' }}>
+                        {load.toFixed(1)}h / {dailyCapacityHours}h
+                      </Text>
+                    </Stack>
+                  ) : (
+                    <Text size="10px" c="dimmed">—</Text>
+                  )}
+                </Table.Td>
+              );
+            })}
+            <Table.Td colSpan={2}></Table.Td>
+          </Table.Tr>
+        </Table.Tfoot>
       </Table>
     </Box>
   );
