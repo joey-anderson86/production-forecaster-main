@@ -148,11 +148,12 @@ export default function DeliveryScorecardDisplay() {
         if (!groups[part.partNumber]) {
            groups[part.partNumber] = {
               partNumber: part.partNumber,
-              aggregatedRecords: DAYS_OF_WEEK.map(day => ({
-                 dayOfWeek: day as DayOfWeek,
-                 actual: 0,
-                 target: 0
-              })),
+               aggregatedRecords: DAYS_OF_WEEK.map(day => ({
+                  dayOfWeek: day as DayOfWeek,
+                  actual: 0,
+                  target: 0,
+                  reasons: [] as string[]
+               } as DailyScorecardRecord & { reasons: string[] })),
               shifts: [],
               totalActual: 0,
               totalTarget: 0,
@@ -164,11 +165,15 @@ export default function DeliveryScorecardDisplay() {
         const group = groups[part.partNumber];
         group.shifts.push({ ...part, rollingGap: childRollingGap });
 
-        part.dailyRecords.forEach((record, idx) => {
-           const agg = group.aggregatedRecords[idx];
-           agg.actual = (agg.actual ?? 0) + (record.actual ?? 0);
-           agg.target = (agg.target ?? 0) + (record.target ?? 0);
-        });
+         part.dailyRecords.forEach((record, idx) => {
+            const agg = group.aggregatedRecords[idx] as any;
+            agg.actual = (agg.actual ?? 0) + (record.actual ?? 0);
+            agg.target = (agg.target ?? 0) + (record.target ?? 0);
+            if (record.reasonCode) {
+               if (!agg.reasons) agg.reasons = [];
+               agg.reasons.push(`${part.shift}: ${record.reasonCode}`);
+            }
+         });
 
         const partActual = part.dailyRecords.reduce((sum, r) => sum + (r.actual || 0), 0);
         const partTarget = part.dailyRecords.reduce((sum, r) => sum + (r.target || 0), 0);
@@ -380,10 +385,31 @@ export default function DeliveryScorecardDisplay() {
                         const styles = getCellStyles(record.actual, record.target);
                         return (
                           <Table.Td key={idx} ta="center" bg={styles.bg}>
-                            <Box py="xs" px="xs">
-                              <Text size="sm" fw={700} c={styles.color}>{record.actual}</Text>
-                              <Text size="10px" c="dimmed">Tgt: {record.target}</Text>
-                            </Box>
+                            <Tooltip
+                               label={
+                                 <Stack gap={2}>
+                                   <Text size="xs" fw={700}>Part: {group.partNumber} (All Shifts)</Text>
+                                   <Text size="xs">Total Actual: {record.actual}</Text>
+                                   <Text size="xs">Total Target: {record.target}</Text>
+                                   {(record as any).reasons?.length > 0 && (
+                                     <Box mt={4}>
+                                       <Text size="10px" fw={700} c="dimmed" tt="uppercase">Shift Reasons:</Text>
+                                       {(record as any).reasons.map((r: string, i: number) => (
+                                         <Text key={i} size="xs" c="orange.7" fw={600}>• {r}</Text>
+                                       ))}
+                                     </Box>
+                                   )}
+                                 </Stack>
+                               }
+                               withArrow
+                               position="top"
+                               disabled={record.actual === 0 && record.target === 0}
+                            >
+                              <Box py="xs" px="xs">
+                                <Text size="sm" fw={700} c={styles.color}>{record.actual}</Text>
+                                <Text size="10px" c="dimmed">Tgt: {record.target}</Text>
+                              </Box>
+                            </Tooltip>
                           </Table.Td>
                         );
                       })}
@@ -472,6 +498,9 @@ export default function DeliveryScorecardDisplay() {
                                       </Group>
                                       <Text size="xs">Actual: {actualValue ?? 'Not recorded'}</Text>
                                       <Text size="xs">Target: {targetValue ?? 0}</Text>
+                                      {record?.reasonCode && (
+                                        <Text size="xs" c="orange.7" fw={600}>Reason: {record.reasonCode}</Text>
+                                      )}
                                       {!isDayOff && <Text size="xs" c="indigo.4" mt={4} fw={700}>Click to Record Actual</Text>}
                                       {isDayOff && <Text size="xs" c="red.4" mt={4} fw={700}>Off Schedule - Entry Locked</Text>}
                                     </Stack>
