@@ -19,6 +19,7 @@ import Papa from 'papaparse';
 import { getISODateForDay, getCurrentWeekId } from '@/lib/dateUtils';
 import { useProcessStore } from '@/lib/processStore';
 import { ask } from '@tauri-apps/plugin-dialog';
+import { generateSmartCopy } from '@/lib/copyUtils';
 
 const PROCESS_ICONS: Record<string, React.ReactNode> = {
   'Plating': <IconFlask size={16} />,
@@ -53,6 +54,8 @@ export default function DeliveryScorecardManagement() {
   const [addWeekModalOpened, setAddWeekModalOpened] = useState(false);
   const [newWeekId, setNewWeekId] = useState('');
   const [newWeekLabel, setNewWeekLabel] = useState('');
+  const [copySourceWeekId, setCopySourceWeekId] = useState<string | null>('none');
+  const [isSubmittingWeek, setIsSubmittingWeek] = useState(false);
 
   const [availableParts, setAvailableParts] = useState<string[]>([]);
   const [isLoadingParts, setIsLoadingParts] = useState(false);
@@ -150,7 +153,7 @@ export default function DeliveryScorecardManagement() {
     setAddWeekModalOpened(true);
   };
 
-  const handleConfirmAddWeek = () => {
+  const handleConfirmAddWeek = async () => {
     if (!newWeekId?.trim()) {
        notifications.show({ title: 'Invalid ID', message: 'Week ID is required', color: 'red' });
        return;
@@ -159,11 +162,44 @@ export default function DeliveryScorecardManagement() {
        notifications.show({ title: 'Invalid Label', message: 'Week Label is required', color: 'red' });
        return;
     }
+    if (!activeTab) return;
     
-    store.addWeek(activeTab!, newWeekId.trim(), newWeekLabel.trim());
-    setSelectedWeekId(newWeekId.trim());
-    setAddWeekModalOpened(false);
-    notifications.show({ title: 'Success', message: 'New week added to store', color: 'green' });
+    if (copySourceWeekId && copySourceWeekId !== 'none') {
+      setIsSubmittingWeek(true);
+      try {
+        const sourceWeek = store.departments[activeTab].weeks[copySourceWeekId];
+        if (!sourceWeek) throw new Error("Source week not found");
+
+        const { dbRecordsToUpsert } = generateSmartCopy(
+          sourceWeek,
+          newWeekId.trim(),
+          store.shiftSettings,
+          activeTab
+        );
+
+        // Add the week skeleton to store first (prevents missing week errors)
+        store.addWeek(activeTab, newWeekId.trim(), newWeekLabel.trim());
+
+        if (dbRecordsToUpsert.length > 0 && connectionString) {
+          const { invoke } = await import('@tauri-apps/api/core');
+          await invoke('upsert_scorecard_data', { connectionString, records: dbRecordsToUpsert });
+          await store.fetchFromDb(connectionString);
+        }
+
+        setSelectedWeekId(newWeekId.trim());
+        setAddWeekModalOpened(false);
+        notifications.show({ title: 'Success', message: 'Successfully generated schedule from previous week', color: 'green' });
+      } catch (err: any) {
+        notifications.show({ title: 'Error', message: 'Failed to copy schedule: ' + err.message, color: 'red' });
+      } finally {
+        setIsSubmittingWeek(false);
+      }
+    } else {
+      store.addWeek(activeTab, newWeekId.trim(), newWeekLabel.trim());
+      setSelectedWeekId(newWeekId.trim());
+      setAddWeekModalOpened(false);
+      notifications.show({ title: 'Success', message: 'New week added to store', color: 'green' });
+    }
   };
 
   const handleDeleteWeek = async () => {
@@ -633,9 +669,18 @@ export default function DeliveryScorecardManagement() {
              onChange={(e) => setNewWeekLabel(e.currentTarget.value)}
              required
            />
+           <Select
+             label="Copy schedule from... (Optional)"
+             placeholder="Start Blank"
+             clearable
+             data={[{ value: 'none', label: 'Start Blank' }, ...weekOptions]}
+             value={copySourceWeekId}
+             onChange={(val) => setCopySourceWeekId(val || 'none')}
+             disabled={isSubmittingWeek}
+           />
            <Group justify="flex-end" mt="md">
-             <Button variant="default" onClick={() => setAddWeekModalOpened(false)}>Cancel</Button>
-             <Button color="indigo" onClick={handleConfirmAddWeek}>Add Week</Button>
+             <Button variant="default" onClick={() => setAddWeekModalOpened(false)} disabled={isSubmittingWeek}>Cancel</Button>
+             <Button color="indigo" onClick={handleConfirmAddWeek} loading={isSubmittingWeek}>Generate Plan</Button>
            </Group>
         </Stack>
       </Modal>
