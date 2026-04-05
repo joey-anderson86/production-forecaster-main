@@ -103,7 +103,7 @@ export default function ProductionForecaster() {
     try {
       const store = await load("store.json", { autoSave: false, defaults: {} });
       const connectionString = await store.get<string>("db_connection_string");
-      
+
       if (!connectionString) {
         notifications.show({
           title: "Configuration Missing",
@@ -115,10 +115,10 @@ export default function ProductionForecaster() {
 
       // 1. Fetch Pipeline Data
       const dbPipeline = await invoke<any[]>("get_pipeline_data_preview", { connectionString });
-      
+
       // 2. Fetch Daily Rates
       const dbRates = await invoke<any[]>("get_daily_rate_preview", { connectionString });
-      
+
       // Filter for current week/year
       const currentWeekId = getCurrentWeekId(); // "2026-w13"
       const [currYear, currWeekStr] = currentWeekId.split("-w");
@@ -131,16 +131,16 @@ export default function ProductionForecaster() {
           "Part Number": r.partNumber,
           "Daily Rate": r.qty
         }));
-      
+
       // If none found for current week, maybe just take all and let it unique-ify?
       // Actually, many users might want to see what's in there.
       // But the forecaster needs one rate. 
       // Let's provide a fallback: if current week missing, find most recent available for each part
-      const ratesToUse = mappedRates.length > 0 ? mappedRates : 
+      const ratesToUse = mappedRates.length > 0 ? mappedRates :
         Array.from(new Set(dbRates.map(r => r.partNumber))).map(part => {
           const partRows = dbRates.filter(r => r.partNumber === part);
           // Sort by year desc, week desc
-          partRows.sort((a,b) => b.year !== a.year ? b.year - a.year : b.week - a.week);
+          partRows.sort((a, b) => b.year !== a.year ? b.year - a.year : b.week - a.week);
           return {
             "Part Number": part,
             "Daily Rate": partRows[0].qty
@@ -175,10 +175,10 @@ export default function ProductionForecaster() {
             wideRow[row.wipLocator] = (wideRow[row.wipLocator] || 0) + (row.qty || 0);
           }
         });
-        
+
         const wideData = Array.from(wideMap.values());
         setPipelineData(wideData);
-        
+
         const uniqueDates = Array.from(new Set(dbPipeline.map(row => String(row.date)))).sort();
         setDates(uniqueDates);
         if (uniqueDates.length > 0 && !selectedDate) {
@@ -551,8 +551,8 @@ export default function ProductionForecaster() {
       <div className="max-w-7xl mx-auto space-y-6">
         <header className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50 tracking-tight">Production Forecaster</h1>
-            <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Map WIP locators to forecast shipment readiness.</p>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50 tracking-tight">Production Manager</h1>
+            <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Production Management and Planning Tool</p>
           </div>
           <Group align="center" gap="md">
             <ColorSchemeToggle />
@@ -599,11 +599,11 @@ export default function ProductionForecaster() {
                         <p className="text-sm text-slate-600 dark:text-slate-400">
                           Pull the latest Pipeline, Daily Rate, and Mapping data directly from the configured SQL server.
                         </p>
-                        <Button 
-                          fullWidth 
+                        <Button
+                          fullWidth
                           size="md"
-                          variant="filled" 
-                          color="indigo" 
+                          variant="filled"
+                          color="indigo"
                           onClick={fetchFromDatabase}
                           loading={isLoadingDb}
                           leftSection={<BarChart3 size={18} />}

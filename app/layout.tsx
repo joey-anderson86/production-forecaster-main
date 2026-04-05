@@ -9,8 +9,8 @@ import { StoreInitializer } from '../components/StoreInitializer';
 import './globals.css'; // Global styles
 
 export const metadata: Metadata = {
-  title: 'Production Forecaster',
-  description: 'Production Forecaster',
+  title: 'Production Manager and Planner',
+  description: 'Production Manager and Planner',
 };
 
 const theme = createTheme({
