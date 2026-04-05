@@ -102,6 +102,17 @@ const SHIFTS = [
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 
+export const REASON_CODES = [
+  "Equipment Failure (Unplanned)",
+  "Planned Maintenance",
+  "Setup & Changeover",
+  "Material Shortage",
+  "Tooling Issue",
+  "Labor Shortage",
+  "Quality / Scrap",
+  "Facility / Utility Issue",
+];
+
 // ─── Utility Functions ─────────────────────────────────────────────
 
 /** Convert a Date to "YYYY-MM-DD" string */
@@ -347,7 +358,7 @@ export function ShiftProductionEntryModal({
         partName: '',
         target: 0,
         actual: '',
-        reasonCode: 'Schedule Override',
+        reasonCode: '',
         isUnplanned: true,
       },
     ]);
@@ -673,37 +684,28 @@ export function ShiftProductionEntryModal({
                             />
                           </Table.Td>
                           <Table.Td>
-                            {needsReason ? (
-                              <TextInput
-                                value={entry.reasonCode}
-                                onChange={(e) =>
-                                  updateEntry(entry.id, 'reasonCode', e.currentTarget.value)
-                                }
-                                size="sm"
-                                placeholder="Reason required..."
-                                error={
-                                  needsReason && !entry.reasonCode.trim()
-                                    ? 'Required'
-                                    : undefined
-                                }
-                                leftSection={
+                            <Select
+                              value={entry.reasonCode}
+                              onChange={(val) => updateEntry(entry.id, 'reasonCode', val || '')}
+                              data={REASON_CODES}
+                              placeholder={needsReason ? "Select reason..." : "Optional"}
+                              size="sm"
+                              searchable
+                              clearable
+                              error={needsReason && !entry.reasonCode.trim() ? 'Required' : undefined}
+                              disabled={!needsReason && entry.target > 0} // Optional: disable if meeting target, unless unplanned
+                              leftSection={
+                                needsReason ? (
                                   <IconAlertTriangle
                                     size={14}
                                     color="var(--mantine-color-orange-6)"
                                   />
-                                }
-                              />
-                            ) : (
-                              <TextInput
-                                value={entry.reasonCode}
-                                onChange={(e) =>
-                                  updateEntry(entry.id, 'reasonCode', e.currentTarget.value)
-                                }
-                                size="sm"
-                                placeholder="Optional"
-                                variant="filled"
-                              />
-                            )}
+                                ) : undefined
+                              }
+                              styles={{
+                                input: !needsReason ? { backgroundColor: 'transparent', border: '1px dashed var(--mantine-color-gray-3)' } : {}
+                              }}
+                            />
                           </Table.Td>
                           <Table.Td ta="center">
                             {entry.isUnplanned && (

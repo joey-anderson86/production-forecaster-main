@@ -11,9 +11,11 @@ import {
   Divider,
   Box,
   Badge,
-  TextInput
+  TextInput,
+  Select
 } from '@mantine/core';
 import { useScorecardStore, DayOfWeek, DailyScorecardRecord } from '@/lib/scorecardStore';
+import { REASON_CODES } from './ShiftProductionEntryModal';
 import { notifications } from '@mantine/notifications';
 import { IconDeviceFloppy, IconX } from '@tabler/icons-react';
 
@@ -151,6 +153,8 @@ export function EditEntryModal({
             onChange={setTarget}
             min={0}
             allowNegative={false}
+            disabled
+            variant="filled"
           />
           <NumberInput
             label="Actual Production"
@@ -162,19 +166,16 @@ export function EditEntryModal({
           />
         </Group>
 
-        <TextInput
+        <Select
           label="Reason Code"
-          placeholder="Enter reason for variance..."
-          description="E.g. Machine breakdown, material shortage (max 144 chars)"
+          placeholder="Select reason for variance..."
+          description="Standardized reason required for Pareto analysis"
+          data={REASON_CODES}
           value={reasonCode}
-          onChange={(e) => setReasonCode(e.currentTarget.value)}
+          onChange={(val) => setReasonCode(val || '')}
+          searchable
+          clearable
           error={reasonCode.length > 144 ? 'Reason code cannot exceed 144 characters' : undefined}
-          rightSection={
-            <Text size="xs" c={reasonCode.length > 144 ? 'red' : 'dimmed'}>
-              {reasonCode.length}/144
-            </Text>
-          }
-          rightSectionWidth={60}
         />
 
         <Group justify="flex-end" mt="xl">
