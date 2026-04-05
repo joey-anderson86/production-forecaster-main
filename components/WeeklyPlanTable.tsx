@@ -453,7 +453,9 @@ export default function WeeklyPlanTable({
     const partMap = new Map<string, number>();
     if (partInfo) {
       partInfo.forEach(p => {
-        partMap.set(p.partNumber, p.processingTime);
+        if (p.process === department) {
+          partMap.set(p.partNumber, p.processingTime);
+        }
       });
     }
 

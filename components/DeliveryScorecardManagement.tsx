@@ -35,7 +35,10 @@ const DAYS_OF_WEEK: DayOfWeek[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Su
 export default function DeliveryScorecardManagement() {
   const processes = useProcessStore(state => state.processes);
   const store = useScorecardStore();
-  const [activeTab, setActiveTab] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useLocalStorage<string | null>({
+    key: 'production-planner-active-tab',
+    defaultValue: null
+  });
 
   // Initialize active tab if null
   useEffect(() => {

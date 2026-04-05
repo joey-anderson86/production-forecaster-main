@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useLocalStorage } from '@mantine/hooks';
 import { useScorecardStore, DayOfWeek, DailyScorecardRecord, PartScorecard } from '@/lib/scorecardStore';
 import { 
   Tabs, Select, Table, Card, Text, Group, Badge, Title, Box, Tooltip, Stack, Button, ActionIcon
@@ -40,8 +41,14 @@ interface GroupedPartScorecard {
 export default function DeliveryScorecardDisplay() {
   const processes = useProcessStore(state => state.processes);
   const store = useScorecardStore();
-  const [activeTab, setActiveTab] = useState<string | null>(null);
-  const [selectedWeekId, setSelectedWeekId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useLocalStorage<string | null>({
+    key: 'production-planner-active-tab',
+    defaultValue: null
+  });
+  const [selectedWeekId, setSelectedWeekId] = useLocalStorage<string | null>({
+    key: 'production-planner-selected-week',
+    defaultValue: null
+  });
   const [expandedParts, setExpandedParts] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [sortConfig, setSortConfig] = useState<{ key: keyof GroupedPartScorecard; direction: 'asc' | 'desc' } | null>({ key: 'partNumber', direction: 'asc' });
