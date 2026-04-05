@@ -40,7 +40,7 @@ import {
 } from '@tabler/icons-react';
 import { useScorecardStore } from '@/lib/scorecardStore';
 import { useProcessStore } from '@/lib/processStore';
-import { isWorkingDay } from '@/lib/dateUtils';
+import { isWorkingDay, getWeekIdentifier, getDayOfWeekLabel } from '@/lib/dateUtils';
 
 // ─── Type Interfaces ───────────────────────────────────────────────
 
@@ -111,15 +111,12 @@ function toISODateString(date: Date | string): string {
 
 /** Get day-of-week label (e.g. "Mon") from a Date */
 function getDayOfWeek(date: Date | string): string {
-  return dayjs(date).format('ddd');
+  return getDayOfWeekLabel(dayjs(date).toDate());
 }
 
 /** Get ISO-8601 week identifier "YYYY-wWW" from a Date */
-function getWeekIdentifier(date: Date | string): string {
-  const d = dayjs(date);
-  if (!d.isValid()) return 'Invalid Date';
-  // Use dayjs format for ISO week: YYYY-[w]WW
-  return d.format('YYYY-[w]WW');
+function getWeekIdentifierLocal(date: Date | string): string {
+  return getWeekIdentifier(dayjs(date).toDate());
 }
 
 /** Generate a unique id */
@@ -418,7 +415,7 @@ export function ShiftProductionEntryModal({
       const { invoke } = await import('@tauri-apps/api/core');
       const dateStr = dayjs(selectedDate).format('YYYY-MM-DD');
       const parsedDate = selectedDate!;
-      const weekId = getWeekIdentifier(parsedDate);
+      const weekId = getWeekIdentifierLocal(parsedDate);
       const dayOfWeek = getDayOfWeek(parsedDate);
 
       const payload: ShiftProductionPayload[] = entries.map((entry) => ({
@@ -566,7 +563,7 @@ export function ShiftProductionEntryModal({
         {planLoaded && parsedDateForDisplay && (
           <Group gap="lg">
             <Badge variant="light" color="indigo" size="lg">
-              Week: {getWeekIdentifier(parsedDateForDisplay)}
+              Week: {getWeekIdentifierLocal(parsedDateForDisplay)}
             </Badge>
             <Badge variant="light" color="blue" size="lg">
               Day: {getDayOfWeek(parsedDateForDisplay)}

@@ -434,13 +434,14 @@ export const useScorecardStore = create<ScorecardStore>()(
             }
             
             if (!newDepartments[dept].weeks[weekId]) {
-              // We need the week label. For now, we'll try to find it or generate one.
-              // In a real app, we might want to store the label in the DB too.
-              // For simplicity, let's assume the Row has weekLabel if we added it, 
-              // but my struct didn't have it. I'll use weekId as label if missing.
+              // Try to preserve existing week label if it exists in current state
+              const currentState = get();
+              const existingDept = currentState.departments[dept];
+              const existingWeek = existingDept?.weeks[weekId];
+              
               newDepartments[dept].weeks[weekId] = { 
                 weekId, 
-                weekLabel: weekId, // Fallback
+                weekLabel: existingWeek?.weekLabel || weekId, 
                 parts: [] 
               };
             }
