@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect, useRef, memo, useCallback } from 'react';
 import { 
   Table, Select, NumberInput, ActionIcon, Group, Text, 
-  Box, Stack, Tooltip, Badge, Progress
+  Box, Stack, Tooltip, Badge, Progress, HoverCard, Divider
 } from '@mantine/core';
 import { 
   IconTrash, IconAlertCircle, IconCalculator, 
@@ -23,6 +23,19 @@ export interface PartInfoRecord {
   partNumber: string;
   process: string;
   processingTime: number; // Processing time in minutes
+}
+
+export interface DailyCapacityMetric {
+  totalCapacity: number;
+  totalLoad: number;
+  utilization: number;
+  machineBreakdown: { machineId: string, hours: number }[];
+  breakdown: {
+    partNumber: string;
+    scheduledQty: number;
+    processingTimeMin: number;
+    calculatedHours: number;
+  }[];
 }
 
 interface WeeklyPlanTableProps {
@@ -397,54 +410,87 @@ export default function WeeklyPlanTable({
     }
   }, [weekDates, shiftSettings, onBatchUpdateRecords]);
 
-  // Capacity calculations
-  const dailyCapacityHours = useMemo(() => {
-    if (!processInfo) return 24; // Fallback
-    
-    // Filter records by Department (Process), mapping unique MachineIDs to avoid overcounting 
-    const uniqueMachines = new Map<string, number>();
-    processInfo.forEach(record => {
-      if (record.process === department) {
-        // If we see the same machineId multiple times (e.g. across multiple dates),
-        // we assume the first one represents its generic daily template value.
-        if (!uniqueMachines.has(record.machineId)) {
-          uniqueMachines.set(record.machineId, record.hoursAvailable);
+  const dailyCapacityMetrics = useMemo(() => {
+    const capacityData = {
+      totalCapacity: 24, // Fallback
+      machineBreakdown: [] as { machineId: string, hours: number }[]
+    };
+
+    if (processInfo) {
+      const uniqueMachines = new Map<string, number>();
+      processInfo.forEach(record => {
+        if (record.process === department) {
+          if (!uniqueMachines.has(record.machineId)) {
+            uniqueMachines.set(record.machineId, record.hoursAvailable);
+          }
         }
+      });
+
+      let totalCapacity = 0;
+      const machineBreakdown = Array.from(uniqueMachines.entries()).map(([machineId, hours]) => {
+        totalCapacity += hours;
+        return { machineId, hours };
+      });
+
+      if (totalCapacity > 0) {
+        capacityData.totalCapacity = totalCapacity;
+        capacityData.machineBreakdown = machineBreakdown;
       }
+    }
+
+    const metrics = {} as Record<DayOfWeek, DailyCapacityMetric>;
+    DAYS_OF_WEEK.forEach(day => {
+      metrics[day] = {
+        totalCapacity: capacityData.totalCapacity,
+        machineBreakdown: capacityData.machineBreakdown,
+        totalLoad: 0,
+        utilization: 0,
+        breakdown: []
+      };
     });
 
-    const totalCapacity = Array.from(uniqueMachines.values()).reduce((sum, h) => sum + h, 0);
-    return totalCapacity > 0 ? totalCapacity : 24; // fallback if 0
-  }, [processInfo, department]);
-
-  const dailyLoads = useMemo(() => {
-    const loads: Record<DayOfWeek, number> = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
-    
     // Create an O(1) lookup map for Part Processing Times
     const partMap = new Map<string, number>();
     if (partInfo) {
       partInfo.forEach(p => {
-        // Optional: filter by Process if the array contains all parts for all departments.
-        // It's safe to just map PartNumber -> ProcessingTime.
         partMap.set(p.partNumber, p.processingTime);
       });
     }
 
     parts.forEach(part => {
-      // Look up processing time; gracefully default to 0 to ignore unmapped parts
       const processingTimeMins = partMap.get(part.partNumber) || 0;
       
       if (processingTimeMins > 0) {
         part.dailyRecords.forEach(record => {
           if (record.target && record.target > 0) {
-            loads[record.dayOfWeek] += (record.target * processingTimeMins) / 60;
+            const calculatedHours = (record.target * processingTimeMins) / 60;
+            metrics[record.dayOfWeek].totalLoad += calculatedHours;
+            
+            const partName = part.partNumber || 'Unassigned';
+            const existingEntry = metrics[record.dayOfWeek].breakdown.find(b => b.partNumber === partName);
+            
+            if (existingEntry) {
+              existingEntry.scheduledQty += record.target;
+              existingEntry.calculatedHours += calculatedHours;
+            } else {
+              metrics[record.dayOfWeek].breakdown.push({
+                partNumber: partName,
+                scheduledQty: record.target,
+                processingTimeMin: processingTimeMins,
+                calculatedHours: calculatedHours
+              });
+            }
           }
         });
       }
     });
 
-    return loads;
-  }, [parts, partInfo]);
+    DAYS_OF_WEEK.forEach(day => {
+      metrics[day].utilization = capacityData.totalCapacity > 0 ? (metrics[day].totalLoad / capacityData.totalCapacity) * 100 : 0;
+    });
+
+    return metrics;
+  }, [parts, partInfo, processInfo, department]);
 
   return (
     <Box style={{ border: '1px solid var(--mantine-color-gray-3)', borderRadius: '8px', overflow: 'hidden' }}>
@@ -551,8 +597,9 @@ export default function WeeklyPlanTable({
               </Group>
             </Table.Td>
             {DAYS_OF_WEEK.map((day) => {
-              const load = dailyLoads[day];
-              const utilization = dailyCapacityHours > 0 ? (load / dailyCapacityHours) * 100 : 0;
+              const metric = dailyCapacityMetrics[day];
+              const utilization = metric.utilization;
+              const load = metric.totalLoad;
               
               let color = "teal";
               if (utilization > 100) color = "red";
@@ -560,19 +607,80 @@ export default function WeeklyPlanTable({
 
               return (
                 <Table.Td key={day} ta="center" p="xs">
-                  {dailyCapacityHours > 0 ? (
-                    <Stack gap={4} align="center">
-                      <Progress 
-                        value={Math.min(utilization, 100)} 
-                        color={color} 
-                        size="md" 
-                        radius="xl"
-                        w="100%"
-                      />
-                      <Text size="10px" fw={700} c="dimmed" style={{ whiteSpace: 'nowrap' }}>
-                        {load.toFixed(1)}h / {dailyCapacityHours}h
-                      </Text>
-                    </Stack>
+                  {metric.totalCapacity > 0 ? (
+                    <HoverCard width={280} shadow="md" position="top" withArrow withinPortal>
+                      <HoverCard.Target>
+                        <Box style={{ cursor: 'pointer' }}>
+                          <Stack gap={4} align="center">
+                            <Progress 
+                              value={Math.min(utilization, 100)} 
+                              color={color} 
+                              size="md" 
+                              radius="xl"
+                              w="100%"
+                            />
+                            <Text size="10px" fw={700} c="dimmed" style={{ whiteSpace: 'nowrap' }}>
+                              {load.toFixed(1)}h / {metric.totalCapacity}h
+                            </Text>
+                          </Stack>
+                        </Box>
+                      </HoverCard.Target>
+                      <HoverCard.Dropdown p="sm">
+                        <Stack gap="xs">
+                          <Text size="sm" fw={700} style={{ borderBottom: '1px solid var(--mantine-color-gray-2)', paddingBottom: 4 }}>
+                            Capacity Breakdown
+                          </Text>
+                          <Group justify="space-between" mt={4}>
+                            <Text size="xs" c="dimmed">Total Available:</Text>
+                            <Text size="xs" fw={600}>{metric.totalCapacity}h</Text>
+                          </Group>
+                          
+                          {metric.machineBreakdown.length > 0 && (
+                            <Stack gap={2} pl="md" mt={2}>
+                              {metric.machineBreakdown.map((machine, idx) => (
+                                <Group key={idx} justify="space-between" wrap="nowrap" align="center">
+                                  <Text size="xs" c="dimmed" truncate w={100}>
+                                    {machine.machineId}
+                                  </Text>
+                                  <Text size="xs" c="dimmed" fw={500} ta="right" w={40}>
+                                    {machine.hours}h
+                                  </Text>
+                                </Group>
+                              ))}
+                            </Stack>
+                          )}
+                          
+                          <Divider my={4} color="gray.2" />
+                          
+                          {metric.breakdown.length > 0 ? (
+                            <Stack gap={2} mt={4}>
+                              {metric.breakdown.map((b, idx) => (
+                                <Group key={idx} justify="space-between" wrap="nowrap" align="center">
+                                  <Text size="xs" fw={500} truncate w={80}>
+                                    {b.partNumber}
+                                  </Text>
+                                  <Text size="10px" c="dimmed">
+                                    {b.scheduledQty}x {b.processingTimeMin}m
+                                  </Text>
+                                  <Text size="xs" fw={600} ta="right" w={40}>
+                                    {b.calculatedHours.toFixed(1)}h
+                                  </Text>
+                                </Group>
+                              ))}
+                            </Stack>
+                          ) : (
+                            <Text size="xs" c="dimmed" fs="italic" ta="center" py="xs">No parts scheduled</Text>
+                          )}
+                          
+                          <Group justify="space-between" style={{ borderTop: '1px solid var(--mantine-color-gray-2)', paddingTop: 8 }} mt={4}>
+                            <Text size="xs" fw={700}>Total Scheduled:</Text>
+                            <Text size="xs" fw={800} c={color}>
+                              {load.toFixed(1)}h ({utilization.toFixed(1)}%)
+                            </Text>
+                          </Group>
+                        </Stack>
+                      </HoverCard.Dropdown>
+                    </HoverCard>
                   ) : (
                     <Text size="10px" c="dimmed">—</Text>
                   )}
