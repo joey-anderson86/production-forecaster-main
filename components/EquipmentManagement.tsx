@@ -210,7 +210,7 @@ function EquipmentDetailDrawer({
               label="Downtime Range"
               placeholder="Pick dates"
               value={downtimeDates}
-              onChange={setDowntimeDates}
+              onChange={(val) => setDowntimeDates(val as [Date | null, Date | null])}
               clearable
             />
             <Select
