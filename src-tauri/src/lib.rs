@@ -96,6 +96,13 @@ pub struct Process {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct ReasonCodeData {
+    pub process: Option<String>,
+    pub reason_code: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct DailyRateRow {
     pub part_number: Option<String>,
     pub week: i16,
@@ -590,6 +597,32 @@ async fn get_part_numbers_by_process(
         .into_iter()
         .filter_map(|row| {
             row.get::<&str, _>("PartNumber")
+                .map(|s| s.trim().to_string())
+        })
+        .collect();
+
+    Ok(result)
+}
+
+#[tauri::command]
+async fn get_reason_codes_by_process(
+    connection_string: String,
+    process: String,
+) -> Result<Vec<String>, String> {
+    let mut client = create_client(&connection_string).await?;
+    let stream = client.query(
+        "SELECT DISTINCT LTRIM(RTRIM(ReasonCode)) as ReasonCode FROM dbo.ReasonCode WHERE LTRIM(RTRIM(Process)) = LTRIM(RTRIM(@p1)) AND ReasonCode IS NOT NULL ORDER BY ReasonCode",
+        &[&process],
+    ).await.map_err(|e| e.to_string())?;
+    let rows = stream
+        .into_first_result()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let result = rows
+        .into_iter()
+        .filter_map(|row| {
+            row.get::<&str, _>("ReasonCode")
                 .map(|s| s.trim().to_string())
         })
         .collect();
@@ -1203,6 +1236,69 @@ async fn replace_processes(connection_string: String, records: Vec<Process>) -> 
     Ok(())
 }
 
+#[tauri::command]
+async fn get_reason_codes_preview(connection_string: String) -> Result<Vec<ReasonCodeData>, String> {
+    let mut client = create_client(&connection_string).await?;
+    let stream = client.query("SELECT TOP 1000 Process, ReasonCode FROM dbo.ReasonCode", &[]).await.map_err(|e| e.to_string())?;
+    let rows = stream.into_first_result().await.map_err(|e| e.to_string())?;
+
+    let result = rows
+        .into_iter()
+        .map(|row| ReasonCodeData {
+            process: row.get::<&str, _>("Process").map(|s| s.trim().to_string()),
+            reason_code: row.get::<&str, _>("ReasonCode").map(|s| s.trim().to_string()),
+        })
+        .collect();
+
+    Ok(result)
+}
+
+#[tauri::command]
+async fn upsert_reason_codes(connection_string: String, records: Vec<ReasonCodeData>) -> Result<(), String> {
+    let mut client = create_client(&connection_string).await?;
+    for rec in records {
+        client.execute(
+            "MERGE dbo.ReasonCode AS target
+             USING (SELECT @p1 as Process, @p2 as ReasonCode) AS source
+             ON (LTRIM(RTRIM(target.Process)) = LTRIM(RTRIM(source.Process)) AND LTRIM(RTRIM(target.ReasonCode)) = LTRIM(RTRIM(source.ReasonCode)))
+             WHEN NOT MATCHED THEN
+                INSERT (Process, ReasonCode) VALUES (source.Process, source.ReasonCode);",
+            &[&rec.process, &rec.reason_code]
+        ).await.map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn delete_reason_codes(connection_string: String, records: Vec<ReasonCodeData>) -> Result<(), String> {
+    let mut client = create_client(&connection_string).await?;
+    for rec in records {
+        client.execute(
+            "DELETE FROM dbo.ReasonCode WHERE LTRIM(RTRIM(Process)) = LTRIM(RTRIM(@p1)) AND LTRIM(RTRIM(ReasonCode)) = LTRIM(RTRIM(@p2))",
+            &[&rec.process, &rec.reason_code]
+        ).await.map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn replace_reason_codes(connection_string: String, records: Vec<ReasonCodeData>) -> Result<(), String> {
+    let mut client = create_client(&connection_string).await?;
+    client.simple_query("BEGIN TRANSACTION").await.map_err(|e| e.to_string())?;
+
+    client.execute("DELETE FROM dbo.ReasonCode", &[]).await.map_err(|e| e.to_string())?;
+    
+    for rec in records {
+        client.execute(
+            "INSERT INTO dbo.ReasonCode (Process, ReasonCode) VALUES (@p1, @p2)",
+            &[&rec.process, &rec.reason_code]
+        ).await.map_err(|e| e.to_string())?;
+    }
+
+    client.simple_query("COMMIT TRANSACTION").await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1245,11 +1341,16 @@ pub fn run() {
             get_plan_data_for_shift,
             get_all_part_numbers,
             get_part_numbers_by_process,
+            get_reason_codes_by_process,
             submit_shift_production,
             get_processes_preview,
             upsert_process,
             delete_processes,
-            replace_processes
+            replace_processes,
+            get_reason_codes_preview,
+            upsert_reason_codes,
+            delete_reason_codes,
+            replace_reason_codes
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

@@ -41,6 +41,7 @@ import {
 import { useScorecardStore } from '@/lib/scorecardStore';
 import { useProcessStore } from '@/lib/processStore';
 import { isWorkingDay, getWeekIdentifier, getDayOfWeekLabel, getWeekDates } from '@/lib/dateUtils';
+import { useReasonCodes } from '@/lib/hooks/useReasonCodes';
 
 // ─── Type Interfaces ───────────────────────────────────────────────
 
@@ -102,16 +103,7 @@ const SHIFTS = [
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 
-export const REASON_CODES = [
-  "Equipment Failure (Unplanned)",
-  "Planned Maintenance",
-  "Setup & Changeover",
-  "Material Shortage",
-  "Tooling Issue",
-  "Labor Shortage",
-  "Quality / Scrap",
-  "Facility / Utility Issue",
-];
+// Deprecated static REASON_CODES removed in favor of useReasonCodes hook
 
 // ─── Utility Functions ─────────────────────────────────────────────
 
@@ -161,6 +153,9 @@ export function ShiftProductionEntryModal({
   const [entries, setEntries] = useState<ShiftProductionEntry[]>([]);
   const [isLoadingPlan, setIsLoadingPlan] = useState(false);
   const [planLoaded, setPlanLoaded] = useState(false);
+
+  // ── Dynamic Reason Codes ──
+  const { data: reasonCodes, isLoading: isReasonCodesLoading } = useReasonCodes(selectedDept);
 
   // ── Unplanned Part Picker ──
   const [allPartNumbers, setAllPartNumbers] = useState<string[]>([]);
@@ -687,13 +682,22 @@ export function ShiftProductionEntryModal({
                             <Select
                               value={entry.reasonCode}
                               onChange={(val) => updateEntry(entry.id, 'reasonCode', val || '')}
-                              data={REASON_CODES}
-                              placeholder={needsReason ? "Select reason..." : "Optional"}
+                              data={reasonCodes.length > 0 ? reasonCodes : []}
+                              placeholder={
+                                isReasonCodesLoading 
+                                  ? "Loading..." 
+                                  : reasonCodes.length === 0 
+                                    ? "No codes configured" 
+                                    : needsReason 
+                                      ? "Select reason..." 
+                                      : "Optional"
+                              }
                               size="sm"
                               searchable
                               clearable
                               error={needsReason && !entry.reasonCode.trim() ? 'Required' : undefined}
-                              disabled={!needsReason && entry.target > 0} // Optional: disable if meeting target, unless unplanned
+                              disabled={(!needsReason && entry.target > 0) || isReasonCodesLoading || reasonCodes.length === 0}
+                              rightSection={isReasonCodesLoading ? <Loader size="xs" /> : undefined}
                               leftSection={
                                 needsReason ? (
                                   <IconAlertTriangle

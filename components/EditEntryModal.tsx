@@ -15,9 +15,10 @@ import {
   Select
 } from '@mantine/core';
 import { useScorecardStore, DayOfWeek, DailyScorecardRecord } from '@/lib/scorecardStore';
-import { REASON_CODES } from './ShiftProductionEntryModal';
 import { notifications } from '@mantine/notifications';
 import { IconDeviceFloppy, IconX } from '@tabler/icons-react';
+import { Loader } from '@mantine/core';
+import { useReasonCodes } from '@/lib/hooks/useReasonCodes';
 
 interface EditEntryModalProps {
   opened: boolean;
@@ -52,6 +53,8 @@ export function EditEntryModal({
   const updateStore = useScorecardStore((state) => state.updateDailyRecord);
   const syncToDb = useScorecardStore((state) => state.syncToDb);
   const [connectionString, setConnectionString] = useState<string | null>(null);
+
+  const { data: reasonCodes, isLoading: isReasonCodesLoading } = useReasonCodes(departmentName);
 
   useEffect(() => {
     async function getConn() {
@@ -168,13 +171,21 @@ export function EditEntryModal({
 
         <Select
           label="Reason Code"
-          placeholder="Select reason for variance..."
+          placeholder={
+            isReasonCodesLoading
+              ? "Loading..."
+              : reasonCodes.length === 0
+                ? "No codes configured"
+                : "Select reason for variance..."
+          }
           description="Standardized reason required for Pareto analysis"
-          data={REASON_CODES}
+          data={reasonCodes.length > 0 ? reasonCodes : []}
           value={reasonCode}
           onChange={(val) => setReasonCode(val || '')}
           searchable
           clearable
+          disabled={isReasonCodesLoading || reasonCodes.length === 0}
+          rightSection={isReasonCodesLoading ? <Loader size="xs" /> : undefined}
           error={reasonCode.length > 144 ? 'Reason code cannot exceed 144 characters' : undefined}
         />
 

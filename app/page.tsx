@@ -20,6 +20,8 @@ import DeliveryScorecardDisplay from '@/components/DeliveryScorecardDisplay';
 import { DatabaseSettings } from '@/components/DatabaseSettings';
 import { PipelineDataPreview } from '@/components/PipelineDataPreview';
 import { PlanDataPreview } from '@/components/PlanDataPreview';
+import EquipmentScheduler from '@/components/EquipmentScheduler';
+import EquipmentManagement from '@/components/EquipmentManagement';
 import { useFullscreen } from '@mantine/hooks';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -565,6 +567,8 @@ export default function ProductionForecaster() {
             <Tabs.List>
               <Tabs.Tab value="scorecard-dash">Delivery Dashboard</Tabs.Tab>
               <Tabs.Tab value="scorecard-mgmt">Production Planner</Tabs.Tab>
+              {/*<Tabs.Tab value="production-board">Production Board</Tabs.Tab>*/}
+              {/*<Tabs.Tab value="equipment-mgmt">Equipment Management</Tabs.Tab>*/}
               <Tabs.Tab value="forecaster">Production Forecaster</Tabs.Tab>
               <Tabs.Tab value="settings">Settings</Tabs.Tab>
             </Tabs.List>
@@ -1088,9 +1092,21 @@ export default function ProductionForecaster() {
           </div>
         )}
 
+        {mainTab === 'equipment-mgmt' && (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
+            <EquipmentManagement />
+          </div>
+        )}
+
         {mainTab === 'scorecard-dash' && (
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
             <DeliveryScorecardDisplay />
+          </div>
+        )}
+
+        {mainTab === 'production-board' && (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 min-h-[600px]">
+            <EquipmentScheduler />
           </div>
         )}
 

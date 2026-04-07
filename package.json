@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@google/genai": "^1.17.0",
+    "@hello-pangea/dnd": "^18.0.1",
     "@hookform/resolvers": "^5.2.1",
     "@mantine/charts": "^8.3.17",
     "@mantine/core": "^8.3.16",

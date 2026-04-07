@@ -78,6 +78,11 @@ interface Process {
   processName: string;
 }
 
+interface ReasonCodeData {
+  process?: string;
+  reasonCode?: string;
+}
+
 export function DatabaseSettings() {
   const fetchGlobalProcesses = useProcessStore((state) => state.fetchProcesses);
   const globalProcesses = useProcessStore((state) => state.processes);
@@ -94,6 +99,7 @@ export function DatabaseSettings() {
   const [processInfos, setProcessInfos] = useState<ProcessInfo[]>([]);
   const [dailyRates, setDailyRates] = useState<DailyRate[]>([]);
   const [processes, setProcesses] = useState<Process[]>([]);
+  const [reasonCodes, setReasonCodes] = useState<ReasonCodeData[]>([]);
   const [allPartNumbers, setAllPartNumbers] = useState<string[]>([]);
   
   // Initial states for comparison
@@ -102,6 +108,7 @@ export function DatabaseSettings() {
   const [initialProcessInfos, setInitialProcessInfos] = useState<string>("");
   const [initialDailyRates, setInitialDailyRates] = useState<string>("");
   const [initialProcesses, setInitialProcesses] = useState<string>("");
+  const [initialReasonCodes, setInitialReasonCodes] = useState<string>("");
 
   // Deletion tracking
   const [deletedLocators, setDeletedLocators] = useState<string[]>([]);
@@ -109,6 +116,7 @@ export function DatabaseSettings() {
   const [deletedProcessInfos, setDeletedProcessInfos] = useState<{process: string, date: string, machineId: string}[]>([]);
   const [deletedDailyRates, setDeletedDailyRates] = useState<DailyRate[]>([]);
   const [deletedProcesses, setDeletedProcesses] = useState<string[]>([]);
+  const [deletedReasonCodes, setDeletedReasonCodes] = useState<ReasonCodeData[]>([]);
 
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [isSavingData, setIsSavingData] = useState(false);
@@ -139,6 +147,8 @@ export function DatabaseSettings() {
       tableDirty = !isDeepEqual(dailyRates, initialDailyRates);
     } else if (activeTab === "process") {
       tableDirty = !isDeepEqual(processes, initialProcesses);
+    } else if (activeTab === "reasonCode") {
+      tableDirty = !isDeepEqual(reasonCodes, initialReasonCodes);
     }
 
     const deletionDirty = activeTab === "locatorMapping" 
@@ -151,10 +161,12 @@ export function DatabaseSettings() {
       ? deletedDailyRates.length > 0
       : activeTab === "process"
       ? deletedProcesses.length > 0
+      : activeTab === "reasonCode"
+      ? deletedReasonCodes.length > 0
       : false;
 
     return tableDirty || deletionDirty;
-  }, [activeTab, locatorMappings, partInfos, processInfos, dailyRates, processes, initialLocatorMappings, initialPartInfos, initialProcessInfos, initialDailyRates, initialProcesses, deletedLocators, deletedPartInfos, deletedProcessInfos, deletedDailyRates, deletedProcesses]);
+  }, [activeTab, locatorMappings, partInfos, processInfos, dailyRates, processes, reasonCodes, initialLocatorMappings, initialPartInfos, initialProcessInfos, initialDailyRates, initialProcesses, initialReasonCodes, deletedLocators, deletedPartInfos, deletedProcessInfos, deletedDailyRates, deletedProcesses, deletedReasonCodes]);
 
   useEffect(() => {
     async function init() {
@@ -210,6 +222,11 @@ export function DatabaseSettings() {
         setProcesses(data);
         setInitialProcesses(JSON.stringify(data));
         setDeletedProcesses([]);
+      } else if (tab === "reasonCode") {
+        const data = await invoke<ReasonCodeData[]>("get_reason_codes_preview", { connectionString: activeConnStr });
+        setReasonCodes(data);
+        setInitialReasonCodes(JSON.stringify(data));
+        setDeletedReasonCodes([]);
       }
     } catch (err) {
       console.error(`Failed to fetch ${tab} data:`, err);
@@ -340,6 +357,13 @@ export function DatabaseSettings() {
           
           // Refresh global process store
           await fetchGlobalProcesses(connectionString);
+      } else if (activeTab === "reasonCode") {
+         if (deletedReasonCodes.length > 0) {
+           const cleanDeleted = deletedReasonCodes.map(r => ({ process: r.process || "", reasonCode: r.reasonCode || "" }));
+           await invoke("delete_reason_codes", { connectionString, records: cleanDeleted });
+         }
+         const cleanRecords = reasonCodes.map(r => ({ process: r.process || "", reasonCode: r.reasonCode || "" }));
+         await invoke("upsert_reason_codes", { connectionString, records: cleanRecords });
       }
       
       notifications.show({
@@ -408,6 +432,8 @@ export function DatabaseSettings() {
       }]);
     } else if (activeTab === "process") {
       setProcesses(prev => [...prev, { processName: "" }]);
+    } else if (activeTab === "reasonCode") {
+      setReasonCodes(prev => [...prev, { process: "", reasonCode: "" }]);
     }
   };
 
@@ -432,6 +458,10 @@ export function DatabaseSettings() {
       const next = [...processes];
       next[index] = { ...next[index], [field]: value };
       setProcesses(next);
+    } else if (activeTab === "reasonCode") {
+      const next = [...reasonCodes];
+      next[index] = { ...next[index], [field]: value };
+      setReasonCodes(next);
     }
   };
 
@@ -498,6 +528,17 @@ export function DatabaseSettings() {
         setDeletedProcesses(prev => [...prev, record.processName]);
       }
       setProcesses(prev => prev.filter((_, i) => i !== index));
+    } else if (activeTab === "reasonCode") {
+      const record = reasonCodes[index];
+      const initial = JSON.parse(initialReasonCodes) as ReasonCodeData[];
+      const wasInDb = initial.some(r => 
+        normalize(r.process) === normalize(record.process) &&
+        normalize(r.reasonCode) === normalize(record.reasonCode)
+      );
+      if (wasInDb) {
+        setDeletedReasonCodes(prev => [...prev, record]);
+      }
+      setReasonCodes(prev => prev.filter((_, i) => i !== index));
     }
   };
 
@@ -567,6 +608,12 @@ export function DatabaseSettings() {
             
             // Refresh global process store
             await fetchGlobalProcesses(connectionString);
+          } else if (activeTab === "reasonCode") {
+            const mapped = rawData.map(r => ({
+              process: r.Process || r.process || "",
+              reasonCode: r.ReasonCode || r.reasonCode || r.Reason || r.reason || ""
+            }));
+            await invoke("replace_reason_codes", { connectionString, records: mapped });
           }
 
           notifications.show({
@@ -608,6 +655,9 @@ export function DatabaseSettings() {
     } else if (activeTab === "process") {
       headers = "ProcessName";
       fileName = "manufacturing_processes_template.csv";
+    } else if (activeTab === "reasonCode") {
+      headers = "Process,ReasonCode";
+      fileName = "reason_codes_template.csv";
     }
     
     if (!headers) return;
@@ -923,6 +973,58 @@ export function DatabaseSettings() {
       );
     }
 
+    if (activeTab === "reasonCode") {
+      return (
+        <ScrollArea h={400} mt="md">
+          <Table striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="xs">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Process</Table.Th>
+                <Table.Th>Reason Code</Table.Th>
+                <Table.Th w={50}></Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {reasonCodes.map((row, i) => (
+                <Table.Tr key={i}>
+                  <Table.Td>
+                    <Select
+                      variant="unstyled"
+                      size="xs"
+                      data={globalProcesses}
+                      value={row.process || ""}
+                      onChange={(val) => updateRecord(i, "process", val || "")}
+                      searchable
+                      clearable
+                      placeholder="Select process"
+                    />
+                  </Table.Td>
+                  <Table.Td>
+                    <TextInput 
+                      variant="unstyled" 
+                      size="xs" 
+                      p={0} 
+                      placeholder="e.g. Broken Spindle..."
+                      value={row.reasonCode || ""} 
+                      onChange={(e) => updateRecord(i, "reasonCode", e.currentTarget.value)} 
+                    />
+                  </Table.Td>
+                  <Table.Td>
+                    <ActionIcon variant="subtle" color="red" onClick={() => removeLocalRecord(i)}>
+                      <IconTrash size={14} />
+                    </ActionIcon>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+              {reasonCodes.length === 0 && (
+                <Table.Tr><Table.Td colSpan={3}><Text ta="center" c="dimmed">No reason codes configured.</Text></Table.Td></Table.Tr>
+              )}
+            </Table.Tbody>
+          </Table>
+        </ScrollArea>
+      );
+    }
+
     return null;
   };
 
@@ -1104,6 +1206,9 @@ export function DatabaseSettings() {
               <Tabs.Tab value="locatorMapping" leftSection={<IconTable size={14} />}>
                 Locator Mapping
               </Tabs.Tab>
+              <Tabs.Tab value="reasonCode" leftSection={<IconTable size={14} />}>
+                Reason Codes
+              </Tabs.Tab>
             </Tabs.List>
 
             <Tabs.Panel value="process">
@@ -1123,6 +1228,10 @@ export function DatabaseSettings() {
             </Tabs.Panel>
 
             <Tabs.Panel value="locatorMapping">
+              {renderTable()}
+            </Tabs.Panel>
+
+            <Tabs.Panel value="reasonCode">
               {renderTable()}
             </Tabs.Panel>
           </Tabs>
