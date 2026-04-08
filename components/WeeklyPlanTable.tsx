@@ -9,7 +9,7 @@ import {
   IconTrash, IconAlertCircle, IconCalculator, 
   IconChevronRight, IconChevronDown, IconWand
 } from '@tabler/icons-react';
-import { DayOfWeek, DAYS_OF_WEEK, getWeekDates, isWorkingDay } from '@/lib/dateUtils';
+import { DayOfWeek, DAYS_OF_WEEK, getWeekDates, isWorkingDay, formatISODate } from '@/lib/dateUtils';
 import { PartScorecard, useScorecardStore } from '@/lib/scorecardStore';
 
 export interface ProcessInfoRecord {
@@ -411,38 +411,40 @@ export default function WeeklyPlanTable({
   }, [weekDates, shiftSettings, onBatchUpdateRecords]);
 
   const dailyCapacityMetrics = useMemo(() => {
-    const capacityData = {
-      totalCapacity: 24, // Fallback
-      machineBreakdown: [] as { machineId: string, hours: number }[]
-    };
-
+    const metrics = {} as Record<DayOfWeek, DailyCapacityMetric>;
+    
+    // Group process info by Date then Machine ID to sum shifts correctly
+    const dailyCapacityMap = new Map<string, Map<string, number>>();
     if (processInfo) {
-      const uniqueMachines = new Map<string, number>();
       processInfo.forEach(record => {
-        if (record.process === department) {
-          if (!uniqueMachines.has(record.machineId)) {
-            uniqueMachines.set(record.machineId, record.hoursAvailable);
+        if (record.process === department && record.date) {
+          if (!dailyCapacityMap.has(record.date)) {
+            dailyCapacityMap.set(record.date, new Map());
           }
+          const machineMap = dailyCapacityMap.get(record.date)!;
+          const currentHours = machineMap.get(record.machineId) || 0;
+          machineMap.set(record.machineId, currentHours + (record.hoursAvailable || 0));
         }
       });
-
-      let totalCapacity = 0;
-      const machineBreakdown = Array.from(uniqueMachines.entries()).map(([machineId, hours]) => {
-        totalCapacity += hours;
-        return { machineId, hours };
-      });
-
-      if (totalCapacity > 0) {
-        capacityData.totalCapacity = totalCapacity;
-        capacityData.machineBreakdown = machineBreakdown;
-      }
     }
 
-    const metrics = {} as Record<DayOfWeek, DailyCapacityMetric>;
-    DAYS_OF_WEEK.forEach(day => {
+    DAYS_OF_WEEK.forEach((day, idx) => {
+      const targetDate = weekDates[idx] ? formatISODate(weekDates[idx]) : '';
+      const machinesMap = dailyCapacityMap.get(targetDate);
+      
+      let totalCapacity = 0;
+      let machineBreakdown: { machineId: string, hours: number }[] = [];
+      
+      if (machinesMap) {
+        machineBreakdown = Array.from(machinesMap.entries()).map(([machineId, hours]) => {
+          totalCapacity += hours;
+          return { machineId, hours };
+        });
+      }
+
       metrics[day] = {
-        totalCapacity: capacityData.totalCapacity,
-        machineBreakdown: capacityData.machineBreakdown,
+        totalCapacity,
+        machineBreakdown,
         totalLoad: 0,
         utilization: 0,
         breakdown: []
@@ -488,7 +490,14 @@ export default function WeeklyPlanTable({
     });
 
     DAYS_OF_WEEK.forEach(day => {
-      metrics[day].utilization = capacityData.totalCapacity > 0 ? (metrics[day].totalLoad / capacityData.totalCapacity) * 100 : 0;
+      const load = metrics[day].totalLoad;
+      const capacity = metrics[day].totalCapacity;
+      if (capacity > 0) {
+        metrics[day].utilization = (load / capacity) * 100;
+      } else {
+        // If there is a load but no capacity, it's over capacity (101% to trigger red)
+        metrics[day].utilization = load > 0 ? 101 : 0;
+      }
     });
 
     return metrics;
@@ -609,7 +618,7 @@ export default function WeeklyPlanTable({
 
               return (
                 <Table.Td key={day} ta="center" p="xs">
-                  {metric.totalCapacity > 0 ? (
+                  {processInfo ? (
                     <HoverCard width={280} shadow="md" position="top" withArrow withinPortal>
                       <HoverCard.Target>
                         <Box style={{ cursor: 'pointer' }}>
