@@ -567,8 +567,8 @@ export default function ProductionForecaster() {
             <Tabs.List>
               <Tabs.Tab value="scorecard-dash">Delivery Dashboard</Tabs.Tab>
               <Tabs.Tab value="scorecard-mgmt">Production Planner</Tabs.Tab>
-              {/*<Tabs.Tab value="production-board">Production Board</Tabs.Tab>*/}
-              {/*<Tabs.Tab value="equipment-mgmt">Equipment Management</Tabs.Tab>*/}
+              <Tabs.Tab value="production-board">Production Board</Tabs.Tab>
+              <Tabs.Tab value="equipment-mgmt">Equipment Management</Tabs.Tab>
               <Tabs.Tab value="forecaster">Production Forecaster</Tabs.Tab>
               <Tabs.Tab value="settings">Settings</Tabs.Tab>
             </Tabs.List>

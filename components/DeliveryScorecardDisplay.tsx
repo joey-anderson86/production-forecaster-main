@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useLocalStorage } from '@mantine/hooks';
 import { useScorecardStore, DayOfWeek, DailyScorecardRecord, PartScorecard } from '@/lib/scorecardStore';
 import { 
-  Tabs, Select, Table, Card, Text, Group, Badge, Title, Box, Tooltip, Stack, Button, ActionIcon
+  Tabs, Select, Table, Card, Text, Group, Badge, Title, Box, Tooltip, Stack, Button, ActionIcon, Paper
 } from '@mantine/core';
 import { 
   IconFlask, IconBox, IconShip, IconClipboardCheck, IconPlus, 
@@ -222,70 +222,64 @@ export default function DeliveryScorecardDisplay() {
   }, [activeWeek, searchQuery, sortConfig]);
 
   return (
-    <Box className="w-full">
-      <Title order={3} mb={0}>Delivery Scorecard & Loss Pareto — by Department</Title>
-      <Group justify="space-between" align="flex-end" mb="xl">
-        <Text c="dimmed" size="sm">Daily actual vs target and root cause accumulation per department.</Text>
+    <Stack gap="md" className="w-full">
+      <Group justify="space-between" align="center">
+        <Stack gap={4}>
+          <Title order={2}>Delivery Scorecard & Loss Pareto</Title>
+          <Text c="dimmed" size="sm">Daily actual vs target and root cause accumulation per department.</Text>
+        </Stack>
         <Button
           variant="filled"
           color="indigo"
           leftSection={<IconPlus size={16} />}
           onClick={() => setShiftModalOpened(true)}
-          size="sm"
         >
           Record Shift Production
         </Button>
       </Group>
 
-      <Tabs value={activeTab} onChange={setActiveTab} variant="outline" mb="md">
-        <Tabs.List>
-          {processes.map(name => (
-            <Tabs.Tab 
-              key={name} 
-              value={name} 
-              leftSection={getProcessIcon(name)}
-              color="indigo"
-            >
-              <Text fw={600} size="sm">{name}</Text>
-            </Tabs.Tab>
-          ))}
-        </Tabs.List>
-      </Tabs>
+      <Paper withBorder p="md" radius="md">
+        <Stack gap="md">
+          <Group justify="space-between" align="center">
+            <Tabs value={activeTab} onChange={setActiveTab} variant="pills">
+              <Tabs.List>
+                {processes.map(name => (
+                  <Tabs.Tab 
+                    key={name} 
+                    value={name} 
+                    leftSection={getProcessIcon(name)}
+                    color="indigo"
+                  >
+                    {name}
+                  </Tabs.Tab>
+                ))}
+              </Tabs.List>
+            </Tabs>
 
-      <Group justify="space-between" align="flex-start" mb="md" gap="xl">
-        <Box>
-           <Group gap="xs" mb="xs">
-             <Text c="indigo.6" className="flex items-center gap-2" fw={700} size="xl">
-               {activeDeptIcon} {activeTab}
-             </Text>
-             <Badge variant="light" color="indigo" size="sm">Dept Scorecard</Badge>
-           </Group>
-           <Text c="dimmed" size="xs">Daily actual vs target by part number, and root<br/>cause accumulation.</Text>
-        </Box>
-      </Group>
+            <Select
+              placeholder="Select Week"
+              value={selectedWeekId}
+              onChange={setSelectedWeekId}
+              data={weekOptions}
+              size="sm"
+              w={220}
+            />
+          </Group>
 
-     <Group justify="space-between" align="center" mb="md" gap="md">
-        <TextInput
-          placeholder="Search Part Number..."
-          leftSection={<IconSearch size={16} />}
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.currentTarget.value)}
-          size="sm"
-          className="flex-1 max-w-sm"
-        />
+          <Box>
+            <Group mb="md">
+              <TextInput
+                placeholder="Search Part Number..."
+                leftSection={<IconSearch size={16} />}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.currentTarget.value)}
+                size="sm"
+                className="flex-1 max-w-sm"
+              />
+            </Group>
 
-        <Select
-          label={<Text size="xs" fw={700} c="dimmed" mb={2}>SELECT WORK WEEK TO VIEW</Text>}
-          value={selectedWeekId}
-          onChange={setSelectedWeekId}
-          data={weekOptions}
-          placeholder="Select a week"
-          size="sm"
-          className="w-[200px]"
-        />
-     </Group>
 
-      <Card withBorder shadow="sm" radius="md" mt="sm">
+            <Box className="border-t border-gray-100" style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--mantine-color-gray-3)' }}>
         {activeWeek ? (
           <Table verticalSpacing="sm" striped highlightOnHover className="w-full">
             <Table.Thead>
@@ -559,7 +553,10 @@ export default function DeliveryScorecardDisplay() {
         ) : (
           <Text c="dimmed" ta="center" py="xl">No work week selected or no data available.</Text>
         )}
-      </Card>
+            </Box>
+          </Box>
+        </Stack>
+      </Paper>
 
       {activeDepartment && activeWeek && editingEntry && (
         <EditEntryModal
@@ -606,6 +603,6 @@ export default function DeliveryScorecardDisplay() {
           </Tabs.Panel>
         </Tabs>
       )}
-    </Box>
+    </Stack>
   );
 }

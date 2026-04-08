@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { 
   Tabs, Select, Button, TextInput, NumberInput, Card, Grid, Group, Text, 
-  ActionIcon, Divider, Box, Badge, Tooltip as MantineTooltip, Stack, Modal, Switch 
+  ActionIcon, Divider, Box, Badge, Tooltip as MantineTooltip, Stack, Modal, Switch, Paper, Title
 } from '@mantine/core';
 import { useLocalStorage } from '@mantine/hooks';
 import { 
@@ -450,114 +450,121 @@ export default function DeliveryScorecardManagement() {
   const activeWeek = activeDepartment && selectedWeekId ? activeDepartment.weeks[selectedWeekId] : null;
 
   return (
-    <Box className="w-full">
-      <Tabs value={activeTab} onChange={setActiveTab} variant="outline" mb="md">
-        <Tabs.List>
-          {processes.map(name => (
-            <Tabs.Tab 
-              key={name} 
-              value={name} 
-              leftSection={getProcessIcon(name)}
-              color="indigo"
-            >
-              <Text fw={600} size="sm">{name}</Text>
-            </Tabs.Tab>
-          ))}
-        </Tabs.List>
-      </Tabs>
-
-      <Card withBorder shadow="sm" radius="md" mb="xl" bg="gray.0">
-        <Group justify="space-between" align="flex-end">
-          <Select
-            label={<Text size="xs" fw={700} c="dimmed">SELECT WORK WEEK TO EDIT</Text>}
-            placeholder="Select a week"
-            data={weekOptions}
-            value={selectedWeekId}
-            onChange={setSelectedWeekId}
-            className="flex-1 max-w-md"
-            size="md"
-          />
-          <Group gap="sm">
-            <SyncStatusIndicator />
-            <Divider orientation="vertical" />
-            <Button 
-              leftSection={<IconRefresh size={16} />} 
-              variant="outline" 
-              color="blue"
-              size="md"
-              loading={store.isLoading}
-              onClick={handleFetchFromDb}
-            >
-              Sync from DB
-            </Button>
-            <Button 
-              leftSection={<IconPlus size={16} />} 
-              variant="light" 
-              color="indigo"
-              size="md"
-              onClick={handleAddWeek}
-            >
-              Add New Week
-            </Button>
-          </Group>
+    <Stack gap="md" className="w-full">
+      <Group justify="space-between" align="center">
+        <Title order={2}>Production Planner</Title>
+        <Group>
+          <SyncStatusIndicator />
         </Group>
-      </Card>
+      </Group>
 
-      {activeWeek && (
-        <>
-          <Card withBorder shadow="sm" radius="md" mb="md">
-            <Group justify="space-between" align="end">
-               <TextInput
-                 label={<Text size="xs" fw={700} c="dimmed">WEEK LABEL</Text>}
-                 value={activeWeek.weekLabel}
-                 readOnly
-                 className="flex-1 max-w-md"
-                 size="md"
-               />
-               <Button 
-                 leftSection={<IconTrash size={16} />} 
-                 variant="light" 
-                 color="red"
-                 onClick={handleDeleteWeek}
-               >
-                 Delete Entire Week
-               </Button>
+      <Paper withBorder p="md" radius="md">
+        <Stack gap="md">
+          <Group justify="space-between" align="center">
+            <Tabs value={activeTab} onChange={setActiveTab} variant="pills">
+              <Tabs.List>
+                {processes.map(name => (
+                  <Tabs.Tab 
+                    key={name} 
+                    value={name} 
+                    leftSection={getProcessIcon(name)}
+                    color="indigo"
+                  >
+                    {name}
+                  </Tabs.Tab>
+                ))}
+              </Tabs.List>
+            </Tabs>
+
+            <Group gap="sm">
+              <Select
+                placeholder="Select Week"
+                data={weekOptions}
+                value={selectedWeekId}
+                onChange={setSelectedWeekId}
+                size="sm"
+                w={220}
+              />
+              <Button 
+                leftSection={<IconRefresh size={16} />} 
+                variant="outline" 
+                color="blue"
+                size="sm"
+                loading={store.isLoading}
+                onClick={handleFetchFromDb}
+              >
+                Sync
+              </Button>
+              <Button 
+                leftSection={<IconPlus size={16} />} 
+                variant="light" 
+                color="indigo"
+                size="sm"
+                onClick={handleAddWeek}
+              >
+                Add Week
+              </Button>
             </Group>
-          </Card>
+          </Group>
 
-          <Card withBorder shadow="sm" radius="md" mb="xl" py="sm">
-             <Group>
-                <Text size="sm" fw={700} c="dimmed">WEEKLY PLAN TEMPLATE:</Text>
-                <Button 
-                  leftSection={<IconDownload size={16} />} 
-                  variant="default" 
-                  size="xs"
-                  onClick={handleExportTemplate}
-                >
-                  Download Template
-                </Button>
-                <Button 
-                  leftSection={<IconDownload size={16} />} 
-                  variant="light" 
-                  color="teal"
-                  size="xs"
-                  onClick={handleExportCSV}
-                >
-                  Export CSV
-                </Button>
-                <Button 
-                  leftSection={<IconDownload size={16} />} 
-                  variant="outline" 
-                  color="teal"
-                  size="xs"
-                  onClick={handleGlobalExportCSV}
-                >
-                  Global Export
-                </Button>
-             </Group>
-          </Card>
 
-          <Box className="mb-md">
+          {activeWeek && (
+            <Box>
+              <Group justify="space-between" mb="md" className="bg-gray-50/50 p-2 rounded-md border border-gray-100">
+                <Group gap="lg">
+                  <TextInput
+                    label={<Text size="xs" fw={700} c="dimmed">WEEK LABEL</Text>}
+                    value={activeWeek.weekLabel}
+                    readOnly
+                    size="sm"
+                    w={280}
+                    styles={{ label: { marginBottom: 2 } }}
+                  />
+                  <Divider orientation="vertical" />
+                  <Group gap={8}>
+                    <Text size="xs" fw={700} c="dimmed" mr={4}>EXPORT AS:</Text>
+                    <Button 
+                      leftSection={<IconDownload size={14} />} 
+                      variant="subtle" 
+                      size="xs"
+                      onClick={handleExportTemplate}
+                    >
+                      Template
+                    </Button>
+                    <Button 
+                      leftSection={<IconDownload size={14} />} 
+                      variant="subtle" 
+                      color="teal"
+                      size="xs"
+                      onClick={handleExportCSV}
+                    >
+                      CSV
+                    </Button>
+                    <Button 
+                      leftSection={<IconDownload size={14} />} 
+                      variant="subtle" 
+                      color="indigo"
+                      size="xs"
+                      onClick={handleGlobalExportCSV}
+                    >
+                      Global
+                    </Button>
+                  </Group>
+                </Group>
+                
+                <Button 
+                  leftSection={<IconTrash size={14} />} 
+                  variant="subtle" 
+                  color="red"
+                  size="xs"
+                  onClick={handleDeleteWeek}
+                >
+                  Delete Entire Week
+                </Button>
+              </Group>
+
+              <Box className="border border-gray-200 rounded-md overflow-hidden mb-md">
+
             <WeeklyPlanTable 
               department={activeTab!}
               weekId={selectedWeekId!}
@@ -635,12 +642,12 @@ export default function DeliveryScorecardManagement() {
           >
             Add Part Number Row
           </Button>
-        </>
-      )}
+            </Box>
+          )}
 
-      {!activeWeek && weekOptions.length === 0 && (
-         <Text c="dimmed" ta="center" mt="xl">No work weeks defined for this department. Click "Add New Week" to start.</Text>
-      )}
+          {!activeWeek && weekOptions.length === 0 && (
+             <Text c="dimmed" ta="center" mt="xl">No work weeks defined for this department. Click "Add New Week" to start.</Text>
+          )}
 
       {/* Add Week Modal */}
       <Modal 
@@ -683,7 +690,9 @@ export default function DeliveryScorecardManagement() {
            </Group>
         </Stack>
       </Modal>
+        </Stack>
+      </Paper>
+    </Stack>
 
-    </Box>
   );
 }

@@ -65,6 +65,7 @@ interface ProcessInfo {
   date?: string;
   hoursAvailable?: number;
   machineId?: string;
+  shift?: string;
 }
 
 interface DailyRate {
@@ -113,7 +114,7 @@ export function DatabaseSettings() {
   // Deletion tracking
   const [deletedLocators, setDeletedLocators] = useState<string[]>([]);
   const [deletedPartInfos, setDeletedPartInfos] = useState<{partNumber: string, process: string}[]>([]);
-  const [deletedProcessInfos, setDeletedProcessInfos] = useState<{process: string, date: string, machineId: string}[]>([]);
+  const [deletedProcessInfos, setDeletedProcessInfos] = useState<{process: string, date: string, machineId: string, shift: string}[]>([]);
   const [deletedDailyRates, setDeletedDailyRates] = useState<DailyRate[]>([]);
   const [deletedProcesses, setDeletedProcesses] = useState<string[]>([]);
   const [deletedReasonCodes, setDeletedReasonCodes] = useState<ReasonCodeData[]>([]);
@@ -323,7 +324,7 @@ export function DatabaseSettings() {
       } else if (activeTab === "processInfo") {
         // Handle deletions
         if (deletedProcessInfos.length > 0) {
-          const identifiers = deletedProcessInfos.map(p => ({ process: p.process, date: p.date, machine_id: p.machineId }));
+          const identifiers = deletedProcessInfos.map(p => ({ process: p.process, date: p.date, machine_id: p.machineId, shift: p.shift }));
           await invoke("delete_process_infos", { connectionString, identifiers });
         }
         // Handle upserts
@@ -420,7 +421,7 @@ export function DatabaseSettings() {
       setPartInfos(prev => [...prev, { partNumber: "", process: "", batchSize: 0, processingTime: 0 }]);
     } else if (activeTab === "processInfo") {
       const today = new Date().toISOString().split('T')[0];
-      setProcessInfos(prev => [...prev, { process: "", date: today, hoursAvailable: 8, machineId: "" }]);
+      setProcessInfos(prev => [...prev, { process: "", date: today, hoursAvailable: 8, machineId: "", shift: "A" }]);
     } else if (activeTab === "dailyRate") {
       const currentWeekId = getCurrentWeekId();
       const [currYear, currWeekStr] = currentWeekId.split("-w");
@@ -495,14 +496,16 @@ export function DatabaseSettings() {
       const wasInDb = initial.some(r => 
         normalize(r.process) === normalize(record.process) && 
         normalize(r.date) === normalize(record.date) && 
-        normalize(r.machineId) === normalize(record.machineId)
+        normalize(r.machineId) === normalize(record.machineId) &&
+        normalize(r.shift) === normalize(record.shift)
       );
       
       if (wasInDb && (record.process || record.date)) {
         setDeletedProcessInfos(prev => [...prev, { 
           process: record.process || null as any, 
           date: record.date || null as any, 
-          machineId: record.machineId || null as any
+          machineId: record.machineId || null as any,
+          shift: record.shift || null as any
         }]);
       }
       setProcessInfos(prev => prev.filter((_, i) => i !== index));
@@ -574,7 +577,8 @@ export function DatabaseSettings() {
               process: r.Process || r.process || "",
               date: r.Date || r.date || "",
               hoursAvailable: parseInt(r.HoursAvailable || r.hoursAvailable || "0"),
-              machineId: r.MachineID || r.MachineId || r.machineId || ""
+              machineId: r.MachineID || r.MachineId || r.machineId || "",
+              shift: r.Shift || r.shift || ""
             }));
             await invoke("replace_process_infos", { connectionString, records: mapped });
           } else if (activeTab === "dailyRate") {
@@ -647,7 +651,7 @@ export function DatabaseSettings() {
       headers = "PartNumber,Process,BatchSize,ProcessingTime";
       fileName = "part_information_template.csv";
     } else if (activeTab === "processInfo") {
-      headers = "Process,Date,HoursAvailable,MachineID";
+      headers = "Process,Date,Shift,HoursAvailable,MachineID";
       fileName = "process_information_template.csv";
     } else if (activeTab === "dailyRate") {
       headers = "PartNumber,Week,Year,Qty";
@@ -836,6 +840,7 @@ export function DatabaseSettings() {
               <Table.Tr>
                 <Table.Th>Process</Table.Th>
                 <Table.Th>Date</Table.Th>
+                <Table.Th>Shift</Table.Th>
                 <Table.Th>Hours Available</Table.Th>
                 <Table.Th>Machine ID</Table.Th>
                 <Table.Th w={50}></Table.Th>
@@ -860,6 +865,15 @@ export function DatabaseSettings() {
                     <TextInput variant="unstyled" size="xs" value={row.date || ""} onChange={(e) => updateRecord(i, "date", e.currentTarget.value)} />
                   </Table.Td>
                   <Table.Td>
+                    <Select
+                      variant="unstyled"
+                      size="xs"
+                      data={['A', 'B', 'C', 'D']}
+                      value={row.shift || ""}
+                      onChange={(val) => updateRecord(i, "shift", val || "")}
+                    />
+                  </Table.Td>
+                  <Table.Td>
                     <NumberInput variant="unstyled" size="xs" value={row.hoursAvailable} onChange={(val) => updateRecord(i, "hoursAvailable", val)} />
                   </Table.Td>
                   <Table.Td>
@@ -873,7 +887,7 @@ export function DatabaseSettings() {
                 </Table.Tr>
               ))}
               {processInfos.length === 0 && (
-                <Table.Tr><Table.Td colSpan={5}><Text ta="center" c="dimmed">No records found</Text></Table.Td></Table.Tr>
+                <Table.Tr><Table.Td colSpan={6}><Text ta="center" c="dimmed">No records found</Text></Table.Td></Table.Tr>
               )}
             </Table.Tbody>
           </Table>

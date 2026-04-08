@@ -45,6 +45,7 @@ struct ProcessInfo {
     date: Option<String>,
     hours_available: Option<i16>,
     machine_id: Option<String>,
+    shift: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -336,7 +337,7 @@ async fn get_part_info_preview(connection_string: String) -> Result<Vec<PartInfo
 async fn get_process_info_preview(connection_string: String) -> Result<Vec<ProcessInfo>, String> {
     let mut client = create_client(&connection_string).await?;
     // Formatted date to string for simple transfer
-    let stream = client.query("SELECT TOP 100 Process, CONVERT(VARCHAR, Date, 23) as Date, HoursAvailable, MachineID FROM dbo.ProcessInfo", &[]).await.map_err(|e| e.to_string())?;
+    let stream = client.query("SELECT TOP 100 Process, CONVERT(VARCHAR, Date, 23) as Date, HoursAvailable, MachineID, Shift FROM dbo.ProcessInfo", &[]).await.map_err(|e| e.to_string())?;
     let rows = stream
         .into_first_result()
         .await
@@ -351,6 +352,43 @@ async fn get_process_info_preview(connection_string: String) -> Result<Vec<Proce
             machine_id: row
                 .get::<&str, _>("MachineID")
                 .map(|s| s.trim().to_string()),
+            shift: row.get::<&str, _>("Shift").map(|s| s.trim().to_string()),
+        })
+        .collect();
+
+    Ok(result)
+}
+
+#[tauri::command]
+async fn get_process_info(
+    connection_string: String,
+    process: String,
+    week_identifier: String,
+) -> Result<Vec<ProcessInfo>, String> {
+    let mut client = create_client(&connection_string).await?;
+    let stream = client.query(
+        "SELECT Process, CONVERT(VARCHAR, Date, 23) as Date, HoursAvailable, MachineID, Shift 
+         FROM dbo.ProcessInfo 
+         WHERE LTRIM(RTRIM(Process)) = LTRIM(RTRIM(@p1)) 
+           AND WeekIdentifier = @p2",
+        &[&process, &week_identifier],
+    ).await.map_err(|e| e.to_string())?;
+    
+    let rows = stream
+        .into_first_result()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let result = rows
+        .into_iter()
+        .map(|row| ProcessInfo {
+            process: row.get::<&str, _>("Process").map(|s| s.trim().to_string()),
+            date: row.get::<&str, _>("Date").map(|s| s.trim().to_string()),
+            hours_available: get_i16_robust(&row, "HoursAvailable"),
+            machine_id: row
+                .get::<&str, _>("MachineID")
+                .map(|s| s.trim().to_string()),
+            shift: row.get::<&str, _>("Shift").map(|s| s.trim().to_string()),
         })
         .collect();
 
@@ -874,14 +912,14 @@ async fn upsert_process_info(
     for rec in records {
         client.execute(
             "MERGE dbo.ProcessInfo AS target
-             USING (SELECT @p1 as Process, CAST(@p2 as DATE) as Date, @p3 as HoursAvailable, @p4 as MachineID) AS source
-             ON (ISNULL(target.Process, '') = ISNULL(source.Process, '') AND target.Date = source.Date AND ISNULL(target.MachineID, '') = ISNULL(source.MachineID, ''))
+             USING (SELECT @p1 as Process, CAST(@p2 as DATE) as Date, @p3 as HoursAvailable, @p4 as MachineID, @p5 as Shift) AS source
+             ON (ISNULL(target.Process, '') = ISNULL(source.Process, '') AND target.Date = source.Date AND ISNULL(target.MachineID, '') = ISNULL(source.MachineID, '') AND ISNULL(target.Shift, '') = ISNULL(source.Shift, ''))
              WHEN MATCHED THEN
                 UPDATE SET HoursAvailable = source.HoursAvailable
              WHEN NOT MATCHED THEN
-                INSERT (Process, Date, HoursAvailable, MachineID)
-                VALUES (source.Process, source.Date, source.HoursAvailable, source.MachineID);",
-            &[&rec.process, &rec.date, &rec.hours_available, &rec.machine_id],
+                INSERT (Process, Date, HoursAvailable, MachineID, Shift)
+                VALUES (source.Process, source.Date, source.HoursAvailable, source.MachineID, source.Shift);",
+            &[&rec.process, &rec.date, &rec.hours_available, &rec.machine_id, &rec.shift],
         ).await.map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -934,6 +972,7 @@ struct ProcessInfoId {
     process: Option<String>,
     date: Option<String>,
     machine_id: Option<String>,
+    shift: Option<String>,
 }
 
 #[tauri::command]
@@ -948,8 +987,9 @@ async fn delete_process_infos(
                 "DELETE FROM dbo.ProcessInfo 
              WHERE ISNULL(Process, '') = ISNULL(@p1, '') 
                AND Date = CAST(@p2 as DATE) 
-               AND ISNULL(MachineID, '') = ISNULL(@p3, '')",
-                &[&id.process, &id.date, &id.machine_id],
+               AND ISNULL(MachineID, '') = ISNULL(@p3, '')
+               AND ISNULL(Shift, '') = ISNULL(@p4, '')",
+                &[&id.process, &id.date, &id.machine_id, &id.shift],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -1036,8 +1076,8 @@ async fn replace_process_infos(
         .map_err(|e| e.to_string())?;
     for rec in records {
         client.execute(
-            "INSERT INTO dbo.ProcessInfo (Process, Date, HoursAvailable, MachineID) VALUES (@p1, CAST(@p2 as DATE), @p3, @p4)",
-            &[&rec.process, &rec.date, &rec.hours_available, &rec.machine_id],
+            "INSERT INTO dbo.ProcessInfo (Process, Date, HoursAvailable, MachineID, Shift) VALUES (@p1, CAST(@p2 as DATE), @p3, @p4, @p5)",
+            &[&rec.process, &rec.date, &rec.hours_available, &rec.machine_id, &rec.shift],
         ).await.map_err(|e| e.to_string())?;
     }
 
@@ -1317,6 +1357,7 @@ pub fn run() {
             get_locator_mapping_preview,
             get_part_info_preview,
             get_process_info_preview,
+            get_process_info,
             get_pipeline_data_preview,
             upsert_locator_mapping,
             upsert_part_info,

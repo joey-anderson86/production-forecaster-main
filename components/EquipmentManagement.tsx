@@ -1,14 +1,9 @@
-import React, { useState } from 'react';
+'use client';
+
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Table,
   Button,
-  Modal,
-  Drawer,
-  TextInput,
-  NumberInput,
-  Switch,
-  ActionIcon,
-  Select,
   Group,
   Title,
   Text,
@@ -16,405 +11,482 @@ import {
   Stack,
   Paper,
   Box,
+  ActionIcon,
+  Tabs,
+  Select,
+  NumberInput,
+  Progress,
+  HoverCard,
   Divider,
+  Loader,
+  Center,
 } from '@mantine/core';
-import { DatePickerInput } from '@mantine/dates';
-import { IconEdit, IconTrash, IconPlus, IconDeviceDesktopAnalytics } from '@tabler/icons-react';
-import dayjs from 'dayjs';
+import {
+  IconPlus,
+  IconDatabase,
+  IconCalendarPlus,
+  IconChevronRight,
+  IconChevronDown,
+  IconCalculator,
+  IconAlertCircle,
+} from '@tabler/icons-react';
+import { DayOfWeek, DAYS_OF_WEEK, getDayOfWeekLabel, parseISOLocal } from '@/lib/dateUtils';
+import { invoke } from '@tauri-apps/api/core';
+import { load } from '@tauri-apps/plugin-store';
 
 // --- TypeScript Interfaces ---
 
-export interface EquipmentRecord {
+/** Raw database row from dbo.ProcessInfo */
+export interface ProcessInfoRow {
+  process: string;
+  date: string; // YYYY-MM-DD
+  hoursAvailable: number;
+  machineId: string;
+  shift: 'A' | 'B' | 'C' | 'D';
+}
+
+export interface ShiftAllocation {
+  shift: 'A' | 'B' | 'C' | 'D';
+  dailyHours: Record<DayOfWeek, number | null>;
+}
+
+export interface MachineSchedule {
   id: string;
   machineId: string;
   process: string;
-  baseDailyHours: number;
-  isActive: boolean;
+  baseAvailableHours: number; // Derived or static
+  shifts: ShiftAllocation[];
 }
 
-export interface DowntimeEvent {
-  id: string;
-  machineId: string;
-  eventType: 'PM' | 'Repair' | 'Calibration';
-  startDate: Date | null;
-  endDate: Date | null;
-  description: string;
-}
+// --- Data Transformation Utility ---
 
-// --- Mock Data ---
+/**
+ * Transforms flat DB rows into nested Machine -> Shift -> Day hierarchy.
+ */
+export function transformProcessData(rows: ProcessInfoRow[]): MachineSchedule[] {
+  const machineMap = new Map<string, MachineSchedule>();
 
-const INITIAL_EQUIPMENT: EquipmentRecord[] = [
-  { id: '1', machineId: 'CNC-01', process: 'Machining', baseDailyHours: 24, isActive: true },
-  { id: '2', machineId: 'MOLD-05', process: 'Molding', baseDailyHours: 16, isActive: true },
-  { id: '3', machineId: 'ASSY-12', process: 'Assembly', baseDailyHours: 8, isActive: false },
-];
-
-const INITIAL_DOWNTIME: DowntimeEvent[] = [
-  {
-    id: 'd1',
-    machineId: 'CNC-01',
-    eventType: 'PM',
-    startDate: dayjs().add(2, 'days').toDate(),
-    endDate: dayjs().add(3, 'days').toDate(),
-    description: 'Quarterly Servicing',
-  },
-];
-
-// --- Sub-Component: Equipment Detail & Downtime Drawer ---
-
-interface EquipmentDetailDrawerProps {
-  opened: boolean;
-  onClose: () => void;
-  equipment: EquipmentRecord | null;
-  onUpdateEquipment: (updated: EquipmentRecord) => void;
-  downtimeEvents: DowntimeEvent[];
-  onAddDowntime: (event: Omit<DowntimeEvent, 'id'>) => void;
-  onDeleteDowntime: (eventId: string) => void;
-}
-
-function EquipmentDetailDrawer({
-  opened,
-  onClose,
-  equipment,
-  onUpdateEquipment,
-  downtimeEvents,
-  onAddDowntime,
-  onDeleteDowntime,
-}: EquipmentDetailDrawerProps) {
-  // State for Add Downtime Form
-  const [downtimeDates, setDowntimeDates] = useState<[Date | null, Date | null]>([null, null]);
-  const [eventType, setEventType] = useState<string | null>('PM');
-  const [description, setDescription] = useState('');
-
-  if (!equipment) return null;
-
-  const relevantDowntime = downtimeEvents.filter((d) => d.machineId === equipment.machineId);
-
-  const handleUpdateBaseHours = (val: number | string) => {
-    if (typeof val === 'number') {
-      onUpdateEquipment({ ...equipment, baseDailyHours: val });
+  rows.forEach((row) => {
+    if (!machineMap.has(row.machineId)) {
+      machineMap.set(row.machineId, {
+        id: row.machineId, // Using machineId as unique ID for this view
+        machineId: row.machineId,
+        process: row.process,
+        baseAvailableHours: 24, // Default baseline, can be customized
+        shifts: (['A', 'B', 'C', 'D'] as const).map((s) => ({
+          shift: s,
+          dailyHours: { Mon: null, Tue: null, Wed: null, Thu: null, Fri: null, Sat: null, Sun: null },
+        })),
+      });
     }
-  };
 
-  const handleUpdateProcess = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onUpdateEquipment({ ...equipment, process: e.currentTarget.value });
-  };
+    const machine = machineMap.get(row.machineId)!;
+    const shiftAlloc = machine.shifts.find((s) => s.shift === row.shift);
+    
+    if (shiftAlloc) {
+      const dateObj = parseISOLocal(row.date);
+      const dayLabel = getDayOfWeekLabel(dateObj);
+      shiftAlloc.dailyHours[dayLabel] = row.hoursAvailable;
+    }
+  });
 
-  const handleAddDowntime = () => {
-    if (!downtimeDates[0] || !downtimeDates[1] || !eventType) return;
-    onAddDowntime({
-      machineId: equipment.machineId,
-      eventType: eventType as DowntimeEvent['eventType'],
-      startDate: downtimeDates[0],
-      endDate: downtimeDates[1],
-      description,
-    });
-    // Reset Form
-    setDowntimeDates([null, null]);
-    setEventType('PM');
-    setDescription('');
-  };
+  return Array.from(machineMap.values());
+}
+
+// --- Sub-Component: Shift Row (Child) ---
+
+const ShiftRow = ({
+  allocation,
+  onUpdateHour,
+}: {
+  allocation: ShiftAllocation;
+  onUpdateHour: (day: DayOfWeek, value: number | null) => void;
+}) => {
+  const rowTotal = Object.values(allocation.dailyHours).reduce((sum: number, h) => sum + (h || 0), 0);
 
   return (
-    <Drawer
-      opened={opened}
-      onClose={onClose}
-      title={
-        <Group>
-          <IconDeviceDesktopAnalytics size={24} />
-          <Title order={3}>{equipment.machineId} Details</Title>
-        </Group>
-      }
-      position="right"
-      size="lg"
-      padding="md"
-    >
-      <Stack gap="xl">
-        {/* Base Settings Section */}
-        <Paper withBorder p="md" radius="md">
-          <Title order={5} mb="md">General Settings</Title>
-          <Group grow align="flex-start">
-            <TextInput
-              label="Process (Department)"
-              value={equipment.process}
-              onChange={handleUpdateProcess}
-            />
-            <NumberInput
-              label="Base Daily Hours"
-              description="Capacity between 0 and 24 hours"
-              value={equipment.baseDailyHours}
-              onChange={handleUpdateBaseHours}
-              min={0}
-              max={24}
-              clampBehavior="strict"
-              allowNegative={false}
-            />
-          </Group>
-        </Paper>
-
-        <Divider />
-
-        {/* Downtime Sub-Table Section */}
-        <Box>
-          <Title order={5} mb="sm">Planned Downtime & PMs</Title>
-          {relevantDowntime.length === 0 ? (
-            <Text c="dimmed" size="sm" mb="md">No downtime events found for this machine.</Text>
-          ) : (
-            <Table mb="md" striped highlightOnHover withTableBorder>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Type</Table.Th>
-                  <Table.Th>Dates</Table.Th>
-                  <Table.Th>Description</Table.Th>
-                  <Table.Th />
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {relevantDowntime.map((event) => (
-                  <Table.Tr key={event.id}>
-                    <Table.Td>
-                      <Badge
-                        color={event.eventType === 'PM' ? 'blue' : event.eventType === 'Repair' ? 'red' : 'orange'}
-                      >
-                        {event.eventType}
-                      </Badge>
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="sm">
-                        {dayjs(event.startDate).format('MMM D')} - {dayjs(event.endDate).format('MMM D')}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="sm" truncate="end" maw={150}>
-                        {event.description}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td align="right">
-                      <ActionIcon color="red" variant="subtle" onClick={() => onDeleteDowntime(event.id)}>
-                        <IconTrash size={16} />
-                      </ActionIcon>
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          )}
-        </Box>
-
-        {/* Add Downtime Form */}
-        <Paper withBorder p="md" radius="md" bg="var(--mantine-color-gray-0)">
-          <Title order={6} mb="md">Add Downtime Event</Title>
-          <Stack gap="sm">
-            <DatePickerInput
-              type="range"
-              label="Downtime Range"
-              placeholder="Pick dates"
-              value={downtimeDates}
-              onChange={(val) => setDowntimeDates(val as [Date | null, Date | null])}
-              clearable
-            />
-            <Select
-              label="Event Type"
-              data={['PM', 'Repair', 'Calibration']}
-              value={eventType}
-              onChange={setEventType}
-            />
-            <TextInput
-              label="Description"
-              placeholder="Reason for downtime"
-              value={description}
-              onChange={(e) => setDescription(e.currentTarget.value)}
-            />
-            <Button
-              mt="sm"
-              leftSection={<IconPlus size={16} />}
-              onClick={handleAddDowntime}
-              disabled={!downtimeDates[0] || !downtimeDates[1] || !eventType}
-            >
-              Add Event
-            </Button>
-          </Stack>
-        </Paper>
-      </Stack>
-    </Drawer>
+    <Table.Tr className="bg-gray-50/50">
+      <Table.Td pl={40}>
+        <Text size="xs" fw={700} c="dimmed">
+          SHIFT {allocation.shift}
+        </Text>
+      </Table.Td>
+      <Table.Td />
+      {DAYS_OF_WEEK.map((day) => (
+        <Table.Td key={day} p={2} style={{ borderLeft: '1px solid var(--mantine-color-gray-2)' }}>
+          <NumberInput
+            value={allocation.dailyHours[day] ?? ''}
+            onChange={(val) => onUpdateHour(day, typeof val === 'number' ? val : null)}
+            hideControls
+            variant="unstyled"
+            min={0}
+            max={24}
+            placeholder="-"
+            className="text-center"
+            styles={{
+              input: {
+                textAlign: 'center',
+                height: 32,
+                fontSize: '12px',
+                fontWeight: 500,
+                '&:focus': {
+                  backgroundColor: 'white',
+                  boxShadow: 'inset 0 0 0 1px var(--mantine-color-blue-2)',
+                },
+              },
+            }}
+          />
+        </Table.Td>
+      ))}
+      <Table.Td className="bg-gray-100/50" style={{ borderLeft: '2px solid var(--mantine-color-gray-3)' }}>
+        <Text fw={700} ta="center" size="xs" c={rowTotal > 0 ? 'blue.7' : 'dimmed'}>
+          {rowTotal}h
+        </Text>
+      </Table.Td>
+    </Table.Tr>
   );
-}
+};
 
-// --- Main Application Component ---
+// --- Sub-Component: Machine Row (Parent) ---
+
+const MachineRow = ({
+  schedule,
+  isExpanded,
+  onToggle,
+  onUpdateShiftHour,
+}: {
+  schedule: MachineSchedule;
+  isExpanded: boolean;
+  onToggle: () => void;
+  onUpdateShiftHour: (shift: 'A' | 'B' | 'C' | 'D', day: DayOfWeek, value: number | null) => void;
+}) => {
+  const dailyTotals = useMemo(() => {
+    return DAYS_OF_WEEK.map((day) =>
+      schedule.shifts.reduce((sum: number, s) => sum + (s.dailyHours[day] || 0), 0)
+    );
+  }, [schedule.shifts]);
+
+  const weeklyTotal = dailyTotals.reduce((a: number, b) => a + b, 0);
+
+  return (
+    <>
+      <Table.Tr 
+        onClick={onToggle} 
+        className="cursor-pointer hover:bg-blue-50/30 transition-colors"
+        style={{ backgroundColor: isExpanded ? 'var(--mantine-color-blue-0)' : 'transparent' }}
+      >
+        <Table.Td>
+          <Group gap="xs" wrap="nowrap">
+            <ActionIcon variant="subtle" size="sm" color="blue">
+              {isExpanded ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
+            </ActionIcon>
+            <Stack gap={0}>
+              <Text fw={700} size="sm">
+                {schedule.machineId}
+              </Text>
+              <Text size="10px" c="dimmed">
+                Cap: {schedule.baseAvailableHours}h/day
+              </Text>
+            </Stack>
+          </Group>
+        </Table.Td>
+        <Table.Td ta="center">
+          <Badge variant="light" color="blue" size="xs">
+            {schedule.shifts.length} SHIFTS
+          </Badge>
+        </Table.Td>
+        {dailyTotals.map((total, i) => (
+          <Table.Td key={i} ta="center" style={{ borderLeft: '1px solid var(--mantine-color-blue-1)' }}>
+            <Text fw={700} size="xs" c={total > 0 ? 'blue.9' : 'dimmed'}>
+              {total > 0 ? `${total}h` : '—'}
+            </Text>
+          </Table.Td>
+        ))}
+        <Table.Td className="bg-blue-100/50" style={{ borderLeft: '2px solid var(--mantine-color-blue-2)' }}>
+          <Text fw={800} ta="center" size="sm" c="blue.9">
+            {weeklyTotal}h
+          </Text>
+        </Table.Td>
+      </Table.Tr>
+      {isExpanded && schedule.shifts.map((s) => (
+          <ShiftRow
+            key={s.shift}
+            allocation={s}
+            onUpdateHour={(day, val) => onUpdateShiftHour(s.shift, day, val)}
+          />
+        ))}
+    </>
+  );
+};
+
+// --- Main Component ---
 
 export function EquipmentManagement() {
-  const [equipments, setEquipments] = useState<EquipmentRecord[]>(INITIAL_EQUIPMENT);
-  const [downtimeEvents, setDowntimeEvents] = useState<DowntimeEvent[]>(INITIAL_DOWNTIME);
+  const [schedules, setSchedules] = useState<MachineSchedule[]>([]);
+  const [activeTab, setActiveTab] = useState<string | null>('Machining');
+  const [expandedMachines, setExpandedMachines] = useState<Set<string>>(new Set());
+  const [selectedWeek, setSelectedWeek] = useState<string | null>('2026-w15');
+  
+  const [connectionString, setConnectionString] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
-  // Modal State for New Equipment
-  const [addModalOpened, setAddModalOpened] = useState(false);
-  const [newMachineId, setNewMachineId] = useState('');
-  const [newProcess, setNewProcess] = useState('');
-  const [newBaseHours, setNewBaseHours] = useState<number | string>(24);
+  // Load connection string from store on mount
+  useEffect(() => {
+    async function loadConnStr() {
+      try {
+        const store = await load('store.json', { autoSave: false, defaults: {} });
+        const val = await store.get<string>('db_connection_string');
+        if (val) setConnectionString(val);
+      } catch (err) {
+        console.error('Failed to load DB connection string:', err);
+      }
+    }
+    loadConnStr();
+  }, []);
 
-  // Drawer State
-  const [selectedEquipmentId, setSelectedEquipmentId] = useState<string | null>(null);
+  // Fetch and transform data
+  const fetchData = useCallback(async () => {
+    if (!connectionString || !activeTab || !selectedWeek) return;
 
-  // Derived state
-  const selectedEquipment = equipments.find((eq) => eq.id === selectedEquipmentId) || null;
+    setIsLoading(true);
+    setFetchError(null);
 
-  // Handlers: Main Table Actions
-  const handleToggleActive = (id: string, active: boolean) => {
-    setEquipments(equipments.map((eq) => (eq.id === id ? { ...eq, isActive: active } : eq)));
+    try {
+      const rows = await invoke<ProcessInfoRow[]>('get_process_info', {
+        connectionString,
+        process: activeTab,
+        weekIdentifier: selectedWeek,
+      });
+
+      const transformed = transformProcessData(rows);
+      setSchedules(transformed);
+    } catch (err: any) {
+      console.error('Failed to fetch process info:', err);
+      setFetchError(typeof err === 'string' ? err : 'Database connection error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [connectionString, activeTab, selectedWeek]);
+
+  // Trigger fetch on tab/week change
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const toggleMachine = (id: string) => {
+    const next = new Set(expandedMachines);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setExpandedMachines(next);
   };
 
-  // Handlers: Add New Equipment
-  const handleAddEquipment = () => {
-    if (!newMachineId || !newProcess) return;
-
-    const newRecord: EquipmentRecord = {
-      id: Math.random().toString(36).substring(7),
-      machineId: newMachineId,
-      process: newProcess,
-      baseDailyHours: typeof newBaseHours === 'number' ? newBaseHours : 24,
-      isActive: true,
-    };
-
-    setEquipments([...equipments, newRecord]);
-    setAddModalOpened(false);
-    // Reset Form
-    setNewMachineId('');
-    setNewProcess('');
-    setNewBaseHours(24);
+  const handleUpdateShiftHour = (
+    machineId: string,
+    shift: 'A' | 'B' | 'C' | 'D',
+    day: DayOfWeek,
+    value: number | null
+  ) => {
+    setSchedules((prev) =>
+      prev.map((m) => {
+        if (m.id !== machineId) return m;
+        return {
+          ...m,
+          shifts: m.shifts.map((s) => {
+            if (s.shift !== shift) return s;
+            return {
+              ...s,
+              dailyHours: { ...s.dailyHours, [day]: value },
+            };
+          }),
+        };
+      })
+    );
   };
 
-  // Handlers: Propagated from Drawer
-  const handleUpdateEquipment = (updated: EquipmentRecord) => {
-    setEquipments(equipments.map((eq) => (eq.id === updated.id ? updated : eq)));
-  };
+  const dailyUtilization = useMemo(() => {
+    const stats: Record<DayOfWeek, { scheduled: number; available: number }> = {} as any;
+    
+    DAYS_OF_WEEK.forEach((day) => {
+      stats[day] = { scheduled: 0, available: 0 };
+    });
 
-  const handleAddDowntime = (event: Omit<DowntimeEvent, 'id'>) => {
-    const newDowntime: DowntimeEvent = {
-      ...event,
-      id: Math.random().toString(36).substring(7),
-    };
-    setDowntimeEvents([...downtimeEvents, newDowntime]);
-  };
+    schedules.forEach((m) => {
+      DAYS_OF_WEEK.forEach((day) => {
+        stats[day].available += m.baseAvailableHours;
+        stats[day].scheduled += m.shifts.reduce((sum: number, s) => sum + (s.dailyHours[day] || 0), 0);
+      });
+    });
 
-  const handleDeleteDowntime = (eventId: string) => {
-    setDowntimeEvents(downtimeEvents.filter((d) => d.id !== eventId));
-  };
+    return stats;
+  }, [schedules]);
 
   return (
-    <Box p="md">
-      <Group justify="space-between" align="center" mb="lg">
+    <Stack gap="md" p="md">
+      <Group justify="space-between">
         <Title order={2}>Equipment Management</Title>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => setAddModalOpened(true)}>
-          Add New Equipment
-        </Button>
+        <Group>
+          <Button 
+            variant="light" 
+            leftSection={<IconDatabase size={16} />} 
+            onClick={fetchData}
+            loading={isLoading}
+          >
+            Sync from DB
+          </Button>
+          <Button leftSection={<IconPlus size={16} />}>
+            Add Equipment
+          </Button>
+        </Group>
       </Group>
 
-      {/* Main Master Data Table */}
-      <Paper withBorder radius="md">
-        <Table striped highlightOnHover verticalSpacing="sm">
-          <Table.Thead>
+      <Paper withBorder p="sm" radius="md" className="bg-gray-50/30">
+        <Group justify="space-between">
+          <Tabs value={activeTab} onChange={setActiveTab} variant="pills">
+            <Tabs.List>
+              <Tabs.Tab value="Machining">Machining</Tabs.Tab>
+              <Tabs.Tab value="Molding">Molding</Tabs.Tab>
+              <Tabs.Tab value="Assembly">Assembly</Tabs.Tab>
+              <Tabs.Tab value="Stamping">Stamping</Tabs.Tab>
+            </Tabs.List>
+          </Tabs>
+
+          <Group>
+            <Select
+              placeholder="Select Week"
+              data={[
+                { value: '2026-w14', label: 'Week 14 (3/30 - 4/5)' },
+                { value: '2026-w15', label: 'Week 15 (4/6 - 4/12)' },
+                { value: '2026-w16', label: 'Week 16 (4/13 - 4/19)' },
+                { value: 'Wk14', label: 'Wk14' } // Support user-mentioned format if needed
+              ]}
+              value={selectedWeek}
+              onChange={setSelectedWeek}
+              size="sm"
+              w={220}
+            />
+            <Button variant="outline" size="sm" leftSection={<IconCalendarPlus size={16} />}>
+              Add New Week
+            </Button>
+          </Group>
+        </Group>
+      </Paper>
+
+      {fetchError && (
+        <Alert variant="light" color="red" title="Data Load Error" icon={<IconAlertCircle size={18} />}>
+          {fetchError}. Verify your database connection settings.
+        </Alert>
+      )}
+
+      <Box className="border-t border-gray-200" style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--mantine-color-gray-3)', position: 'relative' }}>
+        {isLoading && (
+          <Box style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(255,255,255,0.6)', zIndex: 20 }}>
+            <Center h="100%">
+              <Loader size="xl" type="dots" />
+            </Center>
+          </Box>
+        )}
+        
+        <Table verticalSpacing="xs" highlightOnHover withTableBorder>
+          <Table.Thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
             <Table.Tr>
-              <Table.Th>Machine ID</Table.Th>
-              <Table.Th>Process</Table.Th>
-              <Table.Th>Base Daily Hours</Table.Th>
-              <Table.Th>Status</Table.Th>
-              <Table.Th align="right">Actions</Table.Th>
+              <Table.Th w={200}><Text size="xs" fw={700} c="dimmed">MACHINE ID</Text></Table.Th>
+              <Table.Th ta="center" w={100}><Text size="xs" fw={700} c="dimmed">SCHEDULE</Text></Table.Th>
+              {DAYS_OF_WEEK.map((day) => (
+                <Table.Th key={day} ta="center" w={80}>
+                  <Text size="xs" fw={700} c="dimmed">{day.toUpperCase()}</Text>
+                </Table.Th>
+              ))}
+              <Table.Th ta="center" w={100} className="bg-gray-100">
+                <Group gap={4} justify="center">
+                  <IconCalculator size={14} />
+                  <Text size="xs" fw={700}>TOTAL</Text>
+                </Group>
+              </Table.Th>
             </Table.Tr>
           </Table.Thead>
+
           <Table.Tbody>
-            {equipments.map((eq) => (
-              <Table.Tr key={eq.id}>
-                <Table.Td>
-                  <Text fw={500}>{eq.machineId}</Text>
-                </Table.Td>
-                <Table.Td>{eq.process}</Table.Td>
-                <Table.Td>{eq.baseDailyHours} hrs</Table.Td>
-                <Table.Td>
-                  <Switch
-                    checked={eq.isActive}
-                    onChange={(event) => handleToggleActive(eq.id, event.currentTarget.checked)}
-                    color="green"
-                    labelPosition="left"
-                    label={eq.isActive ? 'Active' : 'Inactive'}
-                    size="sm"
-                  />
-                </Table.Td>
-                <Table.Td align="right">
-                  <Button
-                    variant="light"
-                    size="xs"
-                    leftSection={<IconEdit size={14} />}
-                    onClick={() => setSelectedEquipmentId(eq.id)}
-                  >
-                    Edit/Manage
-                  </Button>
-                </Table.Td>
-              </Table.Tr>
+            {schedules.map((m) => (
+              <MachineRow
+                key={m.id}
+                schedule={m}
+                isExpanded={expandedMachines.has(m.id)}
+                onToggle={() => toggleMachine(m.id)}
+                onUpdateShiftHour={(shift, day, val) => handleUpdateShiftHour(m.id, shift, day, val)}
+              />
             ))}
-            {equipments.length === 0 && (
+            {!isLoading && schedules.length === 0 && (
               <Table.Tr>
-                <Table.Td colSpan={5}>
-                  <Text ta="center" c="dimmed" py="md">
-                    No equipment records found.
-                  </Text>
+                <Table.Td colSpan={10} py="xl">
+                  <Center h={100}>
+                    <Stack gap="xs" align="center">
+                      <IconAlertCircle size={32} color="var(--mantine-color-gray-4)" />
+                      <Text ta="center" c="dimmed" size="sm">No schedules found for this process and week.</Text>
+                    </Stack>
+                  </Center>
                 </Table.Td>
               </Table.Tr>
             )}
           </Table.Tbody>
+
+          <Table.Tfoot className="bg-gray-50 sticky bottom-0 z-10 shadow-sm border-t-2">
+            <Table.Tr>
+              <Table.Td colSpan={2}>
+                <Text size="xs" fw={800} c="dimmed" ta="right" pr="md">DAILY CAPACITY UTILIZATION</Text>
+              </Table.Td>
+              {DAYS_OF_WEEK.map((day) => {
+                const { scheduled, available } = dailyUtilization[day];
+                const utilization = available > 0 ? (scheduled / available) * 100 : 0;
+                let color = "teal";
+                if (utilization > 100) color = "red";
+                else if (utilization >= 80) color = "yellow";
+
+                return (
+                  <Table.Td key={day} p="xs">
+                    <HoverCard width={220} shadow="md" position="top" withArrow withinPortal>
+                      <HoverCard.Target>
+                        <Stack gap={4} align="center" className="cursor-help">
+                          <Progress
+                            value={Math.min(utilization, 100)}
+                            color={color}
+                            size="md"
+                            radius="xl"
+                            w="100%"
+                          />
+                          <Text size="10px" fw={700} c="dimmed">
+                            {scheduled}h / {available}h
+                          </Text>
+                        </Stack>
+                      </HoverCard.Target>
+                      <HoverCard.Dropdown p="sm">
+                        <Stack gap="xs">
+                          <Text size="sm" fw={700} className="border-b pb-1">Capacity: {day}</Text>
+                          <Group justify="space-between">
+                            <Text size="xs" c="dimmed">Scheduled:</Text>
+                            <Text size="xs" fw={600}>{scheduled}h</Text>
+                          </Group>
+                          <Group justify="space-between">
+                            <Text size="xs" c="dimmed">Available:</Text>
+                            <Text size="xs" fw={600}>{available}h</Text>
+                          </Group>
+                          <Divider />
+                          <Group justify="space-between">
+                            <Text size="xs" fw={700}>Utilization:</Text>
+                            <Text size="xs" fw={800} style={{ color: `var(--mantine-color-${color}-filled)` }}>{utilization.toFixed(1)}%</Text>
+                          </Group>
+                        </Stack>
+                      </HoverCard.Dropdown>
+                    </HoverCard>
+                  </Table.Td>
+                );
+              })}
+              <Table.Td className="bg-gray-100"></Table.Td>
+            </Table.Tr>
+          </Table.Tfoot>
         </Table>
-      </Paper>
-
-      {/* Add Equipment Modal */}
-      <Modal
-        opened={addModalOpened}
-        onClose={() => setAddModalOpened(false)}
-        title={<Title order={4}>Register New Equipment</Title>}
-      >
-        <Stack>
-          <TextInput
-            label="Machine ID"
-            placeholder="e.g. PRESS-01"
-            value={newMachineId}
-            onChange={(e) => setNewMachineId(e.currentTarget.value)}
-            required
-          />
-          <TextInput
-            label="Process Area"
-            placeholder="e.g. Stamping"
-            value={newProcess}
-            onChange={(e) => setNewProcess(e.currentTarget.value)}
-            required
-          />
-          <NumberInput
-            label="Base Daily Hours"
-            description="Operational capacity (0-24)"
-            value={newBaseHours}
-            onChange={setNewBaseHours}
-            min={0}
-            max={24}
-            clampBehavior="strict"
-            allowNegative={false}
-          />
-          <Group justify="flex-end" mt="md">
-            <Button variant="default" onClick={() => setAddModalOpened(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleAddEquipment}>Save Equipment</Button>
-          </Group>
-        </Stack>
-      </Modal>
-
-      {/* Details & Downtime Drawer */}
-      <EquipmentDetailDrawer
-        opened={!!selectedEquipmentId}
-        onClose={() => setSelectedEquipmentId(null)}
-        equipment={selectedEquipment}
-        onUpdateEquipment={handleUpdateEquipment}
-        downtimeEvents={downtimeEvents}
-        onAddDowntime={handleAddDowntime}
-        onDeleteDowntime={handleDeleteDowntime}
-      />
-    </Box>
+      </Box>
+    </Stack>
   );
 }
 
