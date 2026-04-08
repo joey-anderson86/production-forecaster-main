@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   Table,
   Button,
@@ -17,9 +17,13 @@ import {
   NumberInput,
   Progress,
   HoverCard,
+  Tooltip,
   Divider,
   Loader,
   Center,
+  Modal,
+  TextInput,
+  Alert,
 } from '@mantine/core';
 import {
   IconPlus,
@@ -30,7 +34,18 @@ import {
   IconCalculator,
   IconAlertCircle,
 } from '@tabler/icons-react';
-import { DayOfWeek, DAYS_OF_WEEK, getDayOfWeekLabel, parseISOLocal } from '@/lib/dateUtils';
+import { 
+  DayOfWeek, 
+  DAYS_OF_WEEK, 
+  getDayOfWeekLabel, 
+  parseISOLocal, 
+  generateWeekLabel,
+  getWeekDates,
+  formatISODate,
+  formatSqlDate,
+  isWorkingDay
+} from '@/lib/dateUtils';
+import { useScorecardStore } from '@/lib/scorecardStore';
 import { invoke } from '@tauri-apps/api/core';
 import { load } from '@tauri-apps/plugin-store';
 
@@ -43,6 +58,7 @@ export interface ProcessInfoRow {
   hoursAvailable: number;
   machineId: string;
   shift: 'A' | 'B' | 'C' | 'D';
+  weekIdentifier: string;
 }
 
 export interface ShiftAllocation {
@@ -98,9 +114,13 @@ export function transformProcessData(rows: ProcessInfoRow[]): MachineSchedule[] 
 const ShiftRow = ({
   allocation,
   onUpdateHour,
+  weekDates,
+  shiftSettings,
 }: {
   allocation: ShiftAllocation;
   onUpdateHour: (day: DayOfWeek, value: number | null) => void;
+  weekDates: Date[];
+  shiftSettings: Record<string, string>;
 }) => {
   const rowTotal = Object.values(allocation.dailyHours).reduce((sum: number, h) => sum + (h || 0), 0);
 
@@ -112,32 +132,57 @@ const ShiftRow = ({
         </Text>
       </Table.Td>
       <Table.Td />
-      {DAYS_OF_WEEK.map((day) => (
-        <Table.Td key={day} p={2} style={{ borderLeft: '1px solid var(--mantine-color-gray-2)' }}>
-          <NumberInput
-            value={allocation.dailyHours[day] ?? ''}
-            onChange={(val) => onUpdateHour(day, typeof val === 'number' ? val : null)}
-            hideControls
-            variant="unstyled"
-            min={0}
-            max={24}
-            placeholder="-"
-            className="text-center"
-            styles={{
-              input: {
-                textAlign: 'center',
-                height: 32,
-                fontSize: '12px',
-                fontWeight: 500,
-                '&:focus': {
-                  backgroundColor: 'white',
-                  boxShadow: 'inset 0 0 0 1px var(--mantine-color-blue-2)',
-                },
-              },
+      {DAYS_OF_WEEK.map((day, idx) => {
+        const date = weekDates[idx];
+        const isWorking = date ? isWorkingDay(date, shiftSettings[allocation.shift] || '') : true;
+        const isDisabled = !isWorking;
+
+        return (
+          <Table.Td 
+            key={day} 
+            p={2} 
+            style={{ 
+              borderLeft: '1px solid var(--mantine-color-gray-2)',
+              backgroundColor: isDisabled ? 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))' : 'transparent',
             }}
-          />
-        </Table.Td>
-      ))}
+          >
+            <Tooltip 
+              label={`Shift ${allocation.shift} is OFF on this day`} 
+              disabled={!isDisabled}
+              position="top"
+              withinPortal
+            >
+              <Box>
+                <NumberInput
+                  value={allocation.dailyHours[day] ?? ''}
+                  onChange={(val) => onUpdateHour(day, typeof val === 'number' ? val : null)}
+                  hideControls
+                  variant="unstyled"
+                  min={0}
+                  max={24}
+                  placeholder={isDisabled ? "" : "-"}
+                  disabled={isDisabled}
+                  className="text-center"
+                  styles={{
+                    input: {
+                      textAlign: 'center',
+                      height: 32,
+                      fontSize: '12px',
+                      fontWeight: isDisabled ? 400 : 500,
+                      opacity: isDisabled ? 0.6 : 1,
+                      cursor: isDisabled ? 'not-allowed' : 'text',
+                      '&:focus': {
+                        backgroundColor: 'white',
+                        boxShadow: 'inset 0 0 0 1px var(--mantine-color-blue-2)',
+                      },
+                    },
+                  }}
+                />
+              </Box>
+            </Tooltip>
+          </Table.Td>
+        );
+      })}
       <Table.Td className="bg-gray-100/50" style={{ borderLeft: '2px solid var(--mantine-color-gray-3)' }}>
         <Text fw={700} ta="center" size="xs" c={rowTotal > 0 ? 'blue.7' : 'dimmed'}>
           {rowTotal}h
@@ -154,11 +199,15 @@ const MachineRow = ({
   isExpanded,
   onToggle,
   onUpdateShiftHour,
+  weekDates,
+  shiftSettings,
 }: {
   schedule: MachineSchedule;
   isExpanded: boolean;
   onToggle: () => void;
   onUpdateShiftHour: (shift: 'A' | 'B' | 'C' | 'D', day: DayOfWeek, value: number | null) => void;
+  weekDates: Date[];
+  shiftSettings: Record<string, string>;
 }) => {
   const dailyTotals = useMemo(() => {
     return DAYS_OF_WEEK.map((day) =>
@@ -213,23 +262,151 @@ const MachineRow = ({
             key={s.shift}
             allocation={s}
             onUpdateHour={(day, val) => onUpdateShiftHour(s.shift, day, val)}
+            weekDates={weekDates}
+            shiftSettings={shiftSettings}
           />
         ))}
     </>
   );
 };
 
+// --- Sub-Component: Add Equipment Modal ---
+
+function AddEquipmentModal({ 
+  opened, 
+  onClose, 
+  onAdd 
+}: { 
+  opened: boolean; 
+  onClose: () => void; 
+  onAdd: (machineId: string) => void;
+}) {
+  const [machineId, setMachineId] = useState('');
+
+  const handleSubmit = () => {
+    if (machineId.trim()) {
+      onAdd(machineId.trim());
+      setMachineId('');
+      onClose();
+    }
+  };
+
+  return (
+    <Modal opened={opened} onClose={onClose} title={<Text fw={900} size="xl">Add New Equipment</Text>} radius="md">
+      <Stack gap="md">
+        <TextInput
+          label={<Text fw={700} size="sm">Machine ID <Text span c="red">*</Text></Text>}
+          placeholder="e.g. CNC-01"
+          value={machineId}
+          onChange={(e) => setMachineId(e.currentTarget.value)}
+          required
+          autoFocus
+        />
+        <Group justify="flex-end" mt="xl">
+          <Button variant="subtle" onClick={onClose} color="gray">Cancel</Button>
+          <Button onClick={handleSubmit} color="blue" disabled={!machineId.trim()}>Add Machine</Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+}
+
+// --- Sub-Component: Add Week Modal ---
+
+function AddWorkWeekModal({ 
+  opened, 
+  onClose, 
+  onGenerate, 
+  availableWeeks 
+}: { 
+  opened: boolean; 
+  onClose: () => void; 
+  onGenerate: (data: any) => void;
+  availableWeeks: string[];
+}) {
+  const [weekId, setWeekId] = useState('');
+  const [displayLabel, setDisplayLabel] = useState('');
+  const [copyFrom, setCopyFrom] = useState<string | null>(null);
+
+  // Auto-generate label when weekId changes
+  useEffect(() => {
+    if (weekId && weekId.length >= 7) {
+      setDisplayLabel(generateWeekLabel(weekId));
+    } else {
+      setDisplayLabel('');
+    }
+  }, [weekId]);
+
+  const handleSubmit = () => {
+    onGenerate({ weekId, displayLabel, copyFrom });
+    onClose();
+  };
+
+  return (
+    <Modal opened={opened} onClose={onClose} title={<Text fw={900} size="xl">Add New Work Week</Text>} radius="md">
+      <Stack gap="md">
+        <TextInput
+          label={<Text fw={700} size="sm">Week Identifier <Text span c="red">*</Text></Text>}
+          placeholder="2026-w15"
+          description="ISO-8601 format recommended"
+          value={weekId}
+          onChange={(e) => setWeekId(e.currentTarget.value)}
+          required
+        />
+        <TextInput
+          label={<Text fw={700} size="sm">Display Label</Text>}
+          description="Used for selection dropdowns"
+          value={displayLabel}
+          readOnly
+          variant="filled"
+          styles={{ input: { backgroundColor: 'var(--mantine-color-gray-0)' } }}
+        />
+        <Select
+          label={<Text fw={700} size="sm">Copy schedule from... (Optional)</Text>}
+          placeholder="Start Blank"
+          data={[
+            { value: 'blank', label: 'Start Blank' },
+            ...availableWeeks.map(w => ({ value: w, label: generateWeekLabel(w) }))
+          ]}
+          value={copyFrom}
+          onChange={setCopyFrom}
+          clearable
+        />
+        <Group justify="flex-end" mt="xl">
+          <Button variant="subtle" onClick={onClose} color="gray">Cancel</Button>
+          <Button onClick={handleSubmit} color="blue" disabled={!weekId}>Generate Plan</Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+}
+
 // --- Main Component ---
 
 export function EquipmentManagement() {
   const [schedules, setSchedules] = useState<MachineSchedule[]>([]);
-  const [activeTab, setActiveTab] = useState<string | null>('Machining');
+  const [activeTab, setActiveTab] = useState<string | null>(null);
   const [expandedMachines, setExpandedMachines] = useState<Set<string>>(new Set());
-  const [selectedWeek, setSelectedWeek] = useState<string | null>('2026-w15');
+  const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
   
+  const [processes, setProcesses] = useState<string[]>([]);
+  const [activeWeeks, setActiveWeeks] = useState<string[]>([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEquipModalOpen, setIsEquipModalOpen] = useState(false);
+
   const [connectionString, setConnectionString] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const autoSaveTimeoutsRef = useRef<Record<string, any>>({});
+
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      Object.keys(autoSaveTimeoutsRef.current).forEach(key => {
+        clearTimeout(autoSaveTimeoutsRef.current[key]);
+      });
+    };
+  }, []);
 
   // Load connection string from store on mount
   useEffect(() => {
@@ -244,6 +421,46 @@ export function EquipmentManagement() {
     }
     loadConnStr();
   }, []);
+
+  // Fetch processes and weeks on mount (once connection string is available)
+  useEffect(() => {
+    if (!connectionString) return;
+
+    const fetchConfig = async () => {
+      try {
+        const [procList, weekList] = await Promise.all([
+          invoke<string[]>('get_processes', { connectionString }),
+          invoke<string[]>('get_active_weeks', { connectionString }),
+        ]);
+        
+        setProcesses(procList);
+        setActiveWeeks(weekList);
+
+        // Set defaults if current values are placeholder or not in the lists
+        if (procList.length > 0 && !activeTab) {
+          setActiveTab(procList[0]);
+        }
+        if (weekList.length > 0 && !selectedWeek) {
+          setSelectedWeek(weekList[0]);
+        }
+      } catch (err) {
+        console.error('Failed to fetch initial config:', err);
+      }
+    };
+
+    fetchConfig();
+  }, [connectionString]);
+
+  const shiftSettings = useScorecardStore(state => state.shiftSettings);
+
+  const weekDates = useMemo(() => {
+    if (!selectedWeek) return [];
+    try {
+      return getWeekDates(selectedWeek);
+    } catch (e) {
+      return [];
+    }
+  }, [selectedWeek]);
 
   // Fetch and transform data
   const fetchData = useCallback(async () => {
@@ -287,6 +504,7 @@ export function EquipmentManagement() {
     day: DayOfWeek,
     value: number | null
   ) => {
+    // 1. Optimistic Update (UI updates immediately)
     setSchedules((prev) =>
       prev.map((m) => {
         if (m.id !== machineId) return m;
@@ -302,6 +520,119 @@ export function EquipmentManagement() {
         };
       })
     );
+
+    // 2. Debounced Save to DB
+    if (!connectionString || !activeTab || !selectedWeek) return;
+
+    const cellKey = `${machineId}-${shift}-${day}`;
+    if (autoSaveTimeoutsRef.current[cellKey]) {
+      clearTimeout(autoSaveTimeoutsRef.current[cellKey]);
+    }
+
+    autoSaveTimeoutsRef.current[cellKey] = setTimeout(async () => {
+      try {
+        const dayIdx = DAYS_OF_WEEK.indexOf(day);
+        const date = weekDates[dayIdx];
+        if (!date) return;
+
+        const record: ProcessInfoRow = {
+          process: activeTab,
+          date: formatSqlDate(date),
+          hoursAvailable: value || 0,
+          machineId,
+          shift,
+          weekIdentifier: selectedWeek,
+        };
+
+        await invoke('upsert_process_info', {
+          connectionString,
+          records: [record],
+        });
+
+        console.log(`Auto-saved capacity for ${machineId} on ${day}`);
+        delete autoSaveTimeoutsRef.current[cellKey];
+      } catch (err) {
+        console.error('Auto-save failed:', err);
+        setFetchError('Failed to auto-save change to database');
+      }
+    }, 750);
+  };
+
+  const handleAddEquipment = async (machineId: string) => {
+    if (!connectionString || !activeTab || !selectedWeek) return;
+
+    try {
+      const dates = getWeekDates(selectedWeek);
+      const newRows: ProcessInfoRow[] = [];
+
+      dates.forEach((date) => {
+        (['A', 'B', 'C', 'D'] as const).forEach((shift) => {
+          newRows.push({
+            process: activeTab!,
+            date: formatSqlDate(date),
+            hoursAvailable: 0,
+            machineId,
+            shift,
+            weekIdentifier: selectedWeek!,
+          });
+        });
+      });
+
+      await invoke('upsert_process_info', {
+        connectionString,
+        records: newRows,
+      });
+
+      fetchData();
+    } catch (err) {
+      console.error('Failed to add equipment:', err);
+    }
+  };
+
+  const handleGeneratePlan = async (data: { weekId: string; displayLabel: string; copyFrom: string | null }) => {
+    if (!connectionString || !activeTab) return;
+
+    try {
+      if (data.copyFrom && data.copyFrom !== 'blank') {
+        // Fetch source week data
+        const sourceRows = await invoke<ProcessInfoRow[]>('get_process_info', {
+          connectionString,
+          process: activeTab,
+          weekIdentifier: data.copyFrom,
+        });
+
+        if (sourceRows.length > 0) {
+          // Calculate date offset
+          const sourceDates = getWeekDates(data.copyFrom);
+          const targetDates = getWeekDates(data.weekId);
+          const timeDiff = targetDates[0].getTime() - sourceDates[0].getTime();
+          const dayOffset = Math.round(timeDiff / (1000 * 60 * 60 * 24));
+
+          const newRows = sourceRows.map(row => {
+            const dateObj = parseISOLocal(row.date);
+            dateObj.setDate(dateObj.getDate() + dayOffset);
+            return {
+              ...row,
+              date: formatSqlDate(dateObj),
+              weekIdentifier: data.weekId,
+            };
+          });
+
+          await invoke('upsert_process_info', {
+            connectionString,
+            records: newRows,
+          });
+        }
+      }
+
+      // Refresh weeks and select the new one
+      const weekList = await invoke<string[]>('get_active_weeks', { connectionString });
+      setActiveWeeks(weekList);
+      setSelectedWeek(data.weekId);
+      setIsModalOpen(false);
+    } catch (err) {
+      console.error('Failed to generate plan:', err);
+    }
   };
 
   const dailyUtilization = useMemo(() => {
@@ -334,7 +665,12 @@ export function EquipmentManagement() {
           >
             Sync from DB
           </Button>
-          <Button leftSection={<IconPlus size={16} />}>
+          <Button 
+            variant="light" 
+            leftSection={<IconPlus size={16} />}
+            onClick={() => setIsEquipModalOpen(true)}
+            disabled={!activeTab || !selectedWeek}
+          >
             Add Equipment
           </Button>
         </Group>
@@ -344,28 +680,28 @@ export function EquipmentManagement() {
         <Group justify="space-between">
           <Tabs value={activeTab} onChange={setActiveTab} variant="pills">
             <Tabs.List>
-              <Tabs.Tab value="Machining">Machining</Tabs.Tab>
-              <Tabs.Tab value="Molding">Molding</Tabs.Tab>
-              <Tabs.Tab value="Assembly">Assembly</Tabs.Tab>
-              <Tabs.Tab value="Stamping">Stamping</Tabs.Tab>
+              {processes.map((proc) => (
+                <Tabs.Tab key={proc} value={proc}>{proc}</Tabs.Tab>
+              ))}
+              {processes.length === 0 && <Tabs.Tab value="none" disabled>No Processes Found</Tabs.Tab>}
             </Tabs.List>
           </Tabs>
 
           <Group>
             <Select
               placeholder="Select Week"
-              data={[
-                { value: '2026-w14', label: 'Week 14 (3/30 - 4/5)' },
-                { value: '2026-w15', label: 'Week 15 (4/6 - 4/12)' },
-                { value: '2026-w16', label: 'Week 16 (4/13 - 4/19)' },
-                { value: 'Wk14', label: 'Wk14' } // Support user-mentioned format if needed
-              ]}
+              data={activeWeeks.map((w) => ({ value: w, label: generateWeekLabel(w) }))}
               value={selectedWeek}
               onChange={setSelectedWeek}
               size="sm"
-              w={220}
+              w={260}
             />
-            <Button variant="outline" size="sm" leftSection={<IconCalendarPlus size={16} />}>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              leftSection={<IconCalendarPlus size={16} />}
+              onClick={() => setIsModalOpen(true)}
+            >
               Add New Week
             </Button>
           </Group>
@@ -392,11 +728,17 @@ export function EquipmentManagement() {
             <Table.Tr>
               <Table.Th w={200}><Text size="xs" fw={700} c="dimmed">MACHINE ID</Text></Table.Th>
               <Table.Th ta="center" w={100}><Text size="xs" fw={700} c="dimmed">SCHEDULE</Text></Table.Th>
-              {DAYS_OF_WEEK.map((day) => (
-                <Table.Th key={day} ta="center" w={80}>
-                  <Text size="xs" fw={700} c="dimmed">{day.toUpperCase()}</Text>
-                </Table.Th>
-              ))}
+              {DAYS_OF_WEEK.map((day, idx) => {
+                const dateStr = weekDates[idx] ? weekDates[idx].toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }) : '';
+                return (
+                  <Table.Th key={day} ta="center" w={85}>
+                    <Stack gap={0} align="center">
+                      <Text size="xs" fw={700} c="dimmed">{day.toUpperCase()}</Text>
+                      {dateStr && <Text size="10px" c="blue.4" fw={700}>{dateStr}</Text>}
+                    </Stack>
+                  </Table.Th>
+                );
+              })}
               <Table.Th ta="center" w={100} className="bg-gray-100">
                 <Group gap={4} justify="center">
                   <IconCalculator size={14} />
@@ -414,6 +756,8 @@ export function EquipmentManagement() {
                 isExpanded={expandedMachines.has(m.id)}
                 onToggle={() => toggleMachine(m.id)}
                 onUpdateShiftHour={(shift, day, val) => handleUpdateShiftHour(m.id, shift, day, val)}
+                weekDates={weekDates}
+                shiftSettings={shiftSettings}
               />
             ))}
             {!isLoading && schedules.length === 0 && (
@@ -486,6 +830,17 @@ export function EquipmentManagement() {
           </Table.Tfoot>
         </Table>
       </Box>
+      <AddWorkWeekModal 
+        opened={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        onGenerate={handleGeneratePlan}
+        availableWeeks={activeWeeks}
+      />
+      <AddEquipmentModal 
+        opened={isEquipModalOpen} 
+        onClose={() => setIsEquipModalOpen(false)} 
+        onAdd={handleAddEquipment} 
+      />
     </Stack>
   );
 }

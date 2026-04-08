@@ -46,6 +46,7 @@ struct ProcessInfo {
     hours_available: Option<i16>,
     machine_id: Option<String>,
     shift: Option<String>,
+    week_identifier: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -174,7 +175,7 @@ async fn upsert_scorecard_data(
         client.execute(
             "MERGE dbo.DeliveryData AS target
              USING (SELECT @p1 as Department, @p2 as WeekIdentifier, @p3 as PartNumber, @p4 as DayOfWeek, 
-                           @p5 as Target, @p6 as Actual, CAST(@p7 as DATE) as Date, @p8 as Shift, @p9 as ReasonCode) AS source
+                           @p5 as Target, @p6 as Actual, CONVERT(DATE, @p7, 112) as Date, @p8 as Shift, @p9 as ReasonCode) AS source
              ON (target.Department = source.Department AND target.PartNumber = source.PartNumber AND target.Date = source.Date AND (target.Shift = source.Shift OR (target.Shift IS NULL AND source.Shift IS NULL)))
              WHEN MATCHED THEN
                 UPDATE SET Target = source.Target, Actual = source.Actual, WeekIdentifier = source.WeekIdentifier, DayOfWeek = source.DayOfWeek, ReasonCode = source.ReasonCode
@@ -337,7 +338,7 @@ async fn get_part_info_preview(connection_string: String) -> Result<Vec<PartInfo
 async fn get_process_info_preview(connection_string: String) -> Result<Vec<ProcessInfo>, String> {
     let mut client = create_client(&connection_string).await?;
     // Formatted date to string for simple transfer
-    let stream = client.query("SELECT TOP 100 Process, CONVERT(VARCHAR, Date, 23) as Date, HoursAvailable, MachineID, Shift FROM dbo.ProcessInfo", &[]).await.map_err(|e| e.to_string())?;
+    let stream = client.query("SELECT TOP 100 Process, CONVERT(VARCHAR, Date, 23) as Date, HoursAvailable, MachineID, Shift, WeekIdentifier FROM dbo.ProcessInfo", &[]).await.map_err(|e| e.to_string())?;
     let rows = stream
         .into_first_result()
         .await
@@ -353,6 +354,7 @@ async fn get_process_info_preview(connection_string: String) -> Result<Vec<Proce
                 .get::<&str, _>("MachineID")
                 .map(|s| s.trim().to_string()),
             shift: row.get::<&str, _>("Shift").map(|s| s.trim().to_string()),
+            week_identifier: row.get::<&str, _>("WeekIdentifier").map(|s| s.trim().to_string()),
         })
         .collect();
 
@@ -367,7 +369,7 @@ async fn get_process_info(
 ) -> Result<Vec<ProcessInfo>, String> {
     let mut client = create_client(&connection_string).await?;
     let stream = client.query(
-        "SELECT Process, CONVERT(VARCHAR, Date, 23) as Date, HoursAvailable, MachineID, Shift 
+        "SELECT Process, CONVERT(VARCHAR, Date, 23) as Date, HoursAvailable, MachineID, Shift, WeekIdentifier 
          FROM dbo.ProcessInfo 
          WHERE LTRIM(RTRIM(Process)) = LTRIM(RTRIM(@p1)) 
            AND WeekIdentifier = @p2",
@@ -389,6 +391,7 @@ async fn get_process_info(
                 .get::<&str, _>("MachineID")
                 .map(|s| s.trim().to_string()),
             shift: row.get::<&str, _>("Shift").map(|s| s.trim().to_string()),
+            week_identifier: row.get::<&str, _>("WeekIdentifier").map(|s| s.trim().to_string()),
         })
         .collect();
 
@@ -912,14 +915,14 @@ async fn upsert_process_info(
     for rec in records {
         client.execute(
             "MERGE dbo.ProcessInfo AS target
-             USING (SELECT @p1 as Process, CAST(@p2 as DATE) as Date, @p3 as HoursAvailable, @p4 as MachineID, @p5 as Shift) AS source
-             ON (ISNULL(target.Process, '') = ISNULL(source.Process, '') AND target.Date = source.Date AND ISNULL(target.MachineID, '') = ISNULL(source.MachineID, '') AND ISNULL(target.Shift, '') = ISNULL(source.Shift, ''))
+             USING (SELECT @p1 as Process, CONVERT(DATE, @p2, 112) as Date, @p3 as HoursAvailable, @p4 as MachineID, @p5 as Shift, @p6 as WeekIdentifier) AS source
+             ON (ISNULL(target.Process, '') = ISNULL(source.Process, '') AND target.Date = source.Date AND ISNULL(target.MachineID, '') = ISNULL(source.MachineID, '') AND ISNULL(target.Shift, '') = ISNULL(source.Shift, '') AND ISNULL(target.WeekIdentifier, '') = ISNULL(source.WeekIdentifier, ''))
              WHEN MATCHED THEN
                 UPDATE SET HoursAvailable = source.HoursAvailable
              WHEN NOT MATCHED THEN
-                INSERT (Process, Date, HoursAvailable, MachineID, Shift)
-                VALUES (source.Process, source.Date, source.HoursAvailable, source.MachineID, source.Shift);",
-            &[&rec.process, &rec.date, &rec.hours_available, &rec.machine_id, &rec.shift],
+                INSERT (Process, Date, HoursAvailable, MachineID, Shift, WeekIdentifier)
+                VALUES (source.Process, source.Date, source.HoursAvailable, source.MachineID, source.Shift, source.WeekIdentifier);",
+            &[&rec.process, &rec.date, &rec.hours_available, &rec.machine_id, &rec.shift, &rec.week_identifier],
         ).await.map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -1339,6 +1342,46 @@ async fn replace_reason_codes(connection_string: String, records: Vec<ReasonCode
     Ok(())
 }
 
+#[tauri::command]
+async fn get_processes(connection_string: String) -> Result<Vec<String>, String> {
+    let mut client = create_client(&connection_string).await?;
+    let stream = client
+        .query("SELECT DISTINCT [Process] FROM dbo.Process WHERE [Process] IS NOT NULL ORDER BY [Process]", &[])
+        .await
+        .map_err(|e| e.to_string())?;
+    let rows = stream
+        .into_first_result()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let result = rows
+        .into_iter()
+        .filter_map(|row| row.get::<&str, _>("Process").map(|s| s.trim().to_string()))
+        .collect();
+
+    Ok(result)
+}
+
+#[tauri::command]
+async fn get_active_weeks(connection_string: String) -> Result<Vec<String>, String> {
+    let mut client = create_client(&connection_string).await?;
+    let stream = client
+        .query("SELECT DISTINCT WeekIdentifier FROM dbo.ProcessInfo WHERE WeekIdentifier IS NOT NULL ORDER BY WeekIdentifier DESC", &[])
+        .await
+        .map_err(|e| e.to_string())?;
+    let rows = stream
+        .into_first_result()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let result = rows
+        .into_iter()
+        .filter_map(|row| row.get::<&str, _>("WeekIdentifier").map(|s| s.trim().to_string()))
+        .collect();
+
+    Ok(result)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1391,7 +1434,9 @@ pub fn run() {
             get_reason_codes_preview,
             upsert_reason_codes,
             delete_reason_codes,
-            replace_reason_codes
+            replace_reason_codes,
+            get_processes,
+            get_active_weeks
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

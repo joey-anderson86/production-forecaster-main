@@ -80,6 +80,16 @@ export function formatISODate(date: Date): string {
 }
 
 /**
+ * Formats a Date object as YYYYMMDD string for SQL Server compatibility.
+ */
+export function formatSqlDate(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}${m}${d}`;
+}
+
+/**
  * Returns current date as numeric YYYYMMDD
  */
 export function getTodayNumeric(): number {
