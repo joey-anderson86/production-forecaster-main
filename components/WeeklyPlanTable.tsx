@@ -11,6 +11,7 @@ import {
 } from '@tabler/icons-react';
 import { DayOfWeek, DAYS_OF_WEEK, getWeekDates, isWorkingDay, formatISODate } from '@/lib/dateUtils';
 import { PartScorecard, useScorecardStore } from '@/lib/scorecardStore';
+import { ProductionDisplayUnit } from '@/hooks/useProductionDisplayUnit';
 
 export interface ProcessInfoRecord {
   process: string;
@@ -24,6 +25,7 @@ export interface PartInfoRecord {
   partNumber: string;
   process: string;
   processingTime: number; // Processing time in minutes
+  batchSize?: number;
 }
 
 export interface ShiftMetric {
@@ -67,6 +69,7 @@ interface WeeklyPlanTableProps {
   isLoadingParts?: boolean;
   processInfo?: ProcessInfoRecord[];
   partInfo?: PartInfoRecord[];
+  displayUnit: ProductionDisplayUnit;
 }
 
 export function distributeDemand(
@@ -167,7 +170,9 @@ const ParentRow = ({
   onToggle,
   onUpdatePartGroupIdentity,
   onUpdatePartIdentity,
-  onLevelLoad
+  onLevelLoad,
+  displayUnit,
+  batchSize,
 }: { 
   partNumber: string; 
   childRows: PartScorecard[]; 
@@ -177,6 +182,8 @@ const ParentRow = ({
   onUpdatePartGroupIdentity: WeeklyPlanTableProps['onUpdatePartGroupIdentity'];
   onUpdatePartIdentity: WeeklyPlanTableProps['onUpdatePartIdentity'];
   onLevelLoad?: (childRows: PartScorecard[], totalDemand: number) => void;
+  displayUnit: ProductionDisplayUnit;
+  batchSize: number;
 }) => {
   const [weeklyTarget, setWeeklyTarget] = useState<number | ''>('');
   const dailyTotals = useMemo(() => {
@@ -189,6 +196,9 @@ const ParentRow = ({
   }, [childRows]);
 
   const grandTotal = useMemo(() => dailyTotals.reduce((a, b) => a + b, 0), [dailyTotals]);
+
+  const displayedDailyTotals = dailyTotals.map(t => displayUnit === 'pieces' ? t * batchSize : t);
+  const displayedGrandTotal = displayUnit === 'pieces' ? grandTotal * batchSize : grandTotal;
   
   // Check if this is a "New Batch" (no part number)
   const groupId = childRows[0]?.groupId;
@@ -245,9 +255,10 @@ const ParentRow = ({
             onChange={(val) => setWeeklyTarget(typeof val === 'number' ? val : '')}
             hideControls
             min={0}
-            placeholder="Total"
+            step={displayUnit === 'pieces' ? batchSize : 1}
+            placeholder={displayUnit === 'pieces' ? "Pieces" : "Batches"}
             size="xs"
-            styles={{ input: { width: 60, textAlign: 'center', fontWeight: 600 } }}
+            styles={{ input: { width: 70, textAlign: 'center', fontWeight: 600 } }}
             onClick={(e) => e.stopPropagation()}
           />
           {onLevelLoad && (
@@ -259,7 +270,8 @@ const ParentRow = ({
                 onClick={(e) => {
                    e.stopPropagation();
                    if (typeof weeklyTarget === 'number' && weeklyTarget > 0) {
-                     onLevelLoad(childRows, weeklyTarget);
+                     const demandInBatches = displayUnit === 'pieces' ? Math.round(weeklyTarget / batchSize) : weeklyTarget;
+                     onLevelLoad(childRows, demandInBatches);
                    }
                 }}
               >
@@ -269,7 +281,7 @@ const ParentRow = ({
           )}
         </Group>
       </Table.Td>
-      {dailyTotals.map((total, i) => (
+      {displayedDailyTotals.map((total, i) => (
         <Table.Td key={i} ta="center" style={{ borderLeft: '1px solid var(--mantine-color-indigo-1)' }}>
           <Text fw={700} size="xs" c={total > 0 ? "indigo.7" : "dimmed"}>
             {total.toLocaleString()}
@@ -278,7 +290,7 @@ const ParentRow = ({
       ))}
       <Table.Td bg="indigo.1" style={{ borderLeft: '2px solid var(--mantine-color-indigo-2)' }}>
         <Text fw={800} ta="center" size="sm" c="indigo.9">
-          {grandTotal.toLocaleString()}
+          {displayedGrandTotal.toLocaleString()}
         </Text>
       </Table.Td>
       <Table.Td></Table.Td>
@@ -296,6 +308,8 @@ const PlanRow = memo(({
   onUpdatePartIdentity,
   weekDates,
   shiftSettings,
+  displayUnit,
+  batchSize,
 }: { 
   part: PartScorecard;
   onUpdateRecord: WeeklyPlanTableProps['onUpdateRecord'];
@@ -303,10 +317,14 @@ const PlanRow = memo(({
   onUpdatePartIdentity: WeeklyPlanTableProps['onUpdatePartIdentity'];
   weekDates: Date[];
   shiftSettings: Record<string, string>;
+  displayUnit: ProductionDisplayUnit;
+  batchSize: number;
 }) => {
   const rowTotal = useMemo(() => {
     return part.dailyRecords.reduce((sum, rec) => sum + (rec.target || 0), 0);
   }, [part.dailyRecords]);
+
+  const displayedRowTotal = displayUnit === 'pieces' ? rowTotal * batchSize : rowTotal;
 
   return (
     <Table.Tr>
@@ -359,11 +377,19 @@ const PlanRow = memo(({
                   <Text c="dimmed" size="sm" fw={400}>—</Text>
                 ) : (
                   <NumberInput
-                    value={record?.target ?? ''}
-                    onChange={(val) => onUpdateRecord(part.id, day, 'target', typeof val === 'number' ? val : null)}
+                    value={record?.target !== null && record?.target !== undefined ? (displayUnit === 'pieces' ? record.target * batchSize : record.target) : ''}
+                    onChange={(val) => {
+                      if (typeof val === 'number') {
+                        const batchVal = displayUnit === 'pieces' ? Math.round(val / batchSize) : val;
+                        onUpdateRecord(part.id, day, 'target', batchVal);
+                      } else {
+                        onUpdateRecord(part.id, day, 'target', null);
+                      }
+                    }}
                     hideControls
                     variant="unstyled"
                     min={0}
+                    step={displayUnit === 'pieces' ? batchSize : 1}
                     placeholder={isDisabled ? "" : "-"}
                     disabled={isDisabled}
                     styles={{ 
@@ -390,7 +416,7 @@ const PlanRow = memo(({
 
       <Table.Td bg="gray.0" style={{ borderLeft: '2px solid var(--mantine-color-gray-3)' }}>
         <Text fw={600} ta="center" size="xs" c={rowTotal > 0 ? "indigo.7" : "dimmed"}>
-          {rowTotal.toLocaleString()}
+          {displayedRowTotal.toLocaleString()}
         </Text>
       </Table.Td>
 
@@ -424,6 +450,7 @@ export default function WeeklyPlanTable({
   onUpdatePartGroupIdentity,
   processInfo,
   partInfo,
+  displayUnit,
 }: WeeklyPlanTableProps) {
   
   const shiftSettings = useScorecardStore(state => state.shiftSettings);
@@ -469,7 +496,19 @@ export default function WeeklyPlanTable({
     } catch (e) {
       return [];
     }
-  }, [weekId]);  const dailyCapacityMetrics = useMemo(() => {
+  }, [weekId]);  const batchSizeMap = useMemo(() => {
+    const map = new Map<string, number>();
+    if (partInfo) {
+      partInfo.forEach(p => {
+        if (p.process === department) {
+          map.set(p.partNumber, p.batchSize || 1);
+        }
+      });
+    }
+    return map;
+  }, [partInfo, department]);
+
+  const dailyCapacityMetrics = useMemo(() => {
     const metrics = {} as Record<DayOfWeek, DailyCapacityMetric>;
     
     // Group process info by Date and Shift
@@ -697,6 +736,8 @@ export default function WeeklyPlanTable({
                 onUpdatePartGroupIdentity={onUpdatePartGroupIdentity}
                 onUpdatePartIdentity={onUpdatePartIdentity}
                 onLevelLoad={handleLevelLoad}
+                displayUnit={displayUnit}
+                batchSize={batchSizeMap.get(childRows[0].partNumber) || 1}
               />
               {expandedParts.has(groupKey) && 
                 [...childRows]
@@ -713,6 +754,8 @@ export default function WeeklyPlanTable({
                       onUpdatePartIdentity={onUpdatePartIdentity}
                       weekDates={weekDates}
                       shiftSettings={shiftSettings}
+                      displayUnit={displayUnit}
+                      batchSize={batchSizeMap.get(part.partNumber) || 1}
                     />
                   ))
               }

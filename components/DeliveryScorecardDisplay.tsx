@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useLocalStorage } from '@mantine/hooks';
 import { useScorecardStore, DayOfWeek, DailyScorecardRecord, PartScorecard } from '@/lib/scorecardStore';
 import { 
-  Tabs, Select, Table, Card, Text, Group, Badge, Title, Box, Tooltip, Stack, Button, ActionIcon, Paper
+  Tabs, Select, Table, Card, Text, Group, Badge, Title, Box, Tooltip, Stack, Button, ActionIcon, Paper, SegmentedControl
 } from '@mantine/core';
 import { 
   IconPlus, IconChevronDown, IconChevronRight, IconSearch, IconArrowsSort, 
@@ -17,6 +17,7 @@ import { ShiftAttainmentChart } from './ShiftAttainmentChart';
 import { DAYS_OF_WEEK, getTodayNumeric, getWeekDates, isWorkingDay, parseISOLocal } from '@/lib/dateUtils';
 import { useProcessStore } from '@/lib/processStore';
 import { TextInput } from '@mantine/core';
+import { useProductionDisplayUnit } from '@/hooks/useProductionDisplayUnit';
 
 
 
@@ -45,6 +46,21 @@ export default function DeliveryScorecardDisplay() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortConfig, setSortConfig] = useState<{ key: keyof GroupedPartScorecard; direction: 'asc' | 'desc' } | null>({ key: 'partNumber', direction: 'asc' });
   const [connectionString, setConnectionString] = useState<string | null>(null);
+  const [partInfo, setPartInfo] = useState<any[]>([]);
+  const [displayUnit, setDisplayUnit] = useProductionDisplayUnit();
+
+  // Create a lookup map for the current department to ensure correct batch sizes
+  const batchSizeMap = React.useMemo(() => {
+    const map = new Map<string, number>();
+    if (partInfo && activeTab) {
+      partInfo.forEach(p => {
+        if (p.process === activeTab) {
+          map.set(p.partNumber, p.batchSize || 1);
+        }
+      });
+    }
+    return map;
+  }, [partInfo, activeTab]);
 
   React.useEffect(() => {
     async function loadConnStr() {
@@ -53,8 +69,14 @@ export default function DeliveryScorecardDisplay() {
         const storeRes = await load("store.json", { autoSave: false, defaults: {} });
         const val = await storeRes.get<string>("db_connection_string");
         setConnectionString(val || null);
+        
+        if (val) {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const parts = await invoke<any[]>("get_part_info_preview", { connectionString: val });
+          setPartInfo(parts);
+        }
       } catch (err) {
-        console.error("Failed to load connection string:", err);
+        console.error("Failed to load connection string or part info:", err);
       }
     }
     loadConnStr();
@@ -155,6 +177,9 @@ export default function DeliveryScorecardDisplay() {
      activeWeek.parts.forEach(part => {
         // Calculate child rolling gap
         let childRollingGap = 0;
+        const batchSize = batchSizeMap.get(part.partNumber) || 1;
+        const multiplier = displayUnit === 'pieces' ? batchSize : 1;
+
         part.dailyRecords.forEach(record => {
            if (record.date) {
               const dateNumeric = parseInt(record.date.replace(/-/g, ''));
@@ -186,21 +211,21 @@ export default function DeliveryScorecardDisplay() {
 
          part.dailyRecords.forEach((record, idx) => {
             const agg = group.aggregatedRecords[idx] as any;
-            agg.actual = (agg.actual ?? 0) + (record.actual ?? 0);
-            agg.target = (agg.target ?? 0) + (record.target ?? 0);
+            agg.actual = (agg.actual ?? 0) + ((record.actual ?? 0) * multiplier);
+            agg.target = (agg.target ?? 0) + ((record.target ?? 0) * multiplier);
             if (record.reasonCode) {
                if (!agg.reasons) agg.reasons = [];
                agg.reasons.push(`${part.shift}: ${record.reasonCode}`);
             }
          });
 
-        const partActual = part.dailyRecords.reduce((sum, r) => sum + (r.actual || 0), 0);
-        const partTarget = part.dailyRecords.reduce((sum, r) => sum + (r.target || 0), 0);
+        const partActual = part.dailyRecords.reduce((sum, r) => sum + (r.actual || 0), 0) * multiplier;
+        const partTarget = part.dailyRecords.reduce((sum, r) => sum + (r.target || 0), 0) * multiplier;
         
         group.totalActual += partActual;
         group.totalTarget += partTarget;
         group.gap += (partActual - partTarget);
-        group.rollingGap += childRollingGap;
+        group.rollingGap += (childRollingGap * multiplier);
      });
 
      let results = Object.values(groups);
@@ -231,7 +256,7 @@ export default function DeliveryScorecardDisplay() {
      }
 
      return results;
-  }, [activeWeek, searchQuery, sortConfig]);
+  }, [activeWeek, searchQuery, sortConfig, displayUnit, batchSizeMap]);
 
   return (
     <Stack gap="md" className="w-full">
@@ -241,6 +266,16 @@ export default function DeliveryScorecardDisplay() {
           <Text c="dimmed" size="sm">Daily performance tracking and root cause analysis.</Text>
         </Stack>
         <Group>
+          <SegmentedControl
+            size="xs"
+            value={displayUnit}
+            onChange={(val) => setDisplayUnit(val as any)}
+            data={[
+              { label: 'Batches', value: 'batches' },
+              { label: 'Pieces', value: 'pieces' },
+            ]}
+            color="indigo"
+          />
           <Button 
             variant="light" 
             leftSection={<IconRefresh size={16} />} 
@@ -462,6 +497,9 @@ export default function DeliveryScorecardDisplay() {
                       const totalTarget = part.dailyRecords.reduce((sum, r) => sum + (r.target || 0), 0);
                       const gap = totalActual - totalTarget;
 
+                      const batchSize = batchSizeMap.get(part.partNumber) || 1;
+                      const multiplier = displayUnit === 'pieces' ? batchSize : 1;
+
                       return (
                         <Table.Tr key={part.id} bg="var(--mantine-color-gray-0)">
                           <Table.Td pl={40}>
@@ -484,6 +522,9 @@ export default function DeliveryScorecardDisplay() {
                             const isWorking = targetDate ? isWorkingDay(targetDate, anchorDate) : true;
                             const isDayOff = !isWorking;
 
+                            const displayedActual = actualValue !== null ? actualValue * multiplier : null;
+                            const displayedTarget = targetValue !== null ? targetValue * multiplier : 0;
+
                             // Apply color styles only if actual production is recorded
                             const performanceStyles = (actualValue !== null && targetValue !== null) 
                               ? getCellStyles(actualValue, targetValue) 
@@ -497,7 +538,7 @@ export default function DeliveryScorecardDisplay() {
 
                             // Content Logic: Muted em-dash for empty off days
                             const isInactiveOffDay = isDayOff && (actualValue === 0 || actualValue === null) && (targetValue === 0 || targetValue === null);
-                            const displayValue = isInactiveOffDay ? '—' : (actualValue ?? '-');
+                            const displayValue = isInactiveOffDay ? '—' : (displayedActual ?? '-');
                             const textColor = isInactiveOffDay ? 'dimmed' : (performanceStyles.color || (actualValue === null ? 'gray.4' : 'black'));
 
                             return (
@@ -516,8 +557,8 @@ export default function DeliveryScorecardDisplay() {
                                         <Text size="xs" fw={700}>Part: {part.partNumber} (Shift {part.shift})</Text>
                                         {isDayOff && <Badge size="9px" variant="light" color="gray">Off Schedule</Badge>}
                                       </Group>
-                                      <Text size="xs">Actual: {actualValue ?? 'Not recorded'}</Text>
-                                      <Text size="xs">Target: {targetValue ?? 0}</Text>
+                                      <Text size="xs">Actual: {displayedActual ?? 'Not recorded'}</Text>
+                                      <Text size="xs">Target: {displayedTarget ?? 0}</Text>
                                       {record?.reasonCode && (
                                         <Text size="xs" c="orange.7" fw={600}>Reason: {record.reasonCode}</Text>
                                       )}
@@ -532,26 +573,26 @@ export default function DeliveryScorecardDisplay() {
                                     <Text size="sm" fw={performanceStyles.fw || 500} c={textColor}>
                                       {displayValue}
                                     </Text>
-                                    <Text size="10px" c="dimmed">Tgt: {targetValue ?? 0}</Text>
+                                    <Text size="10px" c="dimmed">Tgt: {displayedTarget ?? 0}</Text>
                                   </Box>
                                 </Tooltip>
                               </Table.Td>
                             );
                           })}
                           <Table.Td ta="center" bg="gray.1">
-                            <Text size="sm" fw={600}>{totalActual}</Text>
+                            <Text size="sm" fw={600}>{totalActual * multiplier}</Text>
                           </Table.Td>
                           <Table.Td ta="center" bg="gray.1">
-                            <Text size="sm" fw={600}>{totalTarget}</Text>
+                            <Text size="sm" fw={600}>{totalTarget * multiplier}</Text>
                           </Table.Td>
                           <Table.Td ta="center" bg={gap < 0 ? 'red.0' : 'green.0'}>
                             <Text size="sm" fw={600} c={gap < 0 ? 'red.8' : 'green.8'}>
-                              {gap > 0 ? `+${gap}` : gap}
+                              {gap > 0 ? `+${gap * multiplier}` : gap * multiplier}
                             </Text>
                           </Table.Td>
                           <Table.Td ta="center" bg={part.rollingGap < 0 ? 'red.0' : 'green.0'}>
                             <Text size="sm" fw={600} c={part.rollingGap < 0 ? 'red.8' : 'green.8'}>
-                              {part.rollingGap > 0 ? `+${part.rollingGap}` : part.rollingGap}
+                              {part.rollingGap > 0 ? `+${part.rollingGap * multiplier}` : part.rollingGap * multiplier}
                             </Text>
                           </Table.Td>
                         </Table.Tr>

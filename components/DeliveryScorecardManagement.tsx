@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { 
   Tabs, Select, Button, TextInput, NumberInput, Card, Grid, Group, Text, 
-  ActionIcon, Divider, Box, Badge, Tooltip as MantineTooltip, Stack, Modal, Switch, Paper, Title
+  ActionIcon, Divider, Box, Badge, Tooltip as MantineTooltip, Stack, Modal, Switch, Paper, Title, SegmentedControl
 } from '@mantine/core';
 import { useLocalStorage } from '@mantine/hooks';
 import { 
@@ -16,10 +16,11 @@ import { useScorecardStore, DayOfWeek, PartScorecard, BulkImportGroup } from '@/
 import WeeklyPlanTable from './WeeklyPlanTable';
 import { notifications } from '@mantine/notifications';
 import Papa from 'papaparse';
-import { getISODateForDay, getCurrentWeekId, generateWeekLabel } from '@/lib/dateUtils';
+import { getISODateForDay, getCurrentWeekId, generateWeekLabel, getWeekDates, formatISODate } from '@/lib/dateUtils';
 import { useProcessStore } from '@/lib/processStore';
 import { ask } from '@tauri-apps/plugin-dialog';
 import { generateSmartCopy } from '@/lib/copyUtils';
+import { useProductionDisplayUnit } from '@/hooks/useProductionDisplayUnit';
 
 
 
@@ -28,6 +29,7 @@ const DAYS_OF_WEEK: DayOfWeek[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Su
 export default function DeliveryScorecardManagement() {
   const processes = useProcessStore(state => state.processes);
   const store = useScorecardStore();
+  const [displayUnit, setDisplayUnit] = useProductionDisplayUnit();
   const [activeTab, setActiveTab] = useLocalStorage<string | null>({
     key: 'production-planner-active-tab',
     defaultValue: null
@@ -460,6 +462,16 @@ export default function DeliveryScorecardManagement() {
         <Title order={2}>Production Planner</Title>
         <Group>
           <SyncStatusIndicator />
+          <SegmentedControl
+            size="xs"
+            value={displayUnit}
+            onChange={(val) => setDisplayUnit(val as any)}
+            data={[
+              { label: 'Batches', value: 'batches' },
+              { label: 'Pieces', value: 'pieces' },
+            ]}
+            color="indigo"
+          />
           <Button 
             variant="light" 
             leftSection={<IconRefresh size={16} />} 
@@ -531,6 +543,7 @@ export default function DeliveryScorecardManagement() {
               partInfo={partInfo}
               onUpdateRecord={coreHandleUpdateRecord}
               onBatchUpdateRecords={handleBatchUpdateRecords}
+              displayUnit={displayUnit}
               onRemovePart={async (rowId: string) => {
                 const confirmed = await ask("Are you sure you want to remove this row? This will also delete it from the database.", {
                   title: 'Confirm Deletion',
