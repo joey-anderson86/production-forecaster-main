@@ -7,9 +7,8 @@ import {
   Tabs, Select, Table, Card, Text, Group, Badge, Title, Box, Tooltip, Stack, Button, ActionIcon, Paper
 } from '@mantine/core';
 import { 
-  IconFlask, IconBox, IconShip, IconClipboardCheck, IconPlus, 
-  IconChevronDown, IconChevronRight, IconSearch, IconArrowsSort, IconSortAscending, IconSortDescending,
-  IconChartBar, IconTarget
+  IconPlus, IconChevronDown, IconChevronRight, IconSearch, IconArrowsSort, 
+  IconSortAscending, IconSortDescending, IconChartBar, IconTarget, IconRefresh
 } from '@tabler/icons-react';
 import { EditEntryModal } from './EditEntryModal';
 import { ShiftProductionEntryModal } from './ShiftProductionEntryModal';
@@ -19,14 +18,7 @@ import { DAYS_OF_WEEK, getTodayNumeric, getWeekDates, isWorkingDay, parseISOLoca
 import { useProcessStore } from '@/lib/processStore';
 import { TextInput } from '@mantine/core';
 
-const PROCESS_ICONS: Record<string, React.ReactNode> = {
-  'Plating': <IconFlask size={20} />,
-  'VPA': <IconClipboardCheck size={20} />,
-  'EBPVD': <IconBox size={20} />,
-  'Shipping': <IconShip size={20} />
-};
 
-const getProcessIcon = (name: string) => PROCESS_ICONS[name] || <IconBox size={20} />;
 
 interface GroupedPartScorecard {
   partNumber: string;
@@ -52,6 +44,26 @@ export default function DeliveryScorecardDisplay() {
   const [expandedParts, setExpandedParts] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [sortConfig, setSortConfig] = useState<{ key: keyof GroupedPartScorecard; direction: 'asc' | 'desc' } | null>({ key: 'partNumber', direction: 'asc' });
+  const [connectionString, setConnectionString] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    async function loadConnStr() {
+      const { load } = await import('@tauri-apps/plugin-store');
+      try {
+        const storeRes = await load("store.json", { autoSave: false, defaults: {} });
+        const val = await storeRes.get<string>("db_connection_string");
+        setConnectionString(val || null);
+      } catch (err) {
+        console.error("Failed to load connection string:", err);
+      }
+    }
+    loadConnStr();
+  }, []);
+
+  const handleFetchFromDb = async () => {
+    if (!connectionString) return;
+    await store.fetchFromDb(connectionString);
+  };
 
   const requestSort = (key: keyof GroupedPartScorecard) => {
     let direction: 'asc' | 'desc' = 'asc';
@@ -126,7 +138,7 @@ export default function DeliveryScorecardDisplay() {
     return { bg: 'red.0', color: 'red.8', fw: 700 };
   };
 
-  const activeDeptIcon = activeTab ? getProcessIcon(activeTab) : <IconBox size={20} />;
+
 
   const handleCellClick = (rowId: string, partNumber: string, shift: string, dayOfWeek: DayOfWeek, record: DailyScorecardRecord) => {
     setEditingEntry({ rowId, partNumber, shift, dayOfWeek, record });
@@ -226,19 +238,29 @@ export default function DeliveryScorecardDisplay() {
       <Group justify="space-between" align="center">
         <Stack gap={4}>
           <Title order={2}>Delivery Scorecard & Loss Pareto</Title>
-          <Text c="dimmed" size="sm">Daily actual vs target and root cause accumulation per department.</Text>
+          <Text c="dimmed" size="sm">Daily performance tracking and root cause analysis.</Text>
         </Stack>
-        <Button
-          variant="filled"
-          color="indigo"
-          leftSection={<IconPlus size={16} />}
-          onClick={() => setShiftModalOpened(true)}
-        >
-          Record Shift Production
-        </Button>
+        <Group>
+          <Button 
+            variant="light" 
+            leftSection={<IconRefresh size={16} />} 
+            onClick={handleFetchFromDb}
+            loading={store.isLoading}
+            disabled={!connectionString}
+          >
+            Sync from DB
+          </Button>
+          <Button
+            variant="light"
+            leftSection={<IconPlus size={16} />}
+            onClick={() => setShiftModalOpened(true)}
+          >
+            Record Shift Production
+          </Button>
+        </Group>
       </Group>
 
-      <Paper withBorder p="md" radius="md">
+      <Paper withBorder p="sm" radius="md" className="bg-gray-50/30">
         <Stack gap="md">
           <Group justify="space-between" align="center">
             <Tabs value={activeTab} onChange={setActiveTab} variant="pills">
@@ -247,7 +269,6 @@ export default function DeliveryScorecardDisplay() {
                   <Tabs.Tab 
                     key={name} 
                     value={name} 
-                    leftSection={getProcessIcon(name)}
                     color="indigo"
                   >
                     {name}
@@ -256,30 +277,28 @@ export default function DeliveryScorecardDisplay() {
               </Tabs.List>
             </Tabs>
 
-            <Select
-              placeholder="Select Week"
-              value={selectedWeekId}
-              onChange={setSelectedWeekId}
-              data={weekOptions}
-              size="sm"
-              w={220}
-            />
-          </Group>
-
-          <Box>
-            <Group mb="md">
+            <Group gap="sm">
               <TextInput
                 placeholder="Search Part Number..."
                 leftSection={<IconSearch size={16} />}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.currentTarget.value)}
                 size="sm"
-                className="flex-1 max-w-sm"
+                w={240}
+              />
+              <Select
+                placeholder="Select Week"
+                value={selectedWeekId}
+                onChange={setSelectedWeekId}
+                data={weekOptions}
+                size="sm"
+                w={220}
               />
             </Group>
+          </Group>
 
-
-            <Box className="border-t border-gray-100" style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--mantine-color-gray-3)' }}>
+          <Box>
+            <Box className="border-t border-gray-100 mt-sm" style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--mantine-color-gray-3)' }}>
         {activeWeek ? (
           <Table verticalSpacing="sm" striped highlightOnHover className="w-full">
             <Table.Thead>

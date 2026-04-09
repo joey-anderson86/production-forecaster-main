@@ -7,9 +7,9 @@ import {
 } from '@mantine/core';
 import { useLocalStorage } from '@mantine/hooks';
 import { 
-  IconFlask, IconBox, IconShip, IconPlus, IconTrash, 
-  IconDownload, IconUpload, IconX, IconDatabase, 
-  IconRefresh, IconDeviceFloppy, IconClipboardCheck,
+  IconPlus, IconTrash, 
+  IconUpload, IconX, IconDatabase, 
+  IconRefresh,
   IconCloudCheck, IconCloudDownload, IconAlertTriangle
 } from '@tabler/icons-react';
 import { useScorecardStore, DayOfWeek, PartScorecard, BulkImportGroup } from '@/lib/scorecardStore';
@@ -21,14 +21,7 @@ import { useProcessStore } from '@/lib/processStore';
 import { ask } from '@tauri-apps/plugin-dialog';
 import { generateSmartCopy } from '@/lib/copyUtils';
 
-const PROCESS_ICONS: Record<string, React.ReactNode> = {
-  'Plating': <IconFlask size={16} />,
-  'VPA': <IconClipboardCheck size={16} />,
-  'EBPVD': <IconBox size={16} />,
-  'Shipping': <IconShip size={16} />
-};
 
-const getProcessIcon = (name: string) => PROCESS_ICONS[name] || <IconBox size={16} />;
 
 const DAYS_OF_WEEK: DayOfWeek[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -459,10 +452,26 @@ export default function DeliveryScorecardManagement() {
         <Title order={2}>Production Planner</Title>
         <Group>
           <SyncStatusIndicator />
+          <Button 
+            variant="light" 
+            leftSection={<IconRefresh size={16} />} 
+            onClick={handleFetchFromDb}
+            loading={store.isLoading}
+          >
+            Sync from DB
+          </Button>
+          <Button 
+            variant="light" 
+            leftSection={<IconPlus size={16} />}
+            onClick={handleAddPart}
+            disabled={!activeTab || !selectedWeekId}
+          >
+            Add Part
+          </Button>
         </Group>
       </Group>
 
-      <Paper withBorder p="md" radius="md">
+      <Paper withBorder p="sm" radius="md" className="bg-gray-50/30">
         <Stack gap="md">
           <Group justify="space-between" align="center">
             <Tabs value={activeTab} onChange={setActiveTab} variant="pills">
@@ -471,7 +480,6 @@ export default function DeliveryScorecardManagement() {
                   <Tabs.Tab 
                     key={name} 
                     value={name} 
-                    leftSection={getProcessIcon(name)}
                     color="indigo"
                   >
                     {name}
@@ -487,26 +495,15 @@ export default function DeliveryScorecardManagement() {
                 value={selectedWeekId}
                 onChange={setSelectedWeekId}
                 size="sm"
-                w={220}
+                w={260}
               />
               <Button 
-                leftSection={<IconRefresh size={16} />} 
                 variant="outline" 
-                color="blue"
-                size="sm"
-                loading={store.isLoading}
-                onClick={handleFetchFromDb}
+                size="sm" 
+                leftSection={<IconRefresh size={16} />}
+                onClick={() => setAddWeekModalOpened(true)}
               >
-                Sync
-              </Button>
-              <Button 
-                leftSection={<IconPlus size={16} />} 
-                variant="light" 
-                color="indigo"
-                size="sm"
-                onClick={handleAddWeek}
-              >
-                Add Week
+                Add New Week
               </Button>
             </Group>
           </Group>
@@ -514,60 +511,7 @@ export default function DeliveryScorecardManagement() {
 
           {activeWeek && (
             <Box>
-              <Group justify="space-between" mb="md" className="bg-gray-50/50 p-2 rounded-md border border-gray-100">
-                <Group gap="lg">
-                  <TextInput
-                    label={<Text size="xs" fw={700} c="dimmed">WEEK LABEL</Text>}
-                    value={activeWeek.weekLabel}
-                    readOnly
-                    size="sm"
-                    w={280}
-                    styles={{ label: { marginBottom: 2 } }}
-                  />
-                  <Divider orientation="vertical" />
-                  <Group gap={8}>
-                    <Text size="xs" fw={700} c="dimmed" mr={4}>EXPORT AS:</Text>
-                    <Button 
-                      leftSection={<IconDownload size={14} />} 
-                      variant="subtle" 
-                      size="xs"
-                      onClick={handleExportTemplate}
-                    >
-                      Template
-                    </Button>
-                    <Button 
-                      leftSection={<IconDownload size={14} />} 
-                      variant="subtle" 
-                      color="teal"
-                      size="xs"
-                      onClick={handleExportCSV}
-                    >
-                      CSV
-                    </Button>
-                    <Button 
-                      leftSection={<IconDownload size={14} />} 
-                      variant="subtle" 
-                      color="indigo"
-                      size="xs"
-                      onClick={handleGlobalExportCSV}
-                    >
-                      Global
-                    </Button>
-                  </Group>
-                </Group>
-                
-                <Button 
-                  leftSection={<IconTrash size={14} />} 
-                  variant="subtle" 
-                  color="red"
-                  size="xs"
-                  onClick={handleDeleteWeek}
-                >
-                  Delete Entire Week
-                </Button>
-              </Group>
-
-              <Box className="border border-gray-200 rounded-md overflow-hidden mb-md">
+              <Box className="border border-gray-200 rounded-md overflow-hidden mb-md mt-sm">
 
             <WeeklyPlanTable 
               department={activeTab!}
@@ -635,17 +579,7 @@ export default function DeliveryScorecardManagement() {
             </Stack>
           </Group>
 
-          <Button 
-            fullWidth 
-            variant="light" 
-            color="indigo" 
-            size="xl" 
-            leftSection={<IconPlus size={20} />}
-            onClick={handleAddPart}
-            style={{ borderStyle: 'dashed', borderWidth: '2px' }}
-          >
-            Add Part Number Row
-          </Button>
+
             </Box>
           )}
 
