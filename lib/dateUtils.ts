@@ -90,6 +90,14 @@ export function formatSqlDate(date: Date): string {
 }
 
 /**
+ * Formats an ISO date string (YYYY-MM-DD) as YYYYMMDD string for SQL Server compatibility.
+ * Safe from timezone shifts because it avoids the Date constructor.
+ */
+export function formatSqlDateFromIso(dateStr: string): string {
+  return dateStr.replace(/-/g, '');
+}
+
+/**
  * Returns current date as numeric YYYYMMDD
  */
 export function getTodayNumeric(): number {

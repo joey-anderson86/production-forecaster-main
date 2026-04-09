@@ -17,6 +17,7 @@ export interface ProcessInfoRecord {
   date: string;
   hoursAvailable: number;
   machineId: string;
+  shift: string;
 }
 
 export interface PartInfoRecord {
@@ -25,11 +26,25 @@ export interface PartInfoRecord {
   processingTime: number; // Processing time in minutes
 }
 
+export interface ShiftMetric {
+  load: number;
+  capacity: number;
+  isOver: boolean;
+  isWorking: boolean;
+  breakdown: {
+    partNumber: string;
+    scheduledQty: number;
+    processingTimeMin: number;
+    calculatedHours: number;
+  }[];
+}
+
 export interface DailyCapacityMetric {
   totalCapacity: number;
   totalLoad: number;
   utilization: number;
   machineBreakdown: { machineId: string, hours: number }[];
+  shiftBreakdown: Record<string, ShiftMetric>;
   breakdown: {
     partNumber: string;
     scheduledQty: number;
@@ -413,38 +428,48 @@ export default function WeeklyPlanTable({
   const dailyCapacityMetrics = useMemo(() => {
     const metrics = {} as Record<DayOfWeek, DailyCapacityMetric>;
     
-    // Group process info by Date then Machine ID to sum shifts correctly
-    const dailyCapacityMap = new Map<string, Map<string, number>>();
+    // Group process info by Date and Shift
+    const shiftCapacityMap = new Map<string, Map<string, number>>();
     if (processInfo) {
       processInfo.forEach(record => {
         if (record.process === department && record.date) {
-          if (!dailyCapacityMap.has(record.date)) {
-            dailyCapacityMap.set(record.date, new Map());
+          if (!shiftCapacityMap.has(record.date)) {
+            shiftCapacityMap.set(record.date, new Map());
           }
-          const machineMap = dailyCapacityMap.get(record.date)!;
-          const currentHours = machineMap.get(record.machineId) || 0;
-          machineMap.set(record.machineId, currentHours + (record.hoursAvailable || 0));
+          const shiftMap = shiftCapacityMap.get(record.date)!;
+          const shiftKey = record.shift || 'A';
+          const currentHours = shiftMap.get(shiftKey) || 0;
+          shiftMap.set(shiftKey, currentHours + (record.hoursAvailable || 0));
         }
       });
     }
 
     DAYS_OF_WEEK.forEach((day, idx) => {
-      const targetDate = weekDates[idx] ? formatISODate(weekDates[idx]) : '';
-      const machinesMap = dailyCapacityMap.get(targetDate);
+      const date = weekDates[idx];
+      const targetDate = date ? formatISODate(date) : '';
+      const shiftsOnDate = shiftCapacityMap.get(targetDate);
       
       let totalCapacity = 0;
-      let machineBreakdown: { machineId: string, hours: number }[] = [];
-      
-      if (machinesMap) {
-        machineBreakdown = Array.from(machinesMap.entries()).map(([machineId, hours]) => {
-          totalCapacity += hours;
-          return { machineId, hours };
-        });
-      }
+      const shifts = ['A', 'B', 'C', 'D'];
+      const shiftBreakdown: Record<string, ShiftMetric> = {};
+
+      shifts.forEach(s => {
+        const capacity = shiftsOnDate?.get(s) || 0;
+        totalCapacity += capacity;
+        
+        shiftBreakdown[s] = {
+          load: 0,
+          capacity: capacity,
+          isOver: false,
+          isWorking: date ? isWorkingDay(date, shiftSettings[s] || '') : true,
+          breakdown: []
+        };
+      });
 
       metrics[day] = {
         totalCapacity,
-        machineBreakdown,
+        machineBreakdown: [], // This was used for per-machine hours, but user example focused on shift
+        shiftBreakdown,
         totalLoad: 0,
         utilization: 0,
         breakdown: []
@@ -463,21 +488,45 @@ export default function WeeklyPlanTable({
 
     parts.forEach(part => {
       const processingTimeMins = partMap.get(part.partNumber) || 0;
+      const shift = part.shift || 'A';
       
       if (processingTimeMins > 0) {
         part.dailyRecords.forEach(record => {
           if (record.target && record.target > 0) {
             const calculatedHours = (record.target * processingTimeMins) / 60;
-            metrics[record.dayOfWeek].totalLoad += calculatedHours;
+            const dayMetric = metrics[record.dayOfWeek];
             
+            dayMetric.totalLoad += calculatedHours;
+            
+            // Add to shift breakdown
+            if (dayMetric.shiftBreakdown[shift]) {
+              dayMetric.shiftBreakdown[shift].load += calculatedHours;
+              
+              const partName = part.partNumber || 'Unassigned';
+              const existingShiftEntry = dayMetric.shiftBreakdown[shift].breakdown.find(b => b.partNumber === partName);
+              
+              if (existingShiftEntry) {
+                existingShiftEntry.scheduledQty += record.target;
+                existingShiftEntry.calculatedHours += calculatedHours;
+              } else {
+                dayMetric.shiftBreakdown[shift].breakdown.push({
+                  partNumber: partName,
+                  scheduledQty: record.target,
+                  processingTimeMin: processingTimeMins,
+                  calculatedHours: calculatedHours
+                });
+              }
+            }
+            
+            // Still populate the general breakdown for backward compatibility/summary
             const partName = part.partNumber || 'Unassigned';
-            const existingEntry = metrics[record.dayOfWeek].breakdown.find(b => b.partNumber === partName);
+            const existingEntry = dayMetric.breakdown.find(b => b.partNumber === partName);
             
             if (existingEntry) {
               existingEntry.scheduledQty += record.target;
               existingEntry.calculatedHours += calculatedHours;
             } else {
-              metrics[record.dayOfWeek].breakdown.push({
+              dayMetric.breakdown.push({
                 partNumber: partName,
                 scheduledQty: record.target,
                 processingTimeMin: processingTimeMins,
@@ -490,18 +539,33 @@ export default function WeeklyPlanTable({
     });
 
     DAYS_OF_WEEK.forEach(day => {
-      const load = metrics[day].totalLoad;
-      const capacity = metrics[day].totalCapacity;
+      const metric = metrics[day];
+      const load = metric.totalLoad;
+      const capacity = metric.totalCapacity;
+      
       if (capacity > 0) {
-        metrics[day].utilization = (load / capacity) * 100;
+        metric.utilization = (load / capacity) * 100;
       } else {
-        // If there is a load but no capacity, it's over capacity (101% to trigger red)
-        metrics[day].utilization = load > 0 ? 101 : 0;
+        metric.utilization = load > 0 ? 101 : 0;
       }
+
+      // Finalize shift over-capacity flags
+      Object.keys(metric.shiftBreakdown).forEach(shift => {
+        const sMetric = metric.shiftBreakdown[shift];
+        // If shift is working but has 0 capacity and >0 load, it's over
+        if (sMetric.isWorking && sMetric.capacity === 0 && sMetric.load > 0) {
+          sMetric.isOver = true;
+        } else if (sMetric.capacity > 0) {
+          // Allow 0.01h buffer for rounding
+          sMetric.isOver = sMetric.load > (sMetric.capacity + 0.01);
+        } else {
+          sMetric.isOver = false;
+        }
+      });
     });
 
     return metrics;
-  }, [parts, partInfo, processInfo, department]);
+  }, [parts, partInfo, processInfo, department, weekDates, shiftSettings]);
 
   return (
     <Box style={{ border: '1px solid var(--mantine-color-gray-3)', borderRadius: '8px', overflow: 'hidden' }}>
@@ -619,14 +683,49 @@ export default function WeeklyPlanTable({
               return (
                 <Table.Td key={day} ta="center" p="xs">
                   {processInfo ? (
-                    <HoverCard width={280} shadow="md" position="top" withArrow withinPortal>
+                    <HoverCard width={300} shadow="md" position="top" withArrow withinPortal>
                       <HoverCard.Target>
                         <Box style={{ cursor: 'pointer' }}>
                           <Stack gap={4} align="center">
+                            <Box style={{ display: 'grid', gridTemplateColumns: 'repeat(2, auto)', gap: 4, justifyContent: 'center' }}>
+                              {['A', 'C', 'B', 'D'].map(s => {
+                                const sMetric = metric.shiftBreakdown[s];
+                                let color = "gray.3";
+                                let variant = "light";
+                                
+                                if (!sMetric.isWorking) {
+                                  color = "gray.3";
+                                  variant = "outline";
+                                } else if (sMetric.isOver) {
+                                  color = "red.6";
+                                  variant = "filled";
+                                } else {
+                                  color = "teal.5";
+                                  variant = "light";
+                                }
+                                
+                                return (
+                                  <Tooltip key={s} label={`Shift ${s}: ${sMetric.isWorking ? (sMetric.isOver ? 'Over Capacity' : 'Healthy') : 'OFF'}`} position="top" withinPortal>
+                                    <Badge 
+                                      circle 
+                                      size="xs" 
+                                      color={color} 
+                                      variant={variant}
+                                      style={{ 
+                                        border: variant === 'outline' ? '1px dashed currentColor' : undefined,
+                                        fontSize: '9px' // Slightly smaller font to keep it tight
+                                      }}
+                                    >
+                                      {s}
+                                    </Badge>
+                                  </Tooltip>
+                                );
+                              })}
+                            </Box>
                             <Progress 
                               value={Math.min(utilization, 100)} 
                               color={color} 
-                              size="md" 
+                              size="sm" 
                               radius="xl"
                               w="100%"
                             />
@@ -641,50 +740,46 @@ export default function WeeklyPlanTable({
                           <Text size="sm" fw={700} style={{ borderBottom: '1px solid var(--mantine-color-gray-2)', paddingBottom: 4 }}>
                             Capacity Breakdown
                           </Text>
+                          
+                          {/* Shift-level Breakdown Section */}
+                          {Object.entries(metric.shiftBreakdown).filter(([_, s]) => s.isWorking || s.load > 0).map(([s, sMetric]) => (
+                            <Box key={s} mb={4}>
+                              <Group justify="space-between" align="center">
+                                <Text size="xs" fw={700} c={sMetric.isOver ? "red.6" : "indigo"}>
+                                  Shift {s} {sMetric.isOver && "(OVER)"}
+                                </Text>
+                                <Text size="xs" fw={600} c={sMetric.isOver ? "red.6" : "dimmed"}>
+                                  {sMetric.load.toFixed(1)}h / {sMetric.capacity.toFixed(1)}h
+                                </Text>
+                              </Group>
+                              
+                              {sMetric.breakdown.length > 0 ? (
+                                <Stack gap={2} mt={2} pl="xs">
+                                  {sMetric.breakdown.map((b, idx) => (
+                                    <Group key={idx} justify="space-between" wrap="nowrap" align="center">
+                                      <Text size="10px" fw={500} truncate w={100}>
+                                        {b.partNumber}
+                                      </Text>
+                                      <Text size="10px" c="dimmed" ta="right">
+                                        {b.scheduledQty}x → {b.calculatedHours.toFixed(1)}h
+                                      </Text>
+                                    </Group>
+                                  ))}
+                                </Stack>
+                              ) : (
+                                <Text size="10px" c="dimmed" fs="italic" pl="xs">No parts scheduled</Text>
+                              )}
+                              <Divider my={4} color="gray.1" />
+                            </Box>
+                          ))}
+
                           <Group justify="space-between" mt={4}>
-                            <Text size="xs" c="dimmed">Total Available:</Text>
+                            <Text size="xs" c="dimmed">Daily Machinery Cap:</Text>
                             <Text size="xs" fw={600}>{metric.totalCapacity}h</Text>
                           </Group>
                           
-                          {metric.machineBreakdown.length > 0 && (
-                            <Stack gap={2} pl="md" mt={2}>
-                              {metric.machineBreakdown.map((machine, idx) => (
-                                <Group key={idx} justify="space-between" wrap="nowrap" align="center">
-                                  <Text size="xs" c="dimmed" truncate w={100}>
-                                    {machine.machineId}
-                                  </Text>
-                                  <Text size="xs" c="dimmed" fw={500} ta="right" w={40}>
-                                    {machine.hours}h
-                                  </Text>
-                                </Group>
-                              ))}
-                            </Stack>
-                          )}
-                          
-                          <Divider my={4} color="gray.2" />
-                          
-                          {metric.breakdown.length > 0 ? (
-                            <Stack gap={2} mt={4}>
-                              {metric.breakdown.map((b, idx) => (
-                                <Group key={idx} justify="space-between" wrap="nowrap" align="center">
-                                  <Text size="xs" fw={500} truncate w={80}>
-                                    {b.partNumber}
-                                  </Text>
-                                  <Text size="10px" c="dimmed">
-                                    {b.scheduledQty}x {b.processingTimeMin}m
-                                  </Text>
-                                  <Text size="xs" fw={600} ta="right" w={40}>
-                                    {b.calculatedHours.toFixed(1)}h
-                                  </Text>
-                                </Group>
-                              ))}
-                            </Stack>
-                          ) : (
-                            <Text size="xs" c="dimmed" fs="italic" ta="center" py="xs">No parts scheduled</Text>
-                          )}
-                          
                           <Group justify="space-between" style={{ borderTop: '1px solid var(--mantine-color-gray-2)', paddingTop: 8 }} mt={4}>
-                            <Text size="xs" fw={700}>Total Scheduled:</Text>
+                            <Text size="xs" fw={700}>Total Daily Load:</Text>
                             <Text size="xs" fw={800} c={color}>
                               {load.toFixed(1)}h ({utilization.toFixed(1)}%)
                             </Text>

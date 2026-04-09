@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { getISODateForDay, isWorkingDay, formatSqlDate } from './dateUtils';
+import { getISODateForDay, isWorkingDay, formatSqlDate, formatSqlDateFromIso } from './dateUtils';
 
 export type DayOfWeek = 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat' | 'Sun';
 
@@ -562,7 +562,7 @@ export const useScorecardStore = create<ScorecardStore>()(
             dayOfWeek: record.dayOfWeek,
             target: record.target,
             actual: record.actual,
-            date: record.date ? formatSqlDate(new Date(record.date)) : null,
+            date: record.date ? formatSqlDateFromIso(record.date) : null,
             shift: part.shift || "",
             reasonCode: record.reasonCode
           };
@@ -601,7 +601,7 @@ export const useScorecardStore = create<ScorecardStore>()(
             dayOfWeek: record.dayOfWeek,
             target: record.target,
             actual: record.actual,
-            date: record.date ? formatSqlDate(new Date(record.date)) : null,
+            date: record.date ? formatSqlDateFromIso(record.date) : null,
             shift: part.shift,
             reasonCode: record.reasonCode
           }));

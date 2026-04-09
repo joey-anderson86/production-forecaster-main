@@ -278,6 +278,10 @@ export default function DeliveryScorecardManagement() {
 
     // 3. Debounced Save to DB (Per-cell basis to prevent race conditions during rapid entry)
     const cellKey = `${rowId}-${day}`;
+    if (autoSaveTimeoutsRef.current[cellKey]) {
+      clearTimeout(autoSaveTimeoutsRef.current[cellKey]);
+    }
+    
     autoSaveTimeoutsRef.current[cellKey] = setTimeout(async () => {
       if (!connectionString) return;
       try {
