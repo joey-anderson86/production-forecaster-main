@@ -16,7 +16,7 @@ import { load } from '@tauri-apps/plugin-store';
 import { ask } from '@tauri-apps/plugin-dialog';
 import { notifications } from '@mantine/notifications';
 import Papa from 'papaparse';
-import { getWeekIdentifier, getDayOfWeekLabel } from '@/lib/dateUtils';
+import { getWeekIdentifier, getDayOfWeekLabel, parseISOLocal } from '@/lib/dateUtils';
 
 interface PlanRow {
   date?: string;
@@ -105,7 +105,7 @@ export function PlanDataPreview() {
           const rawData = results.data as any[];
           const mapped: PlanRow[] = rawData.map(r => {
             const dateStr = r.Date || r.date || "";
-            const dateObj = new Date(dateStr + 'T00:00:00'); // Ensure local date parsing
+            const dateObj = parseISOLocal(dateStr); // Ensure local date parsing
             return {
               date: dateStr,
               partNumber: r.PartNumber || r.partNumber || "",

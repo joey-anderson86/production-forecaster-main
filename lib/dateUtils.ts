@@ -168,7 +168,7 @@ export function isWorkingDay(targetDate: Date, anchorDateString: string): boolea
   if (!anchorDateString) return true; // Default to working if no anchor is set
   
   const PANAMA_WORKING_DAYS = [0, 1, 4, 5, 6, 9, 10];
-  const anchor = new Date(anchorDateString);
+  const anchor = parseISOLocal(anchorDateString);
   
   // Normalize both to midnight local time to avoid DST and time-of-day issues
   const t = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
