@@ -520,7 +520,7 @@ export const useScorecardStore = create<ScorecardStore>()(
                   dayOfWeek: record.dayOfWeek,
                   target: record.target,
                   actual: record.actual,
-                  date: record.date, // Already YYYYMMDD
+                  date: record.date ? formatSqlDate(new Date(record.date)) : null, // Convert to YYYYMMDD for SQL Server
                   reasonCode: record.reasonCode
                 });
               });
@@ -562,7 +562,7 @@ export const useScorecardStore = create<ScorecardStore>()(
             dayOfWeek: record.dayOfWeek,
             target: record.target,
             actual: record.actual,
-            date: record.date,
+            date: record.date ? formatSqlDate(new Date(record.date)) : null,
             shift: part.shift || "",
             reasonCode: record.reasonCode
           };

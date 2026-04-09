@@ -175,7 +175,7 @@ async fn upsert_scorecard_data(
         client.execute(
             "MERGE dbo.DeliveryData AS target
              USING (SELECT @p1 as Department, @p2 as WeekIdentifier, @p3 as PartNumber, @p4 as DayOfWeek, 
-                           @p5 as Target, @p6 as Actual, CONVERT(DATE, @p7, 112) as Date, @p8 as Shift, @p9 as ReasonCode) AS source
+                           @p5 as Target, @p6 as Actual, CAST(@p7 as DATE) as Date, @p8 as Shift, @p9 as ReasonCode) AS source
              ON (target.Department = source.Department AND target.PartNumber = source.PartNumber AND target.Date = source.Date AND (target.Shift = source.Shift OR (target.Shift IS NULL AND source.Shift IS NULL)))
              WHEN MATCHED THEN
                 UPDATE SET Target = source.Target, Actual = source.Actual, WeekIdentifier = source.WeekIdentifier, DayOfWeek = source.DayOfWeek, ReasonCode = source.ReasonCode
@@ -915,7 +915,7 @@ async fn upsert_process_info(
     for rec in records {
         client.execute(
             "MERGE dbo.ProcessInfo AS target
-             USING (SELECT @p1 as Process, CONVERT(DATE, @p2, 112) as Date, @p3 as HoursAvailable, @p4 as MachineID, @p5 as Shift, @p6 as WeekIdentifier) AS source
+             USING (SELECT @p1 as Process, CAST(@p2 as DATE) as Date, @p3 as HoursAvailable, @p4 as MachineID, @p5 as Shift, @p6 as WeekIdentifier) AS source
              ON (ISNULL(target.Process, '') = ISNULL(source.Process, '') AND target.Date = source.Date AND ISNULL(target.MachineID, '') = ISNULL(source.MachineID, '') AND ISNULL(target.Shift, '') = ISNULL(source.Shift, '') AND ISNULL(target.WeekIdentifier, '') = ISNULL(source.WeekIdentifier, ''))
              WHEN MATCHED THEN
                 UPDATE SET HoursAvailable = source.HoursAvailable
