@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::fs::OpenOptions;
+//use std::fs::OpenOptions;
 use std::path::Path;
 use tiberius::{Client, Config, SqlBrowser};
 use tokio::net::TcpStream;
@@ -354,7 +354,9 @@ async fn get_process_info_preview(connection_string: String) -> Result<Vec<Proce
                 .get::<&str, _>("MachineID")
                 .map(|s| s.trim().to_string()),
             shift: row.get::<&str, _>("Shift").map(|s| s.trim().to_string()),
-            week_identifier: row.get::<&str, _>("WeekIdentifier").map(|s| s.trim().to_string()),
+            week_identifier: row
+                .get::<&str, _>("WeekIdentifier")
+                .map(|s| s.trim().to_string()),
         })
         .collect();
 
@@ -375,7 +377,7 @@ async fn get_process_info(
            AND WeekIdentifier = @p2",
         &[&process, &week_identifier],
     ).await.map_err(|e| e.to_string())?;
-    
+
     let rows = stream
         .into_first_result()
         .await
@@ -391,7 +393,9 @@ async fn get_process_info(
                 .get::<&str, _>("MachineID")
                 .map(|s| s.trim().to_string()),
             shift: row.get::<&str, _>("Shift").map(|s| s.trim().to_string()),
-            week_identifier: row.get::<&str, _>("WeekIdentifier").map(|s| s.trim().to_string()),
+            week_identifier: row
+                .get::<&str, _>("WeekIdentifier")
+                .map(|s| s.trim().to_string()),
         })
         .collect();
 
@@ -437,7 +441,7 @@ async fn get_plan_data_preview(connection_string: String) -> Result<Vec<PlanRow>
         .into_first_result()
         .await
         .map_err(|e| e.to_string())?;
- 
+
     let result = rows
         .into_iter()
         .map(|row| PlanRow {
@@ -450,12 +454,18 @@ async fn get_plan_data_preview(connection_string: String) -> Result<Vec<PlanRow>
             qty: get_i16_robust(&row, "Qty"),
             actual: get_i16_robust(&row, "Actual"),
             shift: row.get::<&str, _>("Shift").map(|s| s.trim().to_string()),
-            week_identifier: row.get::<&str, _>("WeekIdentifier").map(|s| s.trim().to_string()),
-            day_of_week: row.get::<&str, _>("DayOfWeek").map(|s| s.trim().to_string()),
-            reason_code: row.get::<&str, _>("ReasonCode").map(|s| s.trim().to_string()),
+            week_identifier: row
+                .get::<&str, _>("WeekIdentifier")
+                .map(|s| s.trim().to_string()),
+            day_of_week: row
+                .get::<&str, _>("DayOfWeek")
+                .map(|s| s.trim().to_string()),
+            reason_code: row
+                .get::<&str, _>("ReasonCode")
+                .map(|s| s.trim().to_string()),
         })
         .collect();
- 
+
     Ok(result)
 }
 
@@ -574,7 +584,7 @@ async fn get_plan_data_for_shift(
         .into_first_result()
         .await
         .map_err(|e| e.to_string())?;
- 
+
     let result = rows
         .into_iter()
         .map(|row| PlanRow {
@@ -587,12 +597,18 @@ async fn get_plan_data_for_shift(
             qty: get_i16_robust(&row, "Qty"),
             actual: get_i16_robust(&row, "Actual"),
             shift: row.get::<&str, _>("Shift").map(|s| s.trim().to_string()),
-            week_identifier: row.get::<&str, _>("WeekIdentifier").map(|s| s.trim().to_string()),
-            day_of_week: row.get::<&str, _>("DayOfWeek").map(|s| s.trim().to_string()),
-            reason_code: row.get::<&str, _>("ReasonCode").map(|s| s.trim().to_string()),
+            week_identifier: row
+                .get::<&str, _>("WeekIdentifier")
+                .map(|s| s.trim().to_string()),
+            day_of_week: row
+                .get::<&str, _>("DayOfWeek")
+                .map(|s| s.trim().to_string()),
+            reason_code: row
+                .get::<&str, _>("ReasonCode")
+                .map(|s| s.trim().to_string()),
         })
         .collect();
- 
+
     Ok(result)
 }
 
@@ -1280,16 +1296,29 @@ async fn replace_processes(connection_string: String, records: Vec<Process>) -> 
 }
 
 #[tauri::command]
-async fn get_reason_codes_preview(connection_string: String) -> Result<Vec<ReasonCodeData>, String> {
+async fn get_reason_codes_preview(
+    connection_string: String,
+) -> Result<Vec<ReasonCodeData>, String> {
     let mut client = create_client(&connection_string).await?;
-    let stream = client.query("SELECT TOP 1000 Process, ReasonCode FROM dbo.ReasonCode", &[]).await.map_err(|e| e.to_string())?;
-    let rows = stream.into_first_result().await.map_err(|e| e.to_string())?;
+    let stream = client
+        .query(
+            "SELECT TOP 1000 Process, ReasonCode FROM dbo.ReasonCode",
+            &[],
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    let rows = stream
+        .into_first_result()
+        .await
+        .map_err(|e| e.to_string())?;
 
     let result = rows
         .into_iter()
         .map(|row| ReasonCodeData {
             process: row.get::<&str, _>("Process").map(|s| s.trim().to_string()),
-            reason_code: row.get::<&str, _>("ReasonCode").map(|s| s.trim().to_string()),
+            reason_code: row
+                .get::<&str, _>("ReasonCode")
+                .map(|s| s.trim().to_string()),
         })
         .collect();
 
@@ -1297,7 +1326,10 @@ async fn get_reason_codes_preview(connection_string: String) -> Result<Vec<Reaso
 }
 
 #[tauri::command]
-async fn upsert_reason_codes(connection_string: String, records: Vec<ReasonCodeData>) -> Result<(), String> {
+async fn upsert_reason_codes(
+    connection_string: String,
+    records: Vec<ReasonCodeData>,
+) -> Result<(), String> {
     let mut client = create_client(&connection_string).await?;
     for rec in records {
         client.execute(
@@ -1313,7 +1345,10 @@ async fn upsert_reason_codes(connection_string: String, records: Vec<ReasonCodeD
 }
 
 #[tauri::command]
-async fn delete_reason_codes(connection_string: String, records: Vec<ReasonCodeData>) -> Result<(), String> {
+async fn delete_reason_codes(
+    connection_string: String,
+    records: Vec<ReasonCodeData>,
+) -> Result<(), String> {
     let mut client = create_client(&connection_string).await?;
     for rec in records {
         client.execute(
@@ -1325,20 +1360,35 @@ async fn delete_reason_codes(connection_string: String, records: Vec<ReasonCodeD
 }
 
 #[tauri::command]
-async fn replace_reason_codes(connection_string: String, records: Vec<ReasonCodeData>) -> Result<(), String> {
+async fn replace_reason_codes(
+    connection_string: String,
+    records: Vec<ReasonCodeData>,
+) -> Result<(), String> {
     let mut client = create_client(&connection_string).await?;
-    client.simple_query("BEGIN TRANSACTION").await.map_err(|e| e.to_string())?;
+    client
+        .simple_query("BEGIN TRANSACTION")
+        .await
+        .map_err(|e| e.to_string())?;
 
-    client.execute("DELETE FROM dbo.ReasonCode", &[]).await.map_err(|e| e.to_string())?;
-    
+    client
+        .execute("DELETE FROM dbo.ReasonCode", &[])
+        .await
+        .map_err(|e| e.to_string())?;
+
     for rec in records {
-        client.execute(
-            "INSERT INTO dbo.ReasonCode (Process, ReasonCode) VALUES (@p1, @p2)",
-            &[&rec.process, &rec.reason_code]
-        ).await.map_err(|e| e.to_string())?;
+        client
+            .execute(
+                "INSERT INTO dbo.ReasonCode (Process, ReasonCode) VALUES (@p1, @p2)",
+                &[&rec.process, &rec.reason_code],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
     }
 
-    client.simple_query("COMMIT TRANSACTION").await.map_err(|e| e.to_string())?;
+    client
+        .simple_query("COMMIT TRANSACTION")
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -1376,7 +1426,10 @@ async fn get_active_weeks(connection_string: String) -> Result<Vec<String>, Stri
 
     let result = rows
         .into_iter()
-        .filter_map(|row| row.get::<&str, _>("WeekIdentifier").map(|s| s.trim().to_string()))
+        .filter_map(|row| {
+            row.get::<&str, _>("WeekIdentifier")
+                .map(|s| s.trim().to_string())
+        })
         .collect();
 
     Ok(result)

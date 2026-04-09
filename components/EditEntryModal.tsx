@@ -56,6 +56,10 @@ export function EditEntryModal({
 
   const { data: reasonCodes, isLoading: isReasonCodesLoading } = useReasonCodes(departmentName);
 
+  const targetNum = target === '' ? 0 : Number(target);
+  const actualNum = actual === '' ? 0 : Number(actual);
+  const needsReason = actualNum < targetNum;
+
   useEffect(() => {
     async function getConn() {
       const { load } = await import('@tauri-apps/plugin-store');
@@ -83,6 +87,11 @@ export function EditEntryModal({
     }
     if (typeof actual === 'number' && actual < 0) {
       notifications.show({ title: 'Invalid Input', message: 'Actual cannot be negative', color: 'red' });
+      return;
+    }
+
+    if (needsReason && !reasonCode.trim()) {
+      notifications.show({ title: 'Reason Required', message: 'Please select a reason code for the production variance.', color: 'red' });
       return;
     }
 
@@ -186,7 +195,13 @@ export function EditEntryModal({
           clearable
           disabled={isReasonCodesLoading || reasonCodes.length === 0}
           rightSection={isReasonCodesLoading ? <Loader size="xs" /> : undefined}
-          error={reasonCode.length > 144 ? 'Reason code cannot exceed 144 characters' : undefined}
+          error={
+            reasonCode.length > 144 
+              ? 'Reason code cannot exceed 144 characters' 
+              : (needsReason && !reasonCode.trim()) 
+                ? 'Required for variance' 
+                : undefined
+          }
         />
 
         <Group justify="flex-end" mt="xl">
@@ -194,7 +209,7 @@ export function EditEntryModal({
           <Button 
             onClick={handleSave} 
             loading={isSaving}
-            disabled={reasonCode.length > 144}
+            disabled={reasonCode.length > 144 || (needsReason && !reasonCode.trim())}
             leftSection={<IconDeviceFloppy size={18} />}
             color="indigo"
           >
