@@ -77,6 +77,7 @@ interface DailyRate {
 
 interface Process {
   processName: string;
+  machineId?: string;
 }
 
 interface ReasonCodeData {
@@ -432,7 +433,7 @@ export function DatabaseSettings() {
         qty: 0 
       }]);
     } else if (activeTab === "process") {
-      setProcesses(prev => [...prev, { processName: "" }]);
+      setProcesses(prev => [...prev, { processName: "", machineId: "" }]);
     } else if (activeTab === "reasonCode") {
       setReasonCodes(prev => [...prev, { process: "", reasonCode: "" }]);
     }
@@ -606,7 +607,8 @@ export function DatabaseSettings() {
             await invoke("replace_daily_rates", { connectionString, records: mapped });
           } else if (activeTab === "process") {
             const mapped = rawData.map(r => ({
-              processName: r.ProcessName || r.processName || r.Process || r.process || ""
+              processName: r.ProcessName || r.processName || r.Process || r.process || "",
+              machineId: r.MachineID || r.MachineId || r.machineId || ""
             }));
             await invoke("replace_processes", { connectionString, records: mapped });
             
@@ -657,7 +659,7 @@ export function DatabaseSettings() {
       headers = "PartNumber,Week,Year,Qty";
       fileName = "daily_rate_template.csv";
     } else if (activeTab === "process") {
-      headers = "ProcessName";
+      headers = "ProcessName,MachineID";
       fileName = "manufacturing_processes_template.csv";
     } else if (activeTab === "reasonCode") {
       headers = "Process,ReasonCode";
@@ -955,6 +957,7 @@ export function DatabaseSettings() {
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Process Name</Table.Th>
+                <Table.Th>Machine ID</Table.Th>
                 <Table.Th w={50}></Table.Th>
               </Table.Tr>
             </Table.Thead>
@@ -972,6 +975,16 @@ export function DatabaseSettings() {
                     />
                   </Table.Td>
                   <Table.Td>
+                    <TextInput 
+                      variant="unstyled" 
+                      size="xs" 
+                      p={0} 
+                      placeholder="e.g. MC-01"
+                      value={row.machineId || ""} 
+                      onChange={(e) => updateRecord(i, "machineId", e.currentTarget.value)} 
+                    />
+                  </Table.Td>
+                  <Table.Td>
                     <ActionIcon variant="subtle" color="red" onClick={() => removeLocalRecord(i)}>
                       <IconTrash size={14} />
                     </ActionIcon>
@@ -979,7 +992,7 @@ export function DatabaseSettings() {
                 </Table.Tr>
               ))}
               {processes.length === 0 && (
-                <Table.Tr><Table.Td colSpan={2}><Text ta="center" c="dimmed">No processes found. Click "Add Record" to initialize.</Text></Table.Td></Table.Tr>
+                <Table.Tr><Table.Td colSpan={3}><Text ta="center" c="dimmed">No processes found. Click "Add Record" to initialize.</Text></Table.Td></Table.Tr>
               )}
             </Table.Tbody>
           </Table>

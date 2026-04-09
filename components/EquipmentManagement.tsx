@@ -48,6 +48,7 @@ import {
 import { useScorecardStore } from '@/lib/scorecardStore';
 import { invoke } from '@tauri-apps/api/core';
 import { load } from '@tauri-apps/plugin-store';
+import { useAvailableMachines } from '@/hooks/useAvailableMachines';
 
 // --- TypeScript Interfaces ---
 
@@ -275,18 +276,21 @@ const MachineRow = ({
 function AddEquipmentModal({ 
   opened, 
   onClose, 
-  onAdd 
+  onAdd,
+  activeProcess,
 }: { 
   opened: boolean; 
   onClose: () => void; 
   onAdd: (machineId: string) => void;
+  activeProcess: string | null;
 }) {
-  const [machineId, setMachineId] = useState('');
+  const [machineId, setMachineId] = useState<string | null>(null);
+  const { machines, isLoading, isError } = useAvailableMachines(activeProcess);
 
   const handleSubmit = () => {
-    if (machineId.trim()) {
-      onAdd(machineId.trim());
-      setMachineId('');
+    if (machineId) {
+      onAdd(machineId);
+      setMachineId(null);
       onClose();
     }
   };
@@ -294,17 +298,22 @@ function AddEquipmentModal({
   return (
     <Modal opened={opened} onClose={onClose} title={<Text fw={900} size="xl">Add New Equipment</Text>} radius="md">
       <Stack gap="md">
-        <TextInput
+        <Select
           label={<Text fw={700} size="sm">Machine ID <Text span c="red">*</Text></Text>}
-          placeholder="e.g. CNC-01"
+          placeholder={isLoading ? "Loading machines..." : "Select machine"}
+          data={machines}
           value={machineId}
-          onChange={(e) => setMachineId(e.currentTarget.value)}
+          onChange={setMachineId}
+          searchable
           required
-          autoFocus
+          disabled={isLoading}
+          rightSection={isLoading ? <Loader size="xs" /> : null}
+          nothingFoundMessage={isError ? `Error: ${isError}` : "No machines found for this process"}
+          error={isError}
         />
         <Group justify="flex-end" mt="xl">
           <Button variant="subtle" onClick={onClose} color="gray">Cancel</Button>
-          <Button onClick={handleSubmit} color="blue" disabled={!machineId.trim()}>Add Machine</Button>
+          <Button onClick={handleSubmit} color="blue" disabled={!machineId || isLoading}>Add Machine</Button>
         </Group>
       </Stack>
     </Modal>
@@ -839,7 +848,8 @@ export function EquipmentManagement() {
       <AddEquipmentModal 
         opened={isEquipModalOpen} 
         onClose={() => setIsEquipModalOpen(false)} 
-        onAdd={handleAddEquipment} 
+        onAdd={handleAddEquipment}
+        activeProcess={activeTab}
       />
     </Stack>
   );

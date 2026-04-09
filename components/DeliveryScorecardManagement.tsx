@@ -104,22 +104,42 @@ export default function DeliveryScorecardManagement() {
     fetchParts();
   }, [activeTab, connectionString]);
 
-  // Fetch processInfo and partInfo globally
+  // Fetch partInfo globally
   useEffect(() => {
-    async function fetchGlobalInfo() {
+    async function fetchPartInfo() {
       if (!connectionString) return;
       try {
         const { invoke } = await import('@tauri-apps/api/core');
-        const processes = await invoke<any[]>("get_process_info_preview", { connectionString });
         const parts = await invoke<any[]>("get_part_info_preview", { connectionString });
-        setProcessInfo(processes);
         setPartInfo(parts);
       } catch (err) {
-        console.error("Failed to fetch global capacity info:", err);
+        console.error("Failed to fetch global part info:", err);
       }
     }
-    fetchGlobalInfo();
+    fetchPartInfo();
   }, [connectionString]);
+
+  // Fetch processInfo scoped to the active tab and week
+  useEffect(() => {
+    async function fetchScopedProcessInfo() {
+      if (!connectionString || !activeTab || !selectedWeekId) {
+        if (!selectedWeekId) setProcessInfo([]); // Clear if no week selected
+        return;
+      }
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const processes = await invoke<any[]>("get_process_info", { 
+          connectionString, 
+          process: activeTab,
+          weekIdentifier: selectedWeekId
+        });
+        setProcessInfo(processes);
+      } catch (err) {
+        console.error("Failed to fetch scoped process capacity info:", err);
+      }
+    }
+    fetchScopedProcessInfo();
+  }, [connectionString, activeTab, selectedWeekId]);
 
   // Ensure all current processes are in the scorecard store
   useEffect(() => {

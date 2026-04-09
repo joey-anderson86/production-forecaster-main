@@ -94,6 +94,7 @@ pub struct ShiftProductionRecord {
 #[serde(rename_all = "camelCase")]
 pub struct Process {
     pub process_name: String,
+    pub machine_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -309,7 +310,7 @@ async fn get_part_info_preview(connection_string: String) -> Result<Vec<PartInfo
     let mut client = create_client(&connection_string).await?;
     let stream = client
         .query(
-            "SELECT TOP 100 PartNumber, Process, BatchSize, ProcessingTime FROM dbo.PartInfo",
+            "SELECT TOP 1000 PartNumber, Process, BatchSize, ProcessingTime FROM dbo.PartInfo",
             &[],
         )
         .await
@@ -338,7 +339,7 @@ async fn get_part_info_preview(connection_string: String) -> Result<Vec<PartInfo
 async fn get_process_info_preview(connection_string: String) -> Result<Vec<ProcessInfo>, String> {
     let mut client = create_client(&connection_string).await?;
     // Formatted date to string for simple transfer
-    let stream = client.query("SELECT TOP 100 Process, CONVERT(VARCHAR, Date, 23) as Date, HoursAvailable, MachineID, Shift, WeekIdentifier FROM dbo.ProcessInfo", &[]).await.map_err(|e| e.to_string())?;
+    let stream = client.query("SELECT TOP 1000 Process, CONVERT(VARCHAR, Date, 23) as Date, HoursAvailable, MachineID, Shift, WeekIdentifier FROM dbo.ProcessInfo", &[]).await.map_err(|e| e.to_string())?;
     let rows = stream
         .into_first_result()
         .await
@@ -1207,7 +1208,7 @@ async fn replace_daily_rates(
 async fn get_processes_preview(connection_string: String) -> Result<Vec<Process>, String> {
     let mut client = create_client(&connection_string).await?;
     let stream = client
-        .query("SELECT Process FROM dbo.Process", &[])
+        .query("SELECT Process, MachineID FROM dbo.Process", &[])
         .await
         .map_err(|e| e.to_string())?;
     let rows = stream
@@ -1223,6 +1224,7 @@ async fn get_processes_preview(connection_string: String) -> Result<Vec<Process>
                 .unwrap_or_default()
                 .trim()
                 .to_string(),
+            machine_id: row.get::<&str, _>("MachineID").map(|s| s.trim().to_string()),
         })
         .collect();
 
@@ -1236,11 +1238,13 @@ async fn upsert_process(connection_string: String, records: Vec<Process>) -> Res
         client
             .execute(
                 "MERGE dbo.Process AS target
-             USING (SELECT @p1 as Process) AS source
+             USING (SELECT @p1 as Process, @p2 as MachineID) AS source
              ON (LTRIM(RTRIM(target.Process)) = LTRIM(RTRIM(source.Process)))
+             WHEN MATCHED THEN
+                UPDATE SET MachineID = source.MachineID
              WHEN NOT MATCHED THEN
-                INSERT (Process) VALUES (source.Process);",
-                &[&rec.process_name],
+                INSERT (Process, MachineID) VALUES (source.Process, source.MachineID);",
+                &[&rec.process_name, &rec.machine_id],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -1281,8 +1285,8 @@ async fn replace_processes(connection_string: String, records: Vec<Process>) -> 
     for rec in records {
         client
             .execute(
-                "INSERT INTO dbo.Process (Process) VALUES (@p1)",
-                &[&rec.process_name],
+                "INSERT INTO dbo.Process (Process, MachineID) VALUES (@p1, @p2)",
+                &[&rec.process_name, &rec.machine_id],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -1393,6 +1397,36 @@ async fn replace_reason_codes(
 }
 
 #[tauri::command]
+async fn get_machines_by_process(
+    connection_string: String,
+    process: String,
+) -> Result<Vec<String>, String> {
+    let mut client = create_client(&connection_string).await?;
+    let stream = client
+        .query(
+            "SELECT DISTINCT MachineID 
+         FROM dbo.Process 
+         WHERE LTRIM(RTRIM(Process)) = LTRIM(RTRIM(@p1)) 
+           AND MachineID IS NOT NULL 
+         ORDER BY MachineID",
+            &[&process],
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    let rows = stream
+        .into_first_result()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let result = rows
+        .into_iter()
+        .filter_map(|row| row.get::<&str, _>("MachineID").map(|s| s.trim().to_string()))
+        .collect();
+
+    Ok(result)
+}
+
+#[tauri::command]
 async fn get_processes(connection_string: String) -> Result<Vec<String>, String> {
     let mut client = create_client(&connection_string).await?;
     let stream = client
@@ -1489,7 +1523,8 @@ pub fn run() {
             delete_reason_codes,
             replace_reason_codes,
             get_processes,
-            get_active_weeks
+            get_active_weeks,
+            get_machines_by_process
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

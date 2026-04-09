@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 
 interface Process {
   processName: string;
+  machineId?: string;
 }
 
 interface ProcessState {
