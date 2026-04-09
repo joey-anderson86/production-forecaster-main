@@ -73,33 +73,86 @@ export function distributeDemand(
   totalDemand: number, 
   childRows: PartScorecard[], 
   weekDates: Date[], 
-  anchorDates: Record<string, string>
+  anchorDates: Record<string, string>,
+  getAvailableCapacity: (dayIndex: number, shift: string) => number,
+  processingTimeMin: number
 ) {
-  const validSlots: { rowId: string, day: DayOfWeek }[] = [];
-  
-  // Sort childRows by Shift (A, B, C, D) to ensure consistent ordering per day
-  const sortedRows = [...childRows].sort((a, b) => a.shift.localeCompare(b.shift));
+  interface ValidSlot {
+    rowId: string;
+    day: DayOfWeek;
+    dayIdx: number;
+    shift: string;
+    capacity: number;
+    baseAssignment: number;
+  }
 
+  const validSlots: ValidSlot[] = [];
+  
+  // Map valid working slots with capacity > 0
   DAYS_OF_WEEK.forEach((day, idx) => {
     const date = weekDates[idx];
     if (!date) return;
 
-    sortedRows.forEach(part => {
+    childRows.forEach(part => {
       const anchorDate = anchorDates[part.shift] || '';
       if (isWorkingDay(date, anchorDate)) {
-        validSlots.push({ rowId: part.id, day });
+        const capacity = getAvailableCapacity(idx, part.shift);
+        if (capacity > 0) {
+          validSlots.push({ 
+            rowId: part.id, 
+            day, 
+            dayIdx: idx,
+            shift: part.shift,
+            capacity,
+            baseAssignment: 0
+          });
+        }
       }
     });
   });
 
-  if (validSlots.length === 0) return [];
+  const totalWeeklyCapacity = validSlots.reduce((sum, slot) => sum + slot.capacity, 0);
 
-  const baseAmount = Math.floor(totalDemand / validSlots.length);
-  const remainder = totalDemand % validSlots.length;
+  // If no capacity or no slots, return empty (graceful handle as requested)
+  if (validSlots.length === 0 || totalWeeklyCapacity === 0) {
+    return [];
+  }
 
-  return validSlots.map((slot, index) => ({
-    ...slot,
-    value: baseAmount + (index < remainder ? 1 : 0)
+  // 1. Proportional Base Load
+  let assignedCount = 0;
+  validSlots.forEach(slot => {
+    const base = Math.floor(totalDemand * (slot.capacity / totalWeeklyCapacity));
+    slot.baseAssignment = base;
+    assignedCount += base;
+  });
+
+  // 2. Remainder Distribution
+  let remainder = totalDemand - assignedCount;
+
+  if (remainder > 0) {
+    // Sort slots descending by remaining unused capacity: Capacity minus the hours consumed by the Base allocation
+    // Hours consumed = (parts * processingTimeMin) / 60
+    const getUnusedCapacity = (slot: ValidSlot) => {
+      const hoursConsumed = (slot.baseAssignment * processingTimeMin) / 60;
+      return slot.capacity - hoursConsumed;
+    };
+
+    const sortedSlots = [...validSlots].sort((a, b) => getUnusedCapacity(b) - getUnusedCapacity(a));
+
+    // Loop through sorted array and add 1 part until remainder is 0
+    let i = 0;
+    while (remainder > 0) {
+      const slot = sortedSlots[i % sortedSlots.length];
+      slot.baseAssignment += 1;
+      remainder -= 1;
+      i++;
+    }
+  }
+
+  return validSlots.map(slot => ({
+    rowId: slot.rowId,
+    day: slot.day,
+    value: slot.baseAssignment
   }));
 }
 
@@ -416,16 +469,7 @@ export default function WeeklyPlanTable({
     } catch (e) {
       return [];
     }
-  }, [weekId]);
-
-  const handleLevelLoad = useCallback((childRows: PartScorecard[], totalDemand: number) => {
-    const distributions = distributeDemand(totalDemand, childRows, weekDates, shiftSettings);
-    if (onBatchUpdateRecords) {
-      onBatchUpdateRecords(distributions.map(d => ({ ...d, field: 'target' })));
-    }
-  }, [weekDates, shiftSettings, onBatchUpdateRecords]);
-
-  const dailyCapacityMetrics = useMemo(() => {
+  }, [weekId]);  const dailyCapacityMetrics = useMemo(() => {
     const metrics = {} as Record<DayOfWeek, DailyCapacityMetric>;
     
     // Group process info by Date and Shift
@@ -566,6 +610,29 @@ export default function WeeklyPlanTable({
 
     return metrics;
   }, [parts, partInfo, processInfo, department, weekDates, shiftSettings]);
+
+  const handleLevelLoad = useCallback((childRows: PartScorecard[], totalDemand: number) => {
+    // Find processing time for this specific part group
+    const partNumber = childRows[0]?.partNumber;
+    const processingTimeMin = partInfo?.find(p => p.partNumber === partNumber)?.processingTime || 0;
+
+    const distributions = distributeDemand(
+      totalDemand, 
+      childRows, 
+      weekDates, 
+      shiftSettings,
+      (dayIdx, shift) => {
+        const day = DAYS_OF_WEEK[dayIdx];
+        return dailyCapacityMetrics[day]?.shiftBreakdown[shift]?.capacity || 0;
+      },
+      processingTimeMin
+    );
+
+    if (onBatchUpdateRecords) {
+      onBatchUpdateRecords(distributions.map(d => ({ ...d, field: 'target' })));
+    }
+  }, [weekDates, shiftSettings, onBatchUpdateRecords, partInfo, dailyCapacityMetrics]);
+;
 
   return (
     <Box style={{ border: '1px solid var(--mantine-color-gray-3)', borderRadius: '8px', overflow: 'hidden' }}>

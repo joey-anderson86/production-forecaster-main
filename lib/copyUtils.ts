@@ -6,7 +6,9 @@ export function generateSmartCopy(
   sourceWeek: WeeklyScorecard,
   targetWeekId: string,
   anchorDates: Record<string, string>,
-  departmentName: string
+  departmentName: string,
+  getAvailableCapacity: (dayIndex: number, shift: string) => number,
+  partInfo: any[]
 ) {
   const targetWeekDates = getWeekDates(targetWeekId);
 
@@ -46,7 +48,16 @@ export function generateSmartCopy(
 
     // Level-load if there is demand
     if (totalDemand > 0) {
-      const distributions = distributeDemand(Math.floor(totalDemand), childRows, targetWeekDates, anchorDates);
+      const processingTimeMin = partInfo.find(p => p.partNumber === partNumber && p.process === departmentName)?.processingTime || 0;
+      
+      const distributions = distributeDemand(
+        Math.floor(totalDemand), 
+        childRows, 
+        targetWeekDates, 
+        anchorDates,
+        getAvailableCapacity,
+        processingTimeMin
+      );
 
       // Apply distribution back to the child rows
       distributions.forEach(d => {

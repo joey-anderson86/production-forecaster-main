@@ -165,7 +165,15 @@ export default function DeliveryScorecardManagement() {
           sourceWeek,
           newWeekId.trim(),
           store.shiftSettings,
-          activeTab
+          activeTab,
+          (dayIdx, shift) => {
+            const weekDates = getWeekDates(newWeekId.trim());
+            const dateStr = formatISODate(weekDates[dayIdx]);
+            return processInfo
+              .filter(p => p.process === activeTab && p.date === dateStr && p.shift === shift)
+              .reduce((sum, p) => sum + (p.hoursAvailable || 0), 0);
+          },
+          partInfo
         );
 
         // Add the week skeleton to store first (prevents missing week errors)
