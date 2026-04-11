@@ -5,7 +5,7 @@ import { useLocalStorage } from '@mantine/hooks';
 import { useScorecardStore, DayOfWeek, DailyScorecardRecord, PartScorecard } from '@/lib/scorecardStore';
 import { 
   Tabs, Select, Table, Card, Text, Group, Badge, Title, Box, Tooltip, Stack, Button, ActionIcon, Paper, SegmentedControl,
-  RingProgress, Divider as MantineDivider, TextInput, Grid
+  RingProgress, Divider as MantineDivider, TextInput, Grid, useMantineTheme, rgba
 } from '@mantine/core';
 import { 
   IconPlus, IconChevronDown, IconChevronRight, IconSearch, IconArrowsSort, 
@@ -35,6 +35,7 @@ interface GroupedPartScorecard {
 }
 
 export default function DeliveryScorecardDisplay() {
+  const theme = useMantineTheme();
   const processes = useProcessStore(state => state.processes);
   const store = useScorecardStore();
   const [activeTab, setActiveTab] = useLocalStorage<string | null>({
@@ -200,9 +201,17 @@ export default function DeliveryScorecardDisplay() {
   const getCellStyles = (actual: number | null, target: number | null) => {
     if (actual === null || target === null) return {};
     if (actual >= target) {
-      return { bg: 'green.0', color: 'green.8', fw: 700 };
+      return { 
+        bg: 'light-dark(var(--mantine-color-green-0), rgba(0, 100, 0, 0.15))', 
+        color: 'light-dark(var(--mantine-color-green-8), var(--mantine-color-green-2))', 
+        fw: 700 
+      };
     }
-    return { bg: 'red.0', color: 'red.8', fw: 700 };
+    return { 
+      bg: 'light-dark(var(--mantine-color-red-0), rgba(139, 0, 0, 0.15))', 
+      color: 'light-dark(var(--mantine-color-red-8), var(--mantine-color-red-2))', 
+      fw: 700 
+    };
   };
 
 
@@ -451,7 +460,7 @@ export default function DeliveryScorecardDisplay() {
                                 style={{ 
                                   flex: 1, 
                                   textAlign: 'center',
-                                  backgroundColor: !isRecorded ? 'var(--mantine-color-gray-0)' : 'transparent',
+                                  backgroundColor: !isRecorded ? 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7))' : 'transparent',
                                   opacity: !isRecorded ? 0.6 : 1
                                 }}
                               >
@@ -474,7 +483,7 @@ export default function DeliveryScorecardDisplay() {
               </Card>
             )}
 
-            <Paper withBorder p="sm" radius="md" className="bg-gray-50/30" style={isWidescreen ? { flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' } : undefined}>
+            <Paper withBorder p="sm" radius="md" className="bg-gray-50/30 dark:bg-zinc-900/30" style={isWidescreen ? { flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' } : undefined}>
               <Stack gap="md" style={isWidescreen ? { flex: 1, minHeight: 0, overflow: 'hidden' } : undefined}>
                 <Group justify="space-between" align="center">
                   <Tabs value={activeTab} onChange={setActiveTab} variant="pills">
@@ -545,10 +554,10 @@ export default function DeliveryScorecardDisplay() {
                           top: 0,
                           left: 0,
                           zIndex: 20,
-                          backgroundColor: 'var(--mantine-color-white)',
+                          backgroundColor: 'light-dark(var(--mantine-color-white), var(--mantine-color-dark-7))',
                           minWidth: 140,
                         }}
-                        className="hover:bg-gray-50"
+                        className="hover:bg-gray-50 dark:hover:bg-dark-6"
                       >
                         <Group gap={4} wrap="nowrap">
                           <Text size="xs" fw={700} c="dimmed">PART NUMBER</Text>
@@ -622,7 +631,7 @@ export default function DeliveryScorecardDisplay() {
                         <React.Fragment key={group.partNumber}>
                           {/* Parent Row */}
                           <Table.Tr 
-                            bg="indigo.0" 
+                            bg="light-dark(var(--mantine-color-indigo-0), var(--mantine-color-dark-7))" 
                             style={{ cursor: 'pointer' }} 
                             onClick={() => toggleExpand(group.partNumber)}
                           >
@@ -632,7 +641,7 @@ export default function DeliveryScorecardDisplay() {
                                 position: 'sticky',
                                 left: 0,
                                 zIndex: 1,
-                                backgroundColor: 'var(--mantine-color-indigo-0)',
+                                backgroundColor: 'light-dark(var(--mantine-color-indigo-0), var(--mantine-color-dark-7))',
                               }}
                             >
                               <Group gap="xs" wrap="nowrap">
@@ -677,25 +686,25 @@ export default function DeliveryScorecardDisplay() {
                                   >
                                     <Box py="xs" px="xs">
                                       <Text size="sm" fw={700} c={styles.color}>{record.actual}</Text>
-                                      <Text size="10px" c="dimmed">Tgt: {record.target}</Text>
+                                      <Text size="10px" c="light-dark(gray.6, dark.2)">Tgt: {record.target}</Text>
                                     </Box>
                                   </Tooltip>
                                 </Table.Td>
                               );
                             })}
-                            <Table.Td ta="center" bg="indigo.1">
+                            <Table.Td ta="center" bg={`light-dark(var(--mantine-color-indigo-1), ${rgba(theme.colors.indigo[9], 0.2)})`}>
                               <Text size="sm" fw={800}>{group.totalActual}</Text>
                             </Table.Td>
-                            <Table.Td ta="center" bg="indigo.1">
+                            <Table.Td ta="center" bg={`light-dark(var(--mantine-color-indigo-1), ${rgba(theme.colors.indigo[9], 0.2)})`}>
                               <Text size="sm" fw={800}>{group.totalTarget}</Text>
                             </Table.Td>
-                            <Table.Td ta="center" bg={group.gap < 0 ? 'red.1' : 'green.1'}>
-                              <Text size="sm" fw={800} c={group.gap < 0 ? 'red.9' : 'green.9'}>
+                            <Table.Td ta="center" bg={group.gap < 0 ? `light-dark(var(--mantine-color-red-1), ${rgba(theme.colors.red[9], 0.2)})` : `light-dark(var(--mantine-color-green-1), ${rgba(theme.colors.green[9], 0.2)})`}>
+                              <Text size="sm" fw={800} c={group.gap < 0 ? 'light-dark(var(--mantine-color-red-9), var(--mantine-color-red-2))' : 'light-dark(var(--mantine-color-green-9), var(--mantine-color-green-2))'}>
                                 {group.gap > 0 ? `+${group.gap}` : group.gap}
                               </Text>
                             </Table.Td>
-                            <Table.Td ta="center" bg={group.rollingGap < 0 ? 'red.1' : 'green.1'}>
-                              <Text size="sm" fw={800} c={group.rollingGap < 0 ? 'red.9' : 'green.9'}>
+                            <Table.Td ta="center" bg={group.rollingGap < 0 ? `light-dark(var(--mantine-color-red-1), ${rgba(theme.colors.red[9], 0.2)})` : `light-dark(var(--mantine-color-green-1), ${rgba(theme.colors.green[9], 0.2)})`}>
+                              <Text size="sm" fw={800} c={group.rollingGap < 0 ? 'light-dark(var(--mantine-color-red-9), var(--mantine-color-red-2))' : 'light-dark(var(--mantine-color-green-9), var(--mantine-color-green-2))'}>
                                 {group.rollingGap > 0 ? `+${group.rollingGap}` : group.rollingGap}
                               </Text>
                             </Table.Td>
@@ -716,14 +725,14 @@ export default function DeliveryScorecardDisplay() {
                             const multiplier = displayUnit === 'pieces' ? batchSize : 1;
 
                             return (
-                              <Table.Tr key={part.id} bg="var(--mantine-color-gray-0)">
+                              <Table.Tr key={part.id} bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))">
                                 <Table.Td 
                                   pl={40}
                                   style={{
                                     position: 'sticky',
                                     left: 0,
                                     zIndex: 1,
-                                    backgroundColor: 'var(--mantine-color-gray-0)',
+                                    backgroundColor: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))',
                                   }}
                                 >
                                   <Group gap="xs" wrap="nowrap">
@@ -762,7 +771,7 @@ export default function DeliveryScorecardDisplay() {
                                   // Content Logic: Muted em-dash for empty off days
                                   const isInactiveOffDay = isDayOff && (actualValue === 0 || actualValue === null) && (targetValue === 0 || targetValue === null);
                                   const displayValue = isInactiveOffDay ? '—' : (displayedActual ?? '-');
-                                  const textColor = isInactiveOffDay ? 'dimmed' : (performanceStyles.color || (actualValue === null ? 'gray.4' : 'black'));
+                                  const textColor = isInactiveOffDay ? 'dimmed' : (performanceStyles.color || 'light-dark(black, white)');
 
                                   return (
                                     <Table.Td 
@@ -796,25 +805,25 @@ export default function DeliveryScorecardDisplay() {
                                           <Text size="sm" fw={performanceStyles.fw || 500} c={textColor}>
                                             {displayValue}
                                           </Text>
-                                          <Text size="10px" c="dimmed">Tgt: {displayedTarget ?? 0}</Text>
+                                          <Text size="10px" c="light-dark(gray.6, dark.2)">Tgt: {displayedTarget ?? 0}</Text>
                                         </Box>
                                       </Tooltip>
                                     </Table.Td>
                                   );
                                 })}
-                                <Table.Td ta="center" bg="gray.1">
+                                <Table.Td ta="center" bg="light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6))">
                                   <Text size="sm" fw={600}>{totalActual * multiplier}</Text>
                                 </Table.Td>
-                                <Table.Td ta="center" bg="gray.1">
+                                <Table.Td ta="center" bg="light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6))">
                                   <Text size="sm" fw={600}>{totalTarget * multiplier}</Text>
                                 </Table.Td>
-                                <Table.Td ta="center" bg={gap < 0 ? 'red.0' : 'green.0'}>
-                                  <Text size="sm" fw={600} c={gap < 0 ? 'red.8' : 'green.8'}>
+                                <Table.Td ta="center" bg={gap < 0 ? 'light-dark(var(--mantine-color-red-0), rgba(139, 0, 0, 0.1))' : 'light-dark(var(--mantine-color-green-0), rgba(0, 100, 0, 0.1))'}>
+                                  <Text size="sm" fw={600} c={gap < 0 ? 'light-dark(var(--mantine-color-red-8), var(--mantine-color-red-3))' : 'light-dark(var(--mantine-color-green-8), var(--mantine-color-green-3))'}>
                                     {gap > 0 ? `+${gap * multiplier}` : gap * multiplier}
                                   </Text>
                                 </Table.Td>
-                                <Table.Td ta="center" bg={part.rollingGap < 0 ? 'red.0' : 'green.0'}>
-                                  <Text size="sm" fw={600} c={part.rollingGap < 0 ? 'red.8' : 'green.8'}>
+                                <Table.Td ta="center" bg={part.rollingGap < 0 ? 'light-dark(var(--mantine-color-red-0), rgba(139, 0, 0, 0.1))' : 'light-dark(var(--mantine-color-green-0), rgba(0, 100, 0, 0.1))'}>
+                                  <Text size="sm" fw={600} c={part.rollingGap < 0 ? 'light-dark(var(--mantine-color-red-8), var(--mantine-color-red-3))' : 'light-dark(var(--mantine-color-green-8), var(--mantine-color-green-3))'}>
                                     {part.rollingGap > 0 ? `+${part.rollingGap * multiplier}` : part.rollingGap * multiplier}
                                   </Text>
                                 </Table.Td>
@@ -833,13 +842,13 @@ export default function DeliveryScorecardDisplay() {
                     )}
                   </Table.Tbody>
                   <Table.Tfoot 
-                    className="bg-gray-50 shadow-[0_-2px_4px_rgba(0,0,0,0.05)]"
+                    className="shadow-[0_-2px_4px_rgba(0,0,0,0.05)]"
                     style={{ 
                       borderTop: '2px solid var(--mantine-color-gray-3)',
                       position: 'sticky',
                       bottom: 0,
                       zIndex: 10,
-                      backgroundColor: 'var(--mantine-color-gray-1)'
+                      backgroundColor: 'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-7))'
                     }}
                   >
                     <Table.Tr fw={800}>
@@ -848,7 +857,7 @@ export default function DeliveryScorecardDisplay() {
                           position: 'sticky',
                           left: 0,
                           zIndex: 2,
-                          backgroundColor: 'var(--mantine-color-gray-1)',
+                          backgroundColor: 'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-7))',
                         }}
                       >
                         <Text size="sm" fw={800}>GRAND TOTAL ({displayUnit === 'batches' ? 'Batches' : 'Pieces'})</Text>
@@ -860,23 +869,23 @@ export default function DeliveryScorecardDisplay() {
                         <Table.Td key={idx} ta="center">
                           <Box py="xs" px="xs">
                             <Text size="sm" fw={800}>{day.actual.toLocaleString()}</Text>
-                            <Text size="10px" c="dimmed">Tgt: {day.target.toLocaleString()}</Text>
+                            <Text size="10px" c="light-dark(gray.6, dark.2)">Tgt: {day.target.toLocaleString()}</Text>
                           </Box>
                         </Table.Td>
                       ))}
-                      <Table.Td ta="center" bg="indigo.0">
+                      <Table.Td ta="center" bg="light-dark(var(--mantine-color-indigo-0), rgba(0, 40, 120, 0.15))">
                         <Text size="sm" fw={900}>{calculatedTotals.totalActual.toLocaleString()}</Text>
                       </Table.Td>
-                      <Table.Td ta="center" bg="indigo.0">
+                      <Table.Td ta="center" bg="light-dark(var(--mantine-color-indigo-0), rgba(0, 40, 120, 0.15))">
                         <Text size="sm" fw={900}>{calculatedTotals.totalTarget.toLocaleString()}</Text>
                       </Table.Td>
-                      <Table.Td ta="center" bg={calculatedTotals.gap < 0 ? 'red.0' : 'green.0'}>
-                        <Text size="sm" fw={900} c={calculatedTotals.gap < 0 ? 'red.9' : 'green.9'}>
+                      <Table.Td ta="center" bg={calculatedTotals.gap < 0 ? 'light-dark(var(--mantine-color-red-0), rgba(139, 0, 0, 0.15))' : 'light-dark(var(--mantine-color-green-0), rgba(0, 100, 0, 0.15))'}>
+                        <Text size="sm" fw={900} c={calculatedTotals.gap < 0 ? 'light-dark(var(--mantine-color-red-9), var(--mantine-color-red-4))' : 'light-dark(var(--mantine-color-green-9), var(--mantine-color-green-4))'}>
                           {calculatedTotals.gap > 0 ? `+${calculatedTotals.gap.toLocaleString()}` : calculatedTotals.gap.toLocaleString()}
                         </Text>
                       </Table.Td>
-                      <Table.Td ta="center" bg={calculatedTotals.rollingGap < 0 ? 'red.0' : 'green.0'}>
-                        <Text size="sm" fw={900} c={calculatedTotals.rollingGap < 0 ? 'red.9' : 'green.9'}>
+                      <Table.Td ta="center" bg={calculatedTotals.rollingGap < 0 ? 'light-dark(var(--mantine-color-red-0), rgba(139, 0, 0, 0.15))' : 'light-dark(var(--mantine-color-green-0), rgba(0, 100, 0, 0.15))'}>
+                        <Text size="sm" fw={900} c={calculatedTotals.rollingGap < 0 ? 'light-dark(var(--mantine-color-red-9), var(--mantine-color-red-4))' : 'light-dark(var(--mantine-color-green-9), var(--mantine-color-green-4))'}>
                           {calculatedTotals.rollingGap > 0 ? `+${calculatedTotals.rollingGap.toLocaleString()}` : calculatedTotals.rollingGap.toLocaleString()}
                         </Text>
                       </Table.Td>

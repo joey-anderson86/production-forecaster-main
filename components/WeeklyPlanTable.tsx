@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect, useRef, memo, useCallback } from 'react';
 import { 
   Table, Select, NumberInput, ActionIcon, Group, Text, 
-  Box, Stack, Tooltip, Badge, Progress, HoverCard, Divider
+  Box, Stack, Tooltip, Badge, Progress, HoverCard, Divider, useMantineTheme, rgba
 } from '@mantine/core';
 import { 
   IconTrash, IconAlertCircle, IconCalculator, 
@@ -187,6 +187,7 @@ const ParentRow = ({
   displayUnit: ProductionDisplayUnit;
   batchSize: number;
 }) => {
+  const theme = useMantineTheme();
   const [weeklyTarget, setWeeklyTarget] = useState<number | ''>('');
   const dailyTotals = useMemo(() => {
     return DAYS_OF_WEEK.map(day => 
@@ -207,7 +208,11 @@ const ParentRow = ({
   const isNewBatch = !partNumber;
 
   return (
-    <Table.Tr bg="indigo.0" style={{ cursor: 'pointer' }} onClick={onToggle}>
+    <Table.Tr 
+      bg={`light-dark(indigo.0, ${rgba(theme.colors.indigo[9], 0.15)})`} 
+      style={{ cursor: 'pointer' }} 
+      onClick={onToggle}
+    >
       <Table.Td>
         <Group gap="xs" wrap="nowrap">
           <ActionIcon variant="subtle" size="sm" color="indigo" onClick={(e) => { e.stopPropagation(); onToggle(); }}>
@@ -234,14 +239,14 @@ const ParentRow = ({
                 styles={{ 
                   input: { 
                     fontWeight: 700,
-                    backgroundColor: 'white',
-                    borderColor: 'var(--mantine-color-indigo-2)'
+                    backgroundColor: 'light-dark(white, var(--mantine-color-dark-6))',
+                    borderColor: 'light-dark(var(--mantine-color-indigo-2), var(--mantine-color-dark-4))'
                   } 
                 }}
               />
             </Box>
           ) : (
-            <Text fw={700} size="sm" c="indigo.9">
+            <Text fw={700} size="sm" c="light-dark(indigo.9, indigo.2)">
               {partNumber || <Text span c="dimmed" fs="italic">Unassigned Part</Text>}
             </Text>
           )}
@@ -260,7 +265,13 @@ const ParentRow = ({
             step={displayUnit === 'pieces' ? batchSize : 1}
             placeholder={displayUnit === 'pieces' ? "Pieces" : "Batches"}
             size="xs"
-            styles={{ input: { width: 70, textAlign: 'center', fontWeight: 600 } }}
+            styles={{ input: { 
+              width: 70, 
+              textAlign: 'center', 
+              fontWeight: 600,
+              backgroundColor: 'light-dark(white, var(--mantine-color-dark-6))',
+              borderColor: 'light-dark(var(--mantine-color-gray-4), var(--mantine-color-dark-4))'
+            } }}
             onClick={(e) => e.stopPropagation()}
           />
           {onLevelLoad && (
@@ -284,14 +295,14 @@ const ParentRow = ({
         </Group>
       </Table.Td>
       {displayedDailyTotals.map((total, i) => (
-        <Table.Td key={i} ta="center" style={{ borderLeft: '1px solid var(--mantine-color-indigo-1)' }}>
-          <Text fw={700} size="xs" c={total > 0 ? "indigo.7" : "dimmed"}>
+        <Table.Td key={i} ta="center" style={{ borderLeft: `1px solid light-dark(var(--mantine-color-indigo-1), var(--mantine-color-dark-5))` }}>
+          <Text fw={700} size="xs" c={total > 0 ? "light-dark(indigo.7, indigo.2)" : "dimmed"}>
             {total.toLocaleString()}
           </Text>
         </Table.Td>
       ))}
-      <Table.Td bg="indigo.1" style={{ borderLeft: '2px solid var(--mantine-color-indigo-2)' }}>
-        <Text fw={800} ta="center" size="sm" c="indigo.9">
+      <Table.Td bg={`light-dark(indigo.1, ${rgba(theme.colors.indigo[8], 0.1)})`} style={{ borderLeft: `2px solid light-dark(var(--mantine-color-indigo-2), var(--mantine-color-dark-4))` }}>
+        <Text fw={800} ta="center" size="sm" c="light-dark(indigo.9, indigo.2)">
           {displayedGrandTotal.toLocaleString()}
         </Text>
       </Table.Td>
@@ -322,6 +333,7 @@ const PlanRow = memo(({
   displayUnit: ProductionDisplayUnit;
   batchSize: number;
 }) => {
+  const theme = useMantineTheme();
   const rowTotal = useMemo(() => {
     return part.dailyRecords.reduce((sum, rec) => sum + (rec.target || 0), 0);
   }, [part.dailyRecords]);
@@ -363,8 +375,8 @@ const PlanRow = memo(({
             key={day} 
             p={0} 
             style={{ 
-              borderLeft: '1px solid var(--mantine-color-gray-2)',
-              backgroundColor: isDisabled ? 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))' : 'transparent',
+              borderLeft: `1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-5))`,
+              backgroundColor: isDisabled ? 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))' : 'transparent',
               transition: 'background-color 0.2s ease'
             }}
           >
@@ -404,7 +416,7 @@ const PlanRow = memo(({
                         opacity: isDisabled ? 0.7 : 1,
                         cursor: isDisabled ? 'not-allowed' : 'text',
                         '&:focus': {
-                          backgroundColor: 'var(--mantine-color-indigo-0)',
+                          backgroundColor: 'light-dark(var(--mantine-color-indigo-0), var(--mantine-color-dark-7))',
                         }
                       } 
                     }}
@@ -416,8 +428,8 @@ const PlanRow = memo(({
         );
       })}
 
-      <Table.Td bg="gray.0" style={{ borderLeft: '2px solid var(--mantine-color-gray-3)' }}>
-        <Text fw={600} ta="center" size="xs" c={rowTotal > 0 ? "indigo.7" : "dimmed"}>
+      <Table.Td bg={`light-dark(gray.0, ${rgba(theme.colors.gray[9], 0.1)})`} style={{ borderLeft: `2px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4))` }}>
+        <Text fw={600} ta="center" size="xs" c={rowTotal > 0 ? "light-dark(indigo.7, indigo.2)" : "dimmed"}>
           {displayedRowTotal.toLocaleString()}
         </Text>
       </Table.Td>
@@ -456,6 +468,7 @@ export default function WeeklyPlanTable({
   expandAllSignal,
   collapseAllSignal,
 }: WeeklyPlanTableProps) {
+  const theme = useMantineTheme();
   
   const shiftSettings = useScorecardStore(state => state.shiftSettings);
   const [expandedParts, setExpandedParts] = useState<Set<string>>(new Set());
@@ -714,7 +727,7 @@ export default function WeeklyPlanTable({
 ;
 
   return (
-    <Box style={{ border: '1px solid var(--mantine-color-gray-3)', borderRadius: '8px', overflow: 'hidden' }}>
+    <Box style={{ border: `1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4))`, borderRadius: '8px', overflow: 'hidden' }}>
       <Box style={{ maxHeight: '60vh', overflowY: 'auto' }}>
         <Table 
           verticalSpacing="xs" 
@@ -722,20 +735,20 @@ export default function WeeklyPlanTable({
           withTableBorder
           styles={{ 
             thead: { 
-              backgroundColor: 'var(--mantine-color-gray-0)',
+              backgroundColor: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7))',
               position: 'sticky',
               top: 0,
               zIndex: 10,
               boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
             },
             tfoot: {
-              backgroundColor: 'var(--mantine-color-gray-0)',
+              backgroundColor: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7))',
               position: 'sticky',
               bottom: 0,
               zIndex: 10,
               boxShadow: '0 -2px 4px rgba(0,0,0,0.05)'
             },
-            th: { borderBottom: '2px solid var(--mantine-color-gray-3)' }
+            th: { borderBottom: `2px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4))` }
           }}
         >
           <Table.Thead>
@@ -746,15 +759,15 @@ export default function WeeklyPlanTable({
             {DAYS_OF_WEEK.map((day, idx) => {
               const dateStr = weekDates[idx] ? weekDates[idx].toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }) : '';
               return (
-                <Table.Th key={day} ta="center" style={{ width: 85 }}>
+                <Table.Th key={day} ta="center" style={{ width: 85, borderLeft: `1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-5))` }}>
                   <Stack gap={0} align="center">
                     <Text size="xs" fw={700} c="dimmed">{day.toUpperCase()}</Text>
-                    {dateStr && <Text size="10px" c="indigo.4" fw={700}>{dateStr}</Text>}
+                    {dateStr && <Text size="10px" c="light-dark(indigo.4, indigo.3)" fw={700}>{dateStr}</Text>}
                   </Stack>
                 </Table.Th>
               );
             })}
-            <Table.Th key="total" ta="center" bg="gray.1" style={{ width: 90 }}>
+            <Table.Th key="total" ta="center" bg={`light-dark(gray.1, ${rgba(theme.colors.gray[9], 0.15)})`} style={{ width: 90 }}>
               <Group gap={4} justify="center">
                 <IconCalculator size={14} />
                 <Text size="xs" fw={700}>TOTAL</Text>
@@ -820,20 +833,20 @@ export default function WeeklyPlanTable({
               <Text size="sm" fw={800}>GRAND TOTAL ({displayUnit === 'batches' ? 'Batches' : 'Pieces'})</Text>
             </Table.Td>
             {calculatedTotals.daily.map((total, idx) => (
-              <Table.Td key={idx} ta="center" style={{ borderLeft: '1px solid var(--mantine-color-gray-2)' }}>
-                <Text fw={800} size="xs" c="indigo.9">
+              <Table.Td key={idx} ta="center" style={{ borderLeft: `1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-4))` }}>
+                <Text fw={800} size="xs" c="light-dark(indigo.9, indigo.2)">
                   {total.toLocaleString()}
                 </Text>
               </Table.Td>
             ))}
-            <Table.Td bg="indigo.1" style={{ borderLeft: '2px solid var(--mantine-color-indigo-2)' }}>
-              <Text fw={900} ta="center" size="sm" c="indigo.9">
+            <Table.Td bg={`light-dark(indigo.1, ${rgba(theme.colors.indigo[8], 0.1)})`} style={{ borderLeft: `2px solid light-dark(var(--mantine-color-indigo-2), var(--mantine-color-dark-4))` }}>
+              <Text fw={900} ta="center" size="sm" c="light-dark(indigo.9, indigo.2)">
                 {calculatedTotals.grandTotal.toLocaleString()}
               </Text>
             </Table.Td>
             <Table.Td></Table.Td>
           </Table.Tr>
-          <Table.Tr bg="gray.0" style={{ borderTop: '2px solid var(--mantine-color-gray-3)' }}>
+          <Table.Tr bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7))" style={{ borderTop: `2px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4))` }}>
             <Table.Td colSpan={3}>
               <Group justify="flex-end" px="sm">
                 <Text size="xs" fw={800} c="dimmed">DAILY CAPACITY UTILIZATION</Text>
@@ -862,13 +875,13 @@ export default function WeeklyPlanTable({
                                 let variant = "light";
                                 
                                 if (!sMetric.isWorking) {
-                                  color = "gray.3";
+                                  color = "light-dark(gray.3, dark.4)";
                                   variant = "outline";
                                 } else if (sMetric.isOver) {
                                   color = "red.6";
                                   variant = "filled";
                                 } else {
-                                  color = "teal.5";
+                                  color = "light-dark(teal.5, teal.8)";
                                   variant = "light";
                                 }
                                 
@@ -905,7 +918,7 @@ export default function WeeklyPlanTable({
                       </HoverCard.Target>
                       <HoverCard.Dropdown p="sm">
                         <Stack gap="xs">
-                          <Text size="sm" fw={700} style={{ borderBottom: '1px solid var(--mantine-color-gray-2)', paddingBottom: 4 }}>
+                          <Text size="sm" fw={700} style={{ borderBottom: `1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-4))`, paddingBottom: 4 }}>
                             Capacity Breakdown
                           </Text>
                           
@@ -913,7 +926,7 @@ export default function WeeklyPlanTable({
                           {Object.entries(metric.shiftBreakdown).filter(([_, s]) => s.isWorking || s.load > 0).map(([s, sMetric]) => (
                             <Box key={s} mb={4}>
                               <Group justify="space-between" align="center">
-                                <Text size="xs" fw={700} c={sMetric.isOver ? "red.6" : "indigo"}>
+                                <Text size="xs" fw={700} c={sMetric.isOver ? "red.6" : "light-dark(indigo, indigo.3)"}>
                                   Shift {s} {sMetric.isOver && "(OVER)"}
                                 </Text>
                                 <Text size="xs" fw={600} c={sMetric.isOver ? "red.6" : "dimmed"}>
@@ -946,7 +959,7 @@ export default function WeeklyPlanTable({
                             <Text size="xs" fw={600}>{metric.totalCapacity}h</Text>
                           </Group>
                           
-                          <Group justify="space-between" style={{ borderTop: '1px solid var(--mantine-color-gray-2)', paddingTop: 8 }} mt={4}>
+                          <Group justify="space-between" style={{ borderTop: `1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-4))`, paddingTop: 8 }} mt={4}>
                             <Text size="xs" fw={700}>Total Daily Load:</Text>
                             <Text size="xs" fw={800} c={color}>
                               {load.toFixed(1)}h ({utilization.toFixed(1)}%)
