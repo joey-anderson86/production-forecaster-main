@@ -25,11 +25,14 @@ interface DeliveryLossParetoProps {
   weekData?: WeeklyScorecard | null;
   departmentName: string;
   compact?: boolean;
+  displayUnit: 'batches' | 'pieces';
+  batchSizeMap: Map<string, number>;
 }
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+const CustomTooltip = ({ active, payload, label, displayUnit }: any) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload as ParetoDataPoint;
+    const unitLabel = displayUnit === 'batches' ? 'Batches' : 'Pieces';
     
     // Extract part count entries (excluding fixed fields)
     const partEntries = Object.entries(data)
@@ -37,26 +40,47 @@ const CustomTooltip = ({ active, payload, label }: any) => {
       .sort((a, b) => (b[1] as number) - (a[1] as number));
 
     return (
-      <Paper p="sm" shadow="md" withBorder style={{ backgroundColor: 'rgba(255, 255, 255, 0.95)' }}>
+      <Paper 
+        p="sm" 
+        shadow="md" 
+        withBorder 
+        style={{ 
+          backgroundColor: 'light-dark(rgba(255, 255, 255, 0.95), var(--mantine-color-dark-7))',
+          borderColor: 'light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-5))',
+          backdropFilter: 'blur(4px)'
+        }}
+      >
         <Stack gap={4}>
-          <Text fw={700} size="sm">{data.reason}</Text>
-          <Divider my={4} />
+          <Text fw={700} size="sm" c="light-dark(var(--mantine-color-black), var(--mantine-color-white))">
+            {data.reason}
+          </Text>
+          <Divider my={4} color="light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-4))" />
           <Group justify="space-between" gap="xl">
-            <Text size="xs" fw={500}>Total Misses:</Text>
-            <Text size="xs" fw={700} c="blue.7">{data.frequency}</Text>
+            <Text size="xs" fw={500} c="light-dark(var(--mantine-color-gray-7), var(--mantine-color-gray-4))">
+              Total Misses:
+            </Text>
+            <Text size="xs" fw={700} c="blue.7">
+              {data.frequency.toLocaleString()} {unitLabel}
+            </Text>
           </Group>
           <Group justify="space-between" gap="xl">
-            <Text size="xs" fw={500}>Cumulative %:</Text>
+            <Text size="xs" fw={500} c="light-dark(var(--mantine-color-gray-7), var(--mantine-color-gray-4))">
+              Cumulative %:
+            </Text>
             <Text size="xs" fw={700} c="orange.7">{data.cumulativePercentage}%</Text>
           </Group>
           
           {partEntries.length > 0 && (
             <>
-              <Text size="10px" fw={700} c="dimmed" mt={4} tt="uppercase">Part Breakdown</Text>
+              <Text size="10px" fw={700} c="dimmed" mt={4} tt="uppercase">Part Breakdown ({unitLabel})</Text>
               {partEntries.map(([part, count]) => (
                 <Group key={part} justify="space-between" gap="xs">
-                  <Text size="10px" ff="monospace">{part}</Text>
-                  <Badge size="xs" variant="light" color="gray">{count as number}</Badge>
+                  <Text size="10px" ff="monospace" c="light-dark(var(--mantine-color-gray-7), var(--mantine-color-gray-4))">
+                    {part}
+                  </Text>
+                  <Badge size="xs" variant="light" color="gray">
+                    {(count as number).toLocaleString()}
+                  </Badge>
                 </Group>
               ))}
             </>
@@ -68,11 +92,20 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
-export function DeliveryLossPareto({ weekData, departmentName, compact = false }: DeliveryLossParetoProps) {
+export function DeliveryLossPareto({ 
+  weekData, 
+  departmentName, 
+  compact = false,
+  displayUnit,
+  batchSizeMap
+}: DeliveryLossParetoProps) {
   const theme = useMantineTheme();
   const chartHeight = compact ? 500 : 400;
   
-  const paretoData = useMemo(() => generateParetoData(weekData), [weekData]);
+  const paretoData = useMemo(() => 
+    generateParetoData(weekData, displayUnit, batchSizeMap), 
+    [weekData, displayUnit, batchSizeMap]
+  );
 
   if (!weekData || paretoData.length === 0) {
     return (
@@ -148,7 +181,7 @@ export function DeliveryLossPareto({ weekData, departmentName, compact = false }
                 stroke={theme.colors.orange[7]}
               />
               
-              <RechartsTooltip content={<CustomTooltip />} />
+              <RechartsTooltip content={<CustomTooltip displayUnit={displayUnit} />} />
               <Legend verticalAlign="top" height={36}/>
 
               <Bar 

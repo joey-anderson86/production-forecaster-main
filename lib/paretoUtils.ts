@@ -9,14 +9,17 @@ export interface ParetoDataPoint {
 
 /**
  * Generates Pareto chart data from a WeeklyScorecard.
- * Only considers records where actual < target and a reasonCode is provided.
  */
-export function generateParetoData(weekData: WeeklyScorecard | undefined | null): ParetoDataPoint[] {
+export function generateParetoData(
+  weekData: WeeklyScorecard | undefined | null,
+  displayUnit: 'batches' | 'pieces' = 'batches',
+  batchSizeMap: Map<string, number> = new Map()
+): ParetoDataPoint[] {
   if (!weekData || !weekData.parts) return [];
 
-  // reasonCounts[reason][partNumber] = count
+  // reasonCounts[reason][partNumber] = count/sum
   const reasonCounts: Record<string, Record<string, number>> = {};
-  let totalMisses = 0;
+  let totalMissVolume = 0;
 
   weekData.parts.forEach(part => {
     part.dailyRecords.forEach(record => {
@@ -31,17 +34,22 @@ export function generateParetoData(weekData: WeeklyScorecard | undefined | null)
         const reason = record.reasonCode.trim();
         const partNum = part.partNumber;
 
+        // Calculate miss volume and apply multiplier
+        const rawMiss = record.target - record.actual;
+        const multiplier = displayUnit === 'pieces' ? (batchSizeMap.get(partNum) || 1) : 1;
+        const scaledMiss = rawMiss * multiplier;
+
         if (!reasonCounts[reason]) {
           reasonCounts[reason] = {};
         }
         
-        reasonCounts[reason][partNum] = (reasonCounts[reason][partNum] || 0) + 1;
-        totalMisses++;
+        reasonCounts[reason][partNum] = (reasonCounts[reason][partNum] || 0) + scaledMiss;
+        totalMissVolume += scaledMiss;
       }
     });
   });
 
-  if (totalMisses === 0) return [];
+  if (totalMissVolume === 0) return [];
 
   // Sort reasons by total frequency descending
   const sortedReasons = Object.entries(reasonCounts)
@@ -55,7 +63,7 @@ export function generateParetoData(weekData: WeeklyScorecard | undefined | null)
   let cumulativeCount = 0;
   return sortedReasons.map(({ reason, totalFreq, partCounts }) => {
     cumulativeCount += totalFreq;
-    const cumulativePercentage = Math.round((cumulativeCount / totalMisses) * 100);
+    const cumulativePercentage = Math.round((cumulativeCount / totalMissVolume) * 100);
     
     return {
       reason,

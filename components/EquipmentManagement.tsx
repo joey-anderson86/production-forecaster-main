@@ -36,11 +36,11 @@ import {
   IconChevronsDown,
   IconChevronsUp,
 } from '@tabler/icons-react';
-import { 
-  DayOfWeek, 
-  DAYS_OF_WEEK, 
-  getDayOfWeekLabel, 
-  parseISOLocal, 
+import {
+  DayOfWeek,
+  DAYS_OF_WEEK,
+  getDayOfWeekLabel,
+  parseISOLocal,
   generateWeekLabel,
   getWeekDates,
   formatISODate,
@@ -101,7 +101,7 @@ export function transformProcessData(rows: ProcessInfoRow[]): MachineSchedule[] 
 
     const machine = machineMap.get(row.machineId)!;
     const shiftAlloc = machine.shifts.find((s) => s.shift === row.shift);
-    
+
     if (shiftAlloc) {
       const dateObj = parseISOLocal(row.date);
       const dayLabel = getDayOfWeekLabel(dateObj);
@@ -128,7 +128,7 @@ const ShiftRow = ({
   const rowTotal = Object.values(allocation.dailyHours).reduce((sum: number, h) => sum + (h || 0), 0);
 
   return (
-    <Table.Tr className="bg-gray-50/50">
+    <Table.Tr style={{ backgroundColor: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))' }}>
       <Table.Td pl={40}>
         <Text size="xs" fw={700} c="dimmed">
           SHIFT {allocation.shift}
@@ -141,16 +141,16 @@ const ShiftRow = ({
         const isDisabled = !isWorking;
 
         return (
-          <Table.Td 
-            key={day} 
-            p={2} 
-            style={{ 
-              borderLeft: '1px solid var(--mantine-color-gray-2)',
+          <Table.Td
+            key={day}
+            p={2}
+            style={{
+              borderLeft: '1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-4))',
               backgroundColor: isDisabled ? 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))' : 'transparent',
             }}
           >
-            <Tooltip 
-              label={`Shift ${allocation.shift} is OFF on this day`} 
+            <Tooltip
+              label={`Shift ${allocation.shift} is OFF on this day`}
               disabled={!isDisabled}
               position="top"
               withinPortal
@@ -175,8 +175,8 @@ const ShiftRow = ({
                       opacity: isDisabled ? 0.6 : 1,
                       cursor: isDisabled ? 'not-allowed' : 'text',
                       '&:focus': {
-                        backgroundColor: 'white',
-                        boxShadow: 'inset 0 0 0 1px var(--mantine-color-blue-2)',
+                        backgroundColor: 'light-dark(white, var(--mantine-color-dark-7))',
+                        boxShadow: 'inset 0 0 0 1px var(--mantine-color-blue-4)',
                       },
                     },
                   }}
@@ -186,7 +186,10 @@ const ShiftRow = ({
           </Table.Td>
         );
       })}
-      <Table.Td className="bg-gray-100/50" style={{ borderLeft: '2px solid var(--mantine-color-gray-3)' }}>
+      <Table.Td style={{ 
+        backgroundColor: 'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-7))',
+        borderLeft: '2px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4))' 
+      }}>
         <Text fw={700} ta="center" size="xs" c={rowTotal > 0 ? 'blue.7' : 'dimmed'}>
           {rowTotal}h
         </Text>
@@ -222,10 +225,15 @@ const MachineRow = ({
 
   return (
     <>
-      <Table.Tr 
-        onClick={onToggle} 
-        className="cursor-pointer hover:bg-blue-50/30 transition-colors"
-        style={{ backgroundColor: isExpanded ? 'var(--mantine-color-blue-0)' : 'transparent' }}
+      <Table.Tr
+        onClick={onToggle}
+        style={{ 
+          backgroundColor: isExpanded 
+            ? 'light-dark(var(--mantine-color-blue-0), rgba(24, 100, 171, 0.15))' 
+            : 'transparent',
+          cursor: 'pointer',
+          transition: 'background-color 150ms ease'
+        }}
       >
         <Table.Td>
           <Group gap="xs" wrap="nowrap">
@@ -248,41 +256,44 @@ const MachineRow = ({
           </Badge>
         </Table.Td>
         {dailyTotals.map((total, i) => (
-          <Table.Td key={i} ta="center" style={{ borderLeft: '1px solid var(--mantine-color-blue-1)' }}>
+          <Table.Td key={i} ta="center" style={{ borderLeft: '1px solid light-dark(var(--mantine-color-blue-1), var(--mantine-color-dark-4))' }}>
             <Text fw={700} size="xs" c={total > 0 ? 'blue.9' : 'dimmed'}>
               {total > 0 ? `${total}h` : '—'}
             </Text>
           </Table.Td>
         ))}
-        <Table.Td className="bg-blue-100/50" style={{ borderLeft: '2px solid var(--mantine-color-blue-2)' }}>
+        <Table.Td style={{ 
+          backgroundColor: 'light-dark(var(--mantine-color-blue-1), rgba(24, 100, 171, 0.2))',
+          borderLeft: '2px solid light-dark(var(--mantine-color-blue-2), var(--mantine-color-dark-4))' 
+        }}>
           <Text fw={800} ta="center" size="sm" c="blue.9">
             {weeklyTotal}h
           </Text>
         </Table.Td>
       </Table.Tr>
       {isExpanded && schedule.shifts.map((s) => (
-          <ShiftRow
-            key={s.shift}
-            allocation={s}
-            onUpdateHour={(day, val) => onUpdateShiftHour(s.shift, day, val)}
-            weekDates={weekDates}
-            shiftSettings={shiftSettings}
-          />
-        ))}
+        <ShiftRow
+          key={s.shift}
+          allocation={s}
+          onUpdateHour={(day, val) => onUpdateShiftHour(s.shift, day, val)}
+          weekDates={weekDates}
+          shiftSettings={shiftSettings}
+        />
+      ))}
     </>
   );
 };
 
 // --- Sub-Component: Add Equipment Modal ---
 
-function AddEquipmentModal({ 
-  opened, 
-  onClose, 
+function AddEquipmentModal({
+  opened,
+  onClose,
   onAdd,
   activeProcess,
-}: { 
-  opened: boolean; 
-  onClose: () => void; 
+}: {
+  opened: boolean;
+  onClose: () => void;
   onAdd: (machineId: string) => void;
   activeProcess: string | null;
 }) {
@@ -324,14 +335,14 @@ function AddEquipmentModal({
 
 // --- Sub-Component: Add Week Modal ---
 
-function AddWorkWeekModal({ 
-  opened, 
-  onClose, 
-  onGenerate, 
-  availableWeeks 
-}: { 
-  opened: boolean; 
-  onClose: () => void; 
+function AddWorkWeekModal({
+  opened,
+  onClose,
+  onGenerate,
+  availableWeeks
+}: {
+  opened: boolean;
+  onClose: () => void;
   onGenerate: (data: any) => void;
   availableWeeks: string[];
 }) {
@@ -370,7 +381,7 @@ function AddWorkWeekModal({
           value={displayLabel}
           readOnly
           variant="filled"
-          styles={{ input: { backgroundColor: 'var(--mantine-color-gray-0)' } }}
+          styles={{ input: { backgroundColor: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))' } }}
         />
         <Select
           label={<Text fw={700} size="sm">Copy schedule from... (Optional)</Text>}
@@ -399,7 +410,7 @@ export function EquipmentManagement() {
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const [expandedMachines, setExpandedMachines] = useState<Set<string>>(new Set());
   const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
-  
+
   const [processes, setProcesses] = useState<string[]>([]);
   const [activeWeeks, setActiveWeeks] = useState<string[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -443,7 +454,7 @@ export function EquipmentManagement() {
           invoke<string[]>('get_processes', { connectionString }),
           invoke<string[]>('get_active_weeks', { connectionString }),
         ]);
-        
+
         setProcesses(procList);
         setActiveWeeks(weekList);
 
@@ -656,7 +667,7 @@ export function EquipmentManagement() {
 
   const dailyUtilization = useMemo(() => {
     const stats: Record<DayOfWeek, { scheduled: number; available: number }> = {} as any;
-    
+
     DAYS_OF_WEEK.forEach((day) => {
       stats[day] = { scheduled: 0, available: 0 };
     });
@@ -688,16 +699,16 @@ export function EquipmentManagement() {
               </ActionIcon>
             </Tooltip>
           </Group>
-          <Button 
-            variant="light" 
-            leftSection={<IconDatabase size={16} />} 
+          <Button
+            variant="light"
+            leftSection={<IconDatabase size={16} />}
             onClick={fetchData}
             loading={isLoading}
           >
             Sync from DB
           </Button>
-          <Button 
-            variant="light" 
+          <Button
+            variant="light"
             leftSection={<IconPlus size={16} />}
             onClick={() => setIsEquipModalOpen(true)}
             disabled={!activeTab || !selectedWeek}
@@ -707,7 +718,7 @@ export function EquipmentManagement() {
         </Group>
       </Group>
 
-      <Paper withBorder p="sm" radius="md" className="bg-gray-50/30">
+      <Paper withBorder p="sm" radius="md" style={{ backgroundColor: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))' }}>
         <Group justify="space-between">
           <Tabs value={activeTab} onChange={setActiveTab} variant="pills">
             <Tabs.List>
@@ -727,9 +738,9 @@ export function EquipmentManagement() {
               size="sm"
               w={260}
             />
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <Button
+              variant="outline"
+              size="sm"
               leftSection={<IconCalendarPlus size={16} />}
               onClick={() => setIsModalOpen(true)}
             >
@@ -745,17 +756,30 @@ export function EquipmentManagement() {
         </Alert>
       )}
 
-      <Box className="border-t border-gray-200" style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--mantine-color-gray-3)', position: 'relative' }}>
+      <Box style={{ 
+        borderRadius: '8px', 
+        overflow: 'hidden', 
+        border: '1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4))', 
+        position: 'relative' 
+      }}>
         {isLoading && (
-          <Box style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(255,255,255,0.6)', zIndex: 20 }}>
+          <Box style={{ position: 'absolute', inset: 0, backgroundColor: 'light-dark(rgba(255,255,255,0.6), rgba(0,0,0,0.4))', zIndex: 20 }}>
             <Center h="100%">
               <Loader size="xl" type="dots" />
             </Center>
           </Box>
         )}
-        
+
         <Table verticalSpacing="xs" highlightOnHover withTableBorder>
-          <Table.Thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
+          <Table.Thead 
+            style={{ 
+              backgroundColor: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7))',
+              position: 'sticky',
+              top: 0,
+              zIndex: 10,
+              boxShadow: 'var(--mantine-shadow-sm)'
+            }}
+          >
             <Table.Tr>
               <Table.Th w={200}><Text size="xs" fw={700} c="dimmed">MACHINE ID</Text></Table.Th>
               <Table.Th ta="center" w={100}><Text size="xs" fw={700} c="dimmed">SCHEDULE</Text></Table.Th>
@@ -770,7 +794,7 @@ export function EquipmentManagement() {
                   </Table.Th>
                 );
               })}
-              <Table.Th ta="center" w={100} className="bg-gray-100">
+              <Table.Th ta="center" w={100} style={{ backgroundColor: 'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-8))' }}>
                 <Group gap={4} justify="center">
                   <IconCalculator size={14} />
                   <Text size="xs" fw={700}>TOTAL</Text>
@@ -805,7 +829,16 @@ export function EquipmentManagement() {
             )}
           </Table.Tbody>
 
-          <Table.Tfoot className="bg-gray-50 sticky bottom-0 z-10 shadow-sm border-t-2">
+          <Table.Tfoot 
+            style={{ 
+              backgroundColor: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7))',
+              position: 'sticky',
+              bottom: 0,
+              zIndex: 10,
+              boxShadow: '0 -1px 2px rgba(0,0,0,0.05)',
+              borderTop: '2px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-4))'
+            }}
+          >
             <Table.Tr>
               <Table.Td colSpan={2}>
                 <Text size="xs" fw={800} c="dimmed" ta="right" pr="md">DAILY CAPACITY UTILIZATION</Text>
@@ -856,20 +889,20 @@ export function EquipmentManagement() {
                   </Table.Td>
                 );
               })}
-              <Table.Td className="bg-gray-100"></Table.Td>
+              <Table.Td style={{ backgroundColor: 'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-8))' }}></Table.Td>
             </Table.Tr>
           </Table.Tfoot>
         </Table>
       </Box>
-      <AddWorkWeekModal 
-        opened={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
+      <AddWorkWeekModal
+        opened={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
         onGenerate={handleGeneratePlan}
         availableWeeks={activeWeeks}
       />
-      <AddEquipmentModal 
-        opened={isEquipModalOpen} 
-        onClose={() => setIsEquipModalOpen(false)} 
+      <AddEquipmentModal
+        opened={isEquipModalOpen}
+        onClose={() => setIsEquipModalOpen(false)}
         onAdd={handleAddEquipment}
         activeProcess={activeTab}
       />

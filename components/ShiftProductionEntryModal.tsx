@@ -21,6 +21,9 @@ import {
   ScrollArea,
   Card,
   ThemeIcon,
+  useMantineTheme,
+  useComputedColorScheme,
+  rgba,
 } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { useLocalStorage } from '@mantine/hooks';
@@ -135,6 +138,10 @@ export function ShiftProductionEntryModal({
   onClose,
   onSuccess,
 }: ShiftProductionEntryModalProps) {
+  const theme = useMantineTheme();
+  const computedColorScheme = useComputedColorScheme('light');
+  const isDark = computedColorScheme === 'dark';
+
   // ── Selector State ──
   const processes = useProcessStore((s) => s.processes);
   const shiftSettings = useScorecardStore((s) => s.shiftSettings);
@@ -187,7 +194,7 @@ export function ShiftProductionEntryModal({
   }, [activeWeekId]);
 
   // ── Date Filtering Logic ──
-  const shouldExcludeDate = React.useCallback((date: Date) => {
+  const shouldExcludeDate = React.useCallback((date: Date | string) => {
     // 1. Must be within the active week
     if (!weekRange) return true;
     
@@ -507,8 +514,8 @@ export function ShiftProductionEntryModal({
     >
       <Stack gap="lg" mt="sm">
         {/* ─── Step 1: Selectors ─── */}
-        <Card withBorder radius="md" p="md" bg="gray.0">
-          <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb="sm">
+        <Card withBorder radius="md" p="md" bg={isDark ? 'dark.6' : 'white'}>
+          <Text size="xs" fw={700} c={isDark ? 'dark.2' : 'gray.6'} tt="uppercase" mb="sm">
             Step 1 — Select Shift Parameters
           </Text>
           <Group grow align="flex-end">
@@ -671,9 +678,15 @@ export function ShiftProductionEntryModal({
                                   textAlign: 'center',
                                   fontWeight: 600,
                                   ...(variance !== null && variance < 0
-                                    ? { color: 'var(--mantine-color-red-7)', backgroundColor: 'var(--mantine-color-red-0)' }
+                                    ? { 
+                                        color: isDark ? 'var(--mantine-color-red-4)' : 'var(--mantine-color-red-7)', 
+                                        backgroundColor: isDark ? rgba(theme.colors.red[9], 0.25) : 'var(--mantine-color-red-0)' 
+                                      }
                                     : variance !== null && variance >= 0
-                                      ? { color: 'var(--mantine-color-green-7)', backgroundColor: 'var(--mantine-color-green-0)' }
+                                      ? { 
+                                          color: isDark ? 'var(--mantine-color-green-4)' : 'var(--mantine-color-green-7)', 
+                                          backgroundColor: isDark ? rgba(theme.colors.green[9], 0.25) : 'var(--mantine-color-green-0)' 
+                                        }
                                       : {}),
                                 },
                               }}
@@ -708,7 +721,12 @@ export function ShiftProductionEntryModal({
                                 ) : undefined
                               }
                               styles={{
-                                input: !needsReason ? { backgroundColor: 'transparent', border: '1px dashed var(--mantine-color-gray-3)' } : {}
+                                input: !needsReason 
+                                  ? { 
+                                      backgroundColor: 'transparent', 
+                                      border: isDark ? '1px dashed var(--mantine-color-dark-4)' : '1px dashed var(--mantine-color-gray-3)' 
+                                    } 
+                                  : {}
                               }}
                             />
                           </Table.Td>
@@ -781,8 +799,8 @@ export function ShiftProductionEntryModal({
 
         {/* ─── Step 3: Add Unplanned Part ─── */}
         {planLoaded && (
-          <Card withBorder radius="md" p="md" bg="orange.0">
-            <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb="sm">
+          <Card withBorder radius="md" p="md" bg={isDark ? rgba(theme.colors.dark[5], 0.2) : 'orange.0'}>
+            <Text size="xs" fw={700} c={isDark ? 'dark.2' : 'gray.6'} tt="uppercase" mb="sm">
               Add Unplanned Part (Optional)
             </Text>
             <Group align="flex-end">

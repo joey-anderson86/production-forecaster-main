@@ -952,6 +952,8 @@ export default function DeliveryScorecardDisplay() {
                   weekData={activeWeek}
                   departmentName={activeTab}
                   compact={isWidescreen}
+                  displayUnit={displayUnit}
+                  batchSizeMap={batchSizeMap}
                 />
               </Tabs.Panel>
 
