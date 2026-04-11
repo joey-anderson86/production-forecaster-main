@@ -24,6 +24,7 @@ import { generateParetoData, ParetoDataPoint } from '@/lib/paretoUtils';
 interface DeliveryLossParetoProps {
   weekData?: WeeklyScorecard | null;
   departmentName: string;
+  compact?: boolean;
 }
 
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -67,8 +68,9 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
-export function DeliveryLossPareto({ weekData, departmentName }: DeliveryLossParetoProps) {
+export function DeliveryLossPareto({ weekData, departmentName, compact = false }: DeliveryLossParetoProps) {
   const theme = useMantineTheme();
+  const chartHeight = compact ? 500 : 400;
   
   const paretoData = useMemo(() => generateParetoData(weekData), [weekData]);
 
@@ -88,7 +90,7 @@ export function DeliveryLossPareto({ weekData, departmentName }: DeliveryLossPar
   }
 
   return (
-    <Card withBorder shadow="sm" radius="md" p="lg" mt="xl">
+    <Card withBorder shadow="sm" radius="md" p={compact ? 'md' : 'lg'} mt={compact ? 'md' : 'xl'}>
       <Stack gap="lg">
         <Group justify="space-between" align="flex-start">
           <Box>
@@ -109,7 +111,7 @@ export function DeliveryLossPareto({ weekData, departmentName }: DeliveryLossPar
           </Tooltip>
         </Group>
 
-        <Box h={400} w="100%">
+        <Box h={chartHeight} w="100%">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart
               data={paretoData}
@@ -119,11 +121,11 @@ export function DeliveryLossPareto({ weekData, departmentName }: DeliveryLossPar
               
               <XAxis 
                 dataKey="reason" 
-                angle={-45} 
+                angle={compact ? -60 : -45} 
                 textAnchor="end" 
                 interval={0}
-                height={80}
-                tick={{ fontSize: 11, fontWeight: 500 }}
+                height={compact ? 100 : 80}
+                tick={{ fontSize: compact ? 10 : 11, fontWeight: 500 }}
                 stroke={theme.colors.gray[6]}
               />
               

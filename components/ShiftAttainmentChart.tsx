@@ -13,10 +13,12 @@ import { useAttainmentMath } from '@/lib/hooks/useAttainmentMath';
 interface ShiftAttainmentChartProps {
   weekData?: WeeklyScorecard | null;
   departmentName: string;
+  compact?: boolean;
 }
 
-export function ShiftAttainmentChart({ weekData, departmentName }: ShiftAttainmentChartProps) {
+export function ShiftAttainmentChart({ weekData, departmentName, compact = false }: ShiftAttainmentChartProps) {
   const theme = useMantineTheme();
+  const chartHeight = compact ? 450 : 350;
   
   const { cappedShiftAttainment: attainmentData } = useAttainmentMath(weekData?.parts);
 
@@ -40,7 +42,7 @@ export function ShiftAttainmentChart({ weekData, departmentName }: ShiftAttainme
   }
 
   return (
-    <Card withBorder shadow="sm" radius="md" p="lg" mt="xl">
+    <Card withBorder shadow="sm" radius="md" p={compact ? 'md' : 'lg'} mt={compact ? 'md' : 'xl'}>
       <Stack gap="lg">
         <Group justify="space-between" align="flex-start">
           <Box>
@@ -66,9 +68,9 @@ export function ShiftAttainmentChart({ weekData, departmentName }: ShiftAttainme
           </Tooltip>
         </Group>
 
-        <Box h={400} w="100%">
+        <Box h={chartHeight + 50} w="100%">
           <BarChart
-            h={350}
+            h={chartHeight}
             data={attainmentData}
             dataKey="shift"
             series={[
@@ -97,7 +99,7 @@ export function ShiftAttainmentChart({ weekData, departmentName }: ShiftAttainme
             ]}
             barProps={{
               radius: [4, 4, 0, 0],
-              barSize: 60,
+              barSize: compact ? 40 : 60,
               label: { 
                 position: 'top', 
                 formatter: (val: any) => val !== undefined && val !== null ? `${val}%` : '',

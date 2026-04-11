@@ -1,16 +1,17 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useLocalStorage } from '@mantine/hooks';
 import { useScorecardStore, DayOfWeek, DailyScorecardRecord, PartScorecard } from '@/lib/scorecardStore';
 import { 
   Tabs, Select, Table, Card, Text, Group, Badge, Title, Box, Tooltip, Stack, Button, ActionIcon, Paper, SegmentedControl,
-  RingProgress, Divider as MantineDivider, TextInput
+  RingProgress, Divider as MantineDivider, TextInput, Grid
 } from '@mantine/core';
 import { 
   IconPlus, IconChevronDown, IconChevronRight, IconSearch, IconArrowsSort, 
   IconSortAscending, IconSortDescending, IconChartBar, IconTarget, IconRefresh,
-  IconChevronsDown, IconChevronsUp, IconActivity, IconCalendar
+  IconChevronsDown, IconChevronsUp, IconActivity, IconCalendar,
+  IconLayoutSidebarRight, IconLayoutBottombar
 } from '@tabler/icons-react';
 import { EditEntryModal } from './EditEntryModal';
 import { ShiftProductionEntryModal } from './ShiftProductionEntryModal';
@@ -50,6 +51,38 @@ export default function DeliveryScorecardDisplay() {
   const [connectionString, setConnectionString] = useState<string | null>(null);
   const [partInfo, setPartInfo] = useState<any[]>([]);
   const [displayUnit, setDisplayUnit] = useProductionDisplayUnit();
+  const [layoutMode, setLayoutMode] = useLocalStorage<'stacked' | 'widescreen'>({
+    key: 'dashboard-layout-mode',
+    defaultValue: 'stacked',
+  });
+
+  const isWidescreen = layoutMode === 'widescreen';
+
+  // ── Dynamic height measurement for widescreen table constraint ──
+  const leftColumnRef = useRef<HTMLDivElement>(null);
+  const [availableHeight, setAvailableHeight] = useState<number | null>(null);
+
+  const measureHeight = useCallback(() => {
+    if (leftColumnRef.current && isWidescreen) {
+      const rect = leftColumnRef.current.getBoundingClientRect();
+      // 16px bottom padding so the table doesn't touch the window edge
+      const height = window.innerHeight - rect.top - 16;
+      setAvailableHeight(Math.max(height, 300)); // floor at 300px minimum
+    } else {
+      setAvailableHeight(null);
+    }
+  }, [isWidescreen]);
+
+  useEffect(() => {
+    measureHeight();
+    window.addEventListener('resize', measureHeight);
+    // Re-measure after a short delay for layout settling (tab switches, etc.)
+    const timer = setTimeout(measureHeight, 100);
+    return () => {
+      window.removeEventListener('resize', measureHeight);
+      clearTimeout(timer);
+    };
+  }, [measureHeight]);
 
   // Create a lookup map for the current department to ensure correct batch sizes
   const batchSizeMap = React.useMemo(() => {
@@ -323,6 +356,17 @@ export default function DeliveryScorecardDisplay() {
             ]}
             color="indigo"
           />
+          <Tooltip label={isWidescreen ? 'Switch to Stacked Layout' : 'Switch to Widescreen Layout'} withArrow position="bottom">
+            <ActionIcon
+              variant={isWidescreen ? 'filled' : 'subtle'}
+              color="indigo"
+              size="lg"
+              onClick={() => setLayoutMode(isWidescreen ? 'stacked' : 'widescreen')}
+              aria-label="Toggle Widescreen Mode"
+            >
+              {isWidescreen ? <IconLayoutSidebarRight size={20} /> : <IconLayoutBottombar size={20} />}
+            </ActionIcon>
+          </Tooltip>
           <Button 
             variant="light" 
             leftSection={<IconRefresh size={16} />} 
@@ -342,495 +386,563 @@ export default function DeliveryScorecardDisplay() {
         </Group>
       </Group>
       
-      {activeWeek && (
-        <Card withBorder radius="md" p="lg" shadow="sm">
-          <Group justify="space-between" align="stretch">
-            <Stack gap="xs" style={{ flex: 1 }}>
-              <Group gap="xs">
-                <IconActivity size={20} color="var(--mantine-color-indigo-6)" />
-                <Text fw={700} size="sm" tt="uppercase" c="dimmed">Performance Scorecard</Text>
-              </Group>
-              
-              <Group gap="xl" mt="sm">
-                <Box>
-                  <RingProgress
-                    size={120}
-                    thickness={12}
-                    roundCaps
-                    sections={[{ value: attainmentMetrics.cumulativeWTD, color: attainmentMetrics.cumulativeWTD >= 85 ? 'green.6' : 'red.6' }]}
-                    label={
-                      <Stack gap={0} align="center">
-                        <Text ta="center" fw={800} size="xl" style={{ lineHeight: 1 }}>
-                          {attainmentMetrics.cumulativeWTD}%
-                        </Text>
-                        <Text ta="center" size="xs" c="dimmed" fw={700}>WTD</Text>
-                      </Stack>
-                    }
-                  />
-                </Box>
-                
-                <Stack gap={4} justify="center">
-                  <Title order={3} style={{ lineHeight: 1 }}>Cumulative Week-to-Date</Title>
-                  <Text size="sm" c="dimmed" maw={300}>
-                    Strict attainment logic excluding future shifts. Goal: <strong>85%</strong>.
-                  </Text>
-                  <Group gap="xs" mt={4}>
-                    <Badge variant="light" color={attainmentMetrics.cumulativeWTD >= 85 ? 'green' : 'red'} size="sm">
-                      {attainmentMetrics.cumulativeWTD >= 85 ? 'On Track' : 'Below Target'}
-                    </Badge>
-                    <Text size="xs" c="dimmed">Based on recorded shifts only</Text>
-                  </Group>
-                </Stack>
-
-                <MantineDivider orientation="vertical" />
-
-                <Box style={{ flex: 1 }}>
-                  <Group gap="xs" mb="xs">
-                    <IconCalendar size={16} color="var(--mantine-color-gray-6)" />
-                    <Text size="xs" fw={700} c="dimmed">DAILY ATTAINMENT BREAKDOWN</Text>
-                  </Group>
-                  <Group gap="sm" wrap="nowrap">
-                    {DAYS_OF_WEEK.map((day, idx) => {
-                      const score = attainmentMetrics.dailyAttainments[idx];
-                      const isRecorded = score !== null;
+      <Grid gutter="md">
+        {/* ═══════ GROUP A: Scorecard + Data Table (Left in widescreen) ═══════ */}
+        <Grid.Col span={isWidescreen ? { base: 12, lg: 7 } : 12}>
+          <Stack ref={leftColumnRef} gap="md" style={isWidescreen && availableHeight ? { height: availableHeight, overflow: 'hidden' } : undefined}>
+            {activeWeek && (
+              <Card withBorder radius="md" p="lg" shadow="sm">
+                <Group justify="space-between" align="stretch">
+                  <Stack gap="xs" style={{ flex: 1 }}>
+                    <Group gap="xs">
+                      <IconActivity size={20} color="var(--mantine-color-indigo-6)" />
+                      <Text fw={700} size="sm" tt="uppercase" c="dimmed">Performance Scorecard</Text>
+                    </Group>
+                    
+                    <Group gap="xl" mt="sm">
+                      <Box>
+                        <RingProgress
+                          size={120}
+                          thickness={12}
+                          roundCaps
+                          sections={[{ value: attainmentMetrics.cumulativeWTD, color: attainmentMetrics.cumulativeWTD >= 85 ? 'green.6' : 'red.6' }]}
+                          label={
+                            <Stack gap={0} align="center">
+                              <Text ta="center" fw={800} size="xl" style={{ lineHeight: 1 }}>
+                                {attainmentMetrics.cumulativeWTD}%
+                              </Text>
+                              <Text ta="center" size="xs" c="dimmed" fw={700}>WTD</Text>
+                            </Stack>
+                          }
+                        />
+                      </Box>
                       
-                      return (
-                        <Paper 
-                          key={day} 
-                          withBorder 
-                          p="xs" 
-                          radius="sm" 
-                          style={{ 
-                            flex: 1, 
-                            textAlign: 'center',
-                            backgroundColor: !isRecorded ? 'var(--mantine-color-gray-0)' : 'transparent',
-                            opacity: !isRecorded ? 0.6 : 1
-                          }}
-                        >
-                          <Text size="10px" fw={800} c="dimmed" mb={2}>{day.toUpperCase()}</Text>
-                          <Text 
-                            size="sm" 
-                            fw={800} 
-                            c={!isRecorded ? 'gray.4' : (score >= 85 ? 'green.7' : 'red.7')}
-                          >
-                            {isRecorded ? `${Math.round(score)}%` : '—'}
-                          </Text>
-                        </Paper>
-                      );
-                    })}
-                  </Group>
-                </Box>
-              </Group>
-            </Stack>
-          </Group>
-        </Card>
-      )}
-
-      <Paper withBorder p="sm" radius="md" className="bg-gray-50/30">
-        <Stack gap="md">
-          <Group justify="space-between" align="center">
-            <Tabs value={activeTab} onChange={setActiveTab} variant="pills">
-              <Tabs.List>
-                {processes.map(name => (
-                  <Tabs.Tab 
-                    key={name} 
-                    value={name} 
-                    color="indigo"
-                  >
-                    {name}
-                  </Tabs.Tab>
-                ))}
-              </Tabs.List>
-            </Tabs>
-
-            <Group gap="sm">
-              <TextInput
-                placeholder="Search Part Number..."
-                leftSection={<IconSearch size={16} />}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.currentTarget.value)}
-                size="sm"
-                w={240}
-              />
-              <Select
-                placeholder="Select Week"
-                value={selectedWeekId}
-                onChange={setSelectedWeekId}
-                data={weekOptions}
-                size="sm"
-                w={220}
-              />
-            </Group>
-          </Group>
-
-          <Box>
-            <Box className="border-t border-gray-100 mt-sm" style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--mantine-color-gray-3)' }}>
-        {activeWeek ? (
-          <Table verticalSpacing="sm" striped highlightOnHover className="w-full">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th 
-                  onClick={() => requestSort('partNumber')} 
-                  style={{ cursor: 'pointer' }}
-                  className="hover:bg-gray-50"
-                >
-                  <Group gap={4} wrap="nowrap">
-                    <Text size="xs" fw={700} c="dimmed">PART NUMBER</Text>
-                    {getSortIcon('partNumber')}
-                  </Group>
-                </Table.Th>
-                <Table.Th ta="center"><Text size="xs" fw={700} c="dimmed">SHIFT</Text></Table.Th>
-                {DAYS_OF_WEEK.map((day, idx) => {
-                  const dayDate = activeWeek ? getWeekDates(activeWeek.weekId)[idx] : null;
-                  const dateStr = dayDate ? dayDate.toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }) : '';
-                  return (
-                    <Table.Th key={day} ta="center">
-                      <Stack gap={0} align="center">
-                        <Text size="xs" fw={700} c="dimmed">{day.toUpperCase()}</Text>
-                        {dateStr && <Text size="10px" c="indigo.4" fw={700}>{dateStr}</Text>}
-                      </Stack>
-                    </Table.Th>
-                  );
-                })}
-                <Table.Th 
-                  ta="center" 
-                  onClick={() => requestSort('totalActual')} 
-                  style={{ cursor: 'pointer' }}
-                  className="hover:bg-gray-50"
-                >
-                  <Group gap={4} justify="center" wrap="nowrap">
-                    <Text size="xs" fw={700} c="dimmed">ACTUAL</Text>
-                    {getSortIcon('totalActual')}
-                  </Group>
-                </Table.Th>
-                <Table.Th 
-                  ta="center" 
-                  onClick={() => requestSort('totalTarget')} 
-                  style={{ cursor: 'pointer' }}
-                  className="hover:bg-gray-50"
-                >
-                  <Group gap={4} justify="center" wrap="nowrap">
-                    <Text size="xs" fw={700} c="dimmed">TARGET</Text>
-                    {getSortIcon('totalTarget')}
-                  </Group>
-                </Table.Th>
-                <Table.Th 
-                  ta="center" 
-                  onClick={() => requestSort('gap')} 
-                  style={{ cursor: 'pointer' }}
-                  className="hover:bg-gray-50"
-                >
-                  <Group gap={4} justify="center" wrap="nowrap">
-                    <Text size="xs" fw={700} c="dimmed">GAP</Text>
-                    {getSortIcon('gap')}
-                  </Group>
-                </Table.Th>
-                <Table.Th 
-                  ta="center" 
-                  onClick={() => requestSort('rollingGap')} 
-                  style={{ cursor: 'pointer' }}
-                  className="hover:bg-gray-50"
-                >
-                  <Group gap={4} justify="center" wrap="nowrap">
-                    <Text size="xs" fw={700} c="dimmed">ROLLING GAP</Text>
-                    {getSortIcon('rollingGap')}
-                  </Group>
-                </Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {groupedParts.map(group => {
-                const isExpanded = expandedParts.has(group.partNumber);
-                
-                return (
-                  <React.Fragment key={group.partNumber}>
-                    {/* Parent Row */}
-                    <Table.Tr 
-                      bg="indigo.0" 
-                      style={{ cursor: 'pointer' }} 
-                      onClick={() => toggleExpand(group.partNumber)}
-                    >
-                      <Table.Td fw={700}>
-                        <Group gap="xs" wrap="nowrap">
-                          <ActionIcon 
-                            variant="subtle" 
-                            size="sm" 
-                            onClick={(e) => { e.stopPropagation(); toggleExpand(group.partNumber); }}
-                            className="transition-transform"
-                            style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0)' }}
-                          >
-                            <IconChevronDown size={14} />
-                          </ActionIcon>
-                          <Text fw={700} size="sm">{group.partNumber}</Text>
+                      <Stack gap={4} justify="center">
+                        <Title order={3} style={{ lineHeight: 1 }}>Cumulative Week-to-Date</Title>
+                        <Text size="sm" c="dimmed" maw={300}>
+                          Strict attainment logic excluding future shifts. Goal: <strong>85%</strong>.
+                        </Text>
+                        <Group gap="xs" mt={4}>
+                          <Badge variant="light" color={attainmentMetrics.cumulativeWTD >= 85 ? 'green' : 'red'} size="sm">
+                            {attainmentMetrics.cumulativeWTD >= 85 ? 'On Track' : 'Below Target'}
+                          </Badge>
+                          <Text size="xs" c="dimmed">Based on recorded shifts only</Text>
                         </Group>
-                      </Table.Td>
-                      <Table.Td ta="center">
-                        <Badge variant="dot" size="xs" color="indigo">All Shifts</Badge>
-                      </Table.Td>
-                      {group.aggregatedRecords.map((record, idx) => {
-                        const styles = getCellStyles(record.actual, record.target);
+                      </Stack>
+
+                      <MantineDivider orientation="vertical" />
+
+                      <Box style={{ flex: 1 }}>
+                        <Group gap="xs" mb="xs">
+                          <IconCalendar size={16} color="var(--mantine-color-gray-6)" />
+                          <Text size="xs" fw={700} c="dimmed">DAILY ATTAINMENT BREAKDOWN</Text>
+                        </Group>
+                        <Group gap="sm" wrap="nowrap">
+                          {DAYS_OF_WEEK.map((day, idx) => {
+                            const score = attainmentMetrics.dailyAttainments[idx];
+                            const isRecorded = score !== null;
+                            
+                            return (
+                              <Paper 
+                                key={day} 
+                                withBorder 
+                                p="xs" 
+                                radius="sm" 
+                                style={{ 
+                                  flex: 1, 
+                                  textAlign: 'center',
+                                  backgroundColor: !isRecorded ? 'var(--mantine-color-gray-0)' : 'transparent',
+                                  opacity: !isRecorded ? 0.6 : 1
+                                }}
+                              >
+                                <Text size="10px" fw={800} c="dimmed" mb={2}>{day.toUpperCase()}</Text>
+                                <Text 
+                                  size="sm" 
+                                  fw={800} 
+                                  c={!isRecorded ? 'gray.4' : (score >= 85 ? 'green.7' : 'red.7')}
+                                >
+                                  {isRecorded ? `${Math.round(score)}%` : '—'}
+                                </Text>
+                              </Paper>
+                            );
+                          })}
+                        </Group>
+                      </Box>
+                    </Group>
+                  </Stack>
+                </Group>
+              </Card>
+            )}
+
+            <Paper withBorder p="sm" radius="md" className="bg-gray-50/30" style={isWidescreen ? { flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' } : undefined}>
+              <Stack gap="md" style={isWidescreen ? { flex: 1, minHeight: 0, overflow: 'hidden' } : undefined}>
+                <Group justify="space-between" align="center">
+                  <Tabs value={activeTab} onChange={setActiveTab} variant="pills">
+                    <Tabs.List>
+                      {processes.map(name => (
+                        <Tabs.Tab 
+                          key={name} 
+                          value={name} 
+                          color="indigo"
+                        >
+                          {name}
+                        </Tabs.Tab>
+                      ))}
+                    </Tabs.List>
+                  </Tabs>
+
+                  <Group gap="sm">
+                    <TextInput
+                      placeholder="Search Part Number..."
+                      leftSection={<IconSearch size={16} />}
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.currentTarget.value)}
+                      size="sm"
+                      w={240}
+                    />
+                    <Select
+                      placeholder="Select Week"
+                      value={selectedWeekId}
+                      onChange={setSelectedWeekId}
+                      data={weekOptions}
+                      size="sm"
+                      w={220}
+                    />
+                  </Group>
+                </Group>
+
+                <Box 
+                  style={{ 
+                    borderRadius: '8px', 
+                    border: '1px solid var(--mantine-color-gray-3)',
+                    ...(isWidescreen ? {
+                      flex: 1,
+                      minHeight: 0,
+                      overflowY: 'auto',
+                      overflowX: 'auto',
+                    } : {
+                      overflowX: 'auto',
+                    }),
+                  }}
+                >
+              {activeWeek ? (
+                <Table 
+                  verticalSpacing="sm" 
+                  striped 
+                  highlightOnHover 
+                  className="w-full" 
+                  style={{ minWidth: isWidescreen ? 900 : undefined }}
+                  stickyHeader
+                  stickyHeaderOffset={0}
+                >
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th 
+                        onClick={() => requestSort('partNumber')} 
+                        style={{ 
+                          cursor: 'pointer',
+                          position: 'sticky',
+                          top: 0,
+                          left: 0,
+                          zIndex: 20,
+                          backgroundColor: 'var(--mantine-color-white)',
+                          minWidth: 140,
+                        }}
+                        className="hover:bg-gray-50"
+                      >
+                        <Group gap={4} wrap="nowrap">
+                          <Text size="xs" fw={700} c="dimmed">PART NUMBER</Text>
+                          {getSortIcon('partNumber')}
+                        </Group>
+                      </Table.Th>
+                      <Table.Th ta="center"><Text size="xs" fw={700} c="dimmed">SHIFT</Text></Table.Th>
+                      {DAYS_OF_WEEK.map((day, idx) => {
+                        const dayDate = activeWeek ? getWeekDates(activeWeek.weekId)[idx] : null;
+                        const dateStr = dayDate ? dayDate.toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }) : '';
                         return (
-                          <Table.Td key={idx} ta="center" bg={styles.bg}>
-                            <Tooltip
-                               label={
-                                 <Stack gap={2}>
-                                   <Text size="xs" fw={700}>Part: {group.partNumber} (All Shifts)</Text>
-                                   <Text size="xs">Total Actual: {record.actual}</Text>
-                                   <Text size="xs">Total Target: {record.target}</Text>
-                                   {(record as any).reasons?.length > 0 && (
-                                     <Box mt={4}>
-                                       <Text size="10px" fw={700} c="dimmed" tt="uppercase">Shift Reasons:</Text>
-                                       {(record as any).reasons.map((r: string, i: number) => (
-                                         <Text key={i} size="xs" c="orange.7" fw={600}>• {r}</Text>
-                                       ))}
-                                     </Box>
-                                   )}
-                                 </Stack>
-                               }
-                               withArrow
-                               position="top"
-                               disabled={record.actual === 0 && record.target === 0}
-                            >
-                              <Box py="xs" px="xs">
-                                <Text size="sm" fw={700} c={styles.color}>{record.actual}</Text>
-                                <Text size="10px" c="dimmed">Tgt: {record.target}</Text>
-                              </Box>
-                            </Tooltip>
-                          </Table.Td>
+                          <Table.Th key={day} ta="center">
+                            <Stack gap={0} align="center">
+                              <Text size="xs" fw={700} c="dimmed">{day.toUpperCase()}</Text>
+                              {dateStr && <Text size="10px" c="indigo.4" fw={700}>{dateStr}</Text>}
+                            </Stack>
+                          </Table.Th>
                         );
                       })}
-                      <Table.Td ta="center" bg="indigo.1">
-                        <Text size="sm" fw={800}>{group.totalActual}</Text>
+                      <Table.Th 
+                        ta="center" 
+                        onClick={() => requestSort('totalActual')} 
+                        style={{ cursor: 'pointer' }}
+                        className="hover:bg-gray-50"
+                      >
+                        <Group gap={4} justify="center" wrap="nowrap">
+                          <Text size="xs" fw={700} c="dimmed">ACTUAL</Text>
+                          {getSortIcon('totalActual')}
+                        </Group>
+                      </Table.Th>
+                      <Table.Th 
+                        ta="center" 
+                        onClick={() => requestSort('totalTarget')} 
+                        style={{ cursor: 'pointer' }}
+                        className="hover:bg-gray-50"
+                      >
+                        <Group gap={4} justify="center" wrap="nowrap">
+                          <Text size="xs" fw={700} c="dimmed">TARGET</Text>
+                          {getSortIcon('totalTarget')}
+                        </Group>
+                      </Table.Th>
+                      <Table.Th 
+                        ta="center" 
+                        onClick={() => requestSort('gap')} 
+                        style={{ cursor: 'pointer' }}
+                        className="hover:bg-gray-50"
+                      >
+                        <Group gap={4} justify="center" wrap="nowrap">
+                          <Text size="xs" fw={700} c="dimmed">GAP</Text>
+                          {getSortIcon('gap')}
+                        </Group>
+                      </Table.Th>
+                      <Table.Th 
+                        ta="center" 
+                        onClick={() => requestSort('rollingGap')} 
+                        style={{ cursor: 'pointer' }}
+                        className="hover:bg-gray-50"
+                      >
+                        <Group gap={4} justify="center" wrap="nowrap">
+                          <Text size="xs" fw={700} c="dimmed">ROLLING GAP</Text>
+                          {getSortIcon('rollingGap')}
+                        </Group>
+                      </Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {groupedParts.map(group => {
+                      const isExpanded = expandedParts.has(group.partNumber);
+                      
+                      return (
+                        <React.Fragment key={group.partNumber}>
+                          {/* Parent Row */}
+                          <Table.Tr 
+                            bg="indigo.0" 
+                            style={{ cursor: 'pointer' }} 
+                            onClick={() => toggleExpand(group.partNumber)}
+                          >
+                            <Table.Td 
+                              fw={700}
+                              style={{
+                                position: 'sticky',
+                                left: 0,
+                                zIndex: 1,
+                                backgroundColor: 'var(--mantine-color-indigo-0)',
+                              }}
+                            >
+                              <Group gap="xs" wrap="nowrap">
+                                <ActionIcon 
+                                  variant="subtle" 
+                                  size="sm" 
+                                  onClick={(e) => { e.stopPropagation(); toggleExpand(group.partNumber); }}
+                                  className="transition-transform"
+                                  style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0)' }}
+                                >
+                                  <IconChevronDown size={14} />
+                                </ActionIcon>
+                                <Text fw={700} size="sm">{group.partNumber}</Text>
+                              </Group>
+                            </Table.Td>
+                            <Table.Td ta="center">
+                              <Badge variant="dot" size="xs" color="indigo">All Shifts</Badge>
+                            </Table.Td>
+                            {group.aggregatedRecords.map((record, idx) => {
+                              const styles = getCellStyles(record.actual, record.target);
+                              return (
+                                <Table.Td key={idx} ta="center" bg={styles.bg}>
+                                  <Tooltip
+                                     label={
+                                       <Stack gap={2}>
+                                         <Text size="xs" fw={700}>Part: {group.partNumber} (All Shifts)</Text>
+                                         <Text size="xs">Total Actual: {record.actual}</Text>
+                                         <Text size="xs">Total Target: {record.target}</Text>
+                                         {(record as any).reasons?.length > 0 && (
+                                           <Box mt={4}>
+                                             <Text size="10px" fw={700} c="dimmed" tt="uppercase">Shift Reasons:</Text>
+                                             {(record as any).reasons.map((r: string, i: number) => (
+                                               <Text key={i} size="xs" c="orange.7" fw={600}>• {r}</Text>
+                                             ))}
+                                           </Box>
+                                         )}
+                                       </Stack>
+                                     }
+                                     withArrow
+                                     position="top"
+                                     disabled={record.actual === 0 && record.target === 0}
+                                  >
+                                    <Box py="xs" px="xs">
+                                      <Text size="sm" fw={700} c={styles.color}>{record.actual}</Text>
+                                      <Text size="10px" c="dimmed">Tgt: {record.target}</Text>
+                                    </Box>
+                                  </Tooltip>
+                                </Table.Td>
+                              );
+                            })}
+                            <Table.Td ta="center" bg="indigo.1">
+                              <Text size="sm" fw={800}>{group.totalActual}</Text>
+                            </Table.Td>
+                            <Table.Td ta="center" bg="indigo.1">
+                              <Text size="sm" fw={800}>{group.totalTarget}</Text>
+                            </Table.Td>
+                            <Table.Td ta="center" bg={group.gap < 0 ? 'red.1' : 'green.1'}>
+                              <Text size="sm" fw={800} c={group.gap < 0 ? 'red.9' : 'green.9'}>
+                                {group.gap > 0 ? `+${group.gap}` : group.gap}
+                              </Text>
+                            </Table.Td>
+                            <Table.Td ta="center" bg={group.rollingGap < 0 ? 'red.1' : 'green.1'}>
+                              <Text size="sm" fw={800} c={group.rollingGap < 0 ? 'red.9' : 'green.9'}>
+                                {group.rollingGap > 0 ? `+${group.rollingGap}` : group.rollingGap}
+                              </Text>
+                            </Table.Td>
+                          </Table.Tr>
+
+                          {/* Child Rows */}
+                          {isExpanded && [...group.shifts]
+                            .sort((a, b) => {
+                              const order: Record<string, number> = { 'A': 1, 'B': 2, 'C': 3, 'D': 4 };
+                              return (order[a.shift] || 99) - (order[b.shift] || 99);
+                            })
+                            .map(part => {
+                            const totalActual = part.dailyRecords.reduce((sum, r) => sum + (r.actual || 0), 0);
+                            const totalTarget = part.dailyRecords.reduce((sum, r) => sum + (r.target || 0), 0);
+                            const gap = totalActual - totalTarget;
+
+                            const batchSize = batchSizeMap.get(part.partNumber) || 1;
+                            const multiplier = displayUnit === 'pieces' ? batchSize : 1;
+
+                            return (
+                              <Table.Tr key={part.id} bg="var(--mantine-color-gray-0)">
+                                <Table.Td 
+                                  pl={40}
+                                  style={{
+                                    position: 'sticky',
+                                    left: 0,
+                                    zIndex: 1,
+                                    backgroundColor: 'var(--mantine-color-gray-0)',
+                                  }}
+                                >
+                                  <Group gap="xs" wrap="nowrap">
+                                     <Text size="xs" c="dimmed" fw={500} style={{ width: 14 }}></Text>
+                                     <Text size="xs" c="dimmed" fw={500}>{part.partNumber}</Text>
+                                  </Group>
+                                </Table.Td>
+                                <Table.Td ta="center">
+                                  <Badge variant="light" size="xs" color="blue">{part.shift}</Badge>
+                                </Table.Td>
+                                {DAYS_OF_WEEK.map(day => {
+                                  const record = part.dailyRecords.find(r => r.dayOfWeek === day);
+                                  const actualValue = record?.actual ?? null;
+                                  const targetValue = record?.target ?? null;
+                                  
+                                  // Panama Schedule Logic
+                                  const anchorDate = store.shiftSettings[part.shift];
+                                  const targetDate = record?.date ? parseISOLocal(record.date) : null;
+                                  const isWorking = targetDate ? isWorkingDay(targetDate, anchorDate) : true;
+                                  const isDayOff = !isWorking;
+
+                                  const displayedActual = actualValue !== null ? actualValue * multiplier : null;
+                                  const displayedTarget = targetValue !== null ? targetValue * multiplier : 0;
+
+                                  // Apply color styles only if actual production is recorded
+                                  const performanceStyles = (actualValue !== null && targetValue !== null) 
+                                    ? getCellStyles(actualValue, targetValue) 
+                                    : {};
+
+                                  // Final Background Logic: Recede scheduled off days
+                                  let cellBg = performanceStyles.bg || 'transparent';
+                                  if (isDayOff) {
+                                    cellBg = 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))';
+                                  }
+
+                                  // Content Logic: Muted em-dash for empty off days
+                                  const isInactiveOffDay = isDayOff && (actualValue === 0 || actualValue === null) && (targetValue === 0 || targetValue === null);
+                                  const displayValue = isInactiveOffDay ? '—' : (displayedActual ?? '-');
+                                  const textColor = isInactiveOffDay ? 'dimmed' : (performanceStyles.color || (actualValue === null ? 'gray.4' : 'black'));
+
+                                  return (
+                                    <Table.Td 
+                                      key={day} 
+                                      ta="center" 
+                                      bg={cellBg} 
+                                      p={0}
+                                      className={`${isDayOff ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-gray-50'} transition-colors`}
+                                      onClick={() => !isDayOff && record && handleCellClick(part.id, part.partNumber, part.shift, day, record)}
+                                    >
+                                      <Tooltip 
+                                        label={
+                                          <Stack gap={2}>
+                                            <Group gap="xs" justify="space-between">
+                                              <Text size="xs" fw={700}>Part: {part.partNumber} (Shift {part.shift})</Text>
+                                              {isDayOff && <Badge size="9px" variant="light" color="gray">Off Schedule</Badge>}
+                                            </Group>
+                                            <Text size="xs">Actual: {displayedActual ?? 'Not recorded'}</Text>
+                                            <Text size="xs">Target: {displayedTarget ?? 0}</Text>
+                                            {record?.reasonCode && (
+                                              <Text size="xs" c="orange.7" fw={600}>Reason: {record.reasonCode}</Text>
+                                            )}
+                                            {!isDayOff && <Text size="xs" c="indigo.4" mt={4} fw={700}>Click to Record Actual</Text>}
+                                            {isDayOff && <Text size="xs" c="red.4" mt={4} fw={700}>Off Schedule - Entry Locked</Text>}
+                                          </Stack>
+                                        }
+                                        withArrow
+                                        position="top"
+                                      >
+                                        <Box py="xs" px="xs">
+                                          <Text size="sm" fw={performanceStyles.fw || 500} c={textColor}>
+                                            {displayValue}
+                                          </Text>
+                                          <Text size="10px" c="dimmed">Tgt: {displayedTarget ?? 0}</Text>
+                                        </Box>
+                                      </Tooltip>
+                                    </Table.Td>
+                                  );
+                                })}
+                                <Table.Td ta="center" bg="gray.1">
+                                  <Text size="sm" fw={600}>{totalActual * multiplier}</Text>
+                                </Table.Td>
+                                <Table.Td ta="center" bg="gray.1">
+                                  <Text size="sm" fw={600}>{totalTarget * multiplier}</Text>
+                                </Table.Td>
+                                <Table.Td ta="center" bg={gap < 0 ? 'red.0' : 'green.0'}>
+                                  <Text size="sm" fw={600} c={gap < 0 ? 'red.8' : 'green.8'}>
+                                    {gap > 0 ? `+${gap * multiplier}` : gap * multiplier}
+                                  </Text>
+                                </Table.Td>
+                                <Table.Td ta="center" bg={part.rollingGap < 0 ? 'red.0' : 'green.0'}>
+                                  <Text size="sm" fw={600} c={part.rollingGap < 0 ? 'red.8' : 'green.8'}>
+                                    {part.rollingGap > 0 ? `+${part.rollingGap * multiplier}` : part.rollingGap * multiplier}
+                                  </Text>
+                                </Table.Td>
+                              </Table.Tr>
+                            );
+                          })}
+                        </React.Fragment>
+                      );
+                    })}
+                    {groupedParts.length === 0 && (
+                      <Table.Tr>
+                        <Table.Td colSpan={11} ta="center" py="xl">
+                          <Text c="dimmed">No parts tracked for this week yet.</Text>
+                        </Table.Td>
+                      </Table.Tr>
+                    )}
+                  </Table.Tbody>
+                  <Table.Tfoot 
+                    className="bg-gray-50 shadow-[0_-2px_4px_rgba(0,0,0,0.05)]"
+                    style={{ 
+                      borderTop: '2px solid var(--mantine-color-gray-3)',
+                      position: 'sticky',
+                      bottom: 0,
+                      zIndex: 10,
+                      backgroundColor: 'var(--mantine-color-gray-1)'
+                    }}
+                  >
+                    <Table.Tr fw={800}>
+                      <Table.Td
+                        style={{
+                          position: 'sticky',
+                          left: 0,
+                          zIndex: 2,
+                          backgroundColor: 'var(--mantine-color-gray-1)',
+                        }}
+                      >
+                        <Text size="sm" fw={800}>GRAND TOTAL ({displayUnit === 'batches' ? 'Batches' : 'Pieces'})</Text>
                       </Table.Td>
-                      <Table.Td ta="center" bg="indigo.1">
-                        <Text size="sm" fw={800}>{group.totalTarget}</Text>
+                      <Table.Td ta="center">
+                        <Badge variant="filled" size="xs" color="indigo">TOTALS</Badge>
                       </Table.Td>
-                      <Table.Td ta="center" bg={group.gap < 0 ? 'red.1' : 'green.1'}>
-                        <Text size="sm" fw={800} c={group.gap < 0 ? 'red.9' : 'green.9'}>
-                          {group.gap > 0 ? `+${group.gap}` : group.gap}
+                      {calculatedTotals.daily.map((day, idx) => (
+                        <Table.Td key={idx} ta="center">
+                          <Box py="xs" px="xs">
+                            <Text size="sm" fw={800}>{day.actual.toLocaleString()}</Text>
+                            <Text size="10px" c="dimmed">Tgt: {day.target.toLocaleString()}</Text>
+                          </Box>
+                        </Table.Td>
+                      ))}
+                      <Table.Td ta="center" bg="indigo.0">
+                        <Text size="sm" fw={900}>{calculatedTotals.totalActual.toLocaleString()}</Text>
+                      </Table.Td>
+                      <Table.Td ta="center" bg="indigo.0">
+                        <Text size="sm" fw={900}>{calculatedTotals.totalTarget.toLocaleString()}</Text>
+                      </Table.Td>
+                      <Table.Td ta="center" bg={calculatedTotals.gap < 0 ? 'red.0' : 'green.0'}>
+                        <Text size="sm" fw={900} c={calculatedTotals.gap < 0 ? 'red.9' : 'green.9'}>
+                          {calculatedTotals.gap > 0 ? `+${calculatedTotals.gap.toLocaleString()}` : calculatedTotals.gap.toLocaleString()}
                         </Text>
                       </Table.Td>
-                      <Table.Td ta="center" bg={group.rollingGap < 0 ? 'red.1' : 'green.1'}>
-                        <Text size="sm" fw={800} c={group.rollingGap < 0 ? 'red.9' : 'green.9'}>
-                          {group.rollingGap > 0 ? `+${group.rollingGap}` : group.rollingGap}
+                      <Table.Td ta="center" bg={calculatedTotals.rollingGap < 0 ? 'red.0' : 'green.0'}>
+                        <Text size="sm" fw={900} c={calculatedTotals.rollingGap < 0 ? 'red.9' : 'green.9'}>
+                          {calculatedTotals.rollingGap > 0 ? `+${calculatedTotals.rollingGap.toLocaleString()}` : calculatedTotals.rollingGap.toLocaleString()}
                         </Text>
                       </Table.Td>
                     </Table.Tr>
-
-                    {/* Child Rows */}
-                    {isExpanded && [...group.shifts]
-                      .sort((a, b) => {
-                        const order: Record<string, number> = { 'A': 1, 'B': 2, 'C': 3, 'D': 4 };
-                        return (order[a.shift] || 99) - (order[b.shift] || 99);
-                      })
-                      .map(part => {
-                      const totalActual = part.dailyRecords.reduce((sum, r) => sum + (r.actual || 0), 0);
-                      const totalTarget = part.dailyRecords.reduce((sum, r) => sum + (r.target || 0), 0);
-                      const gap = totalActual - totalTarget;
-
-                      const batchSize = batchSizeMap.get(part.partNumber) || 1;
-                      const multiplier = displayUnit === 'pieces' ? batchSize : 1;
-
-                      return (
-                        <Table.Tr key={part.id} bg="var(--mantine-color-gray-0)">
-                          <Table.Td pl={40}>
-                            <Group gap="xs" wrap="nowrap">
-                               <Text size="xs" c="dimmed" fw={500} style={{ width: 14 }}></Text>
-                               <Text size="xs" c="dimmed" fw={500}>{part.partNumber}</Text>
-                            </Group>
-                          </Table.Td>
-                          <Table.Td ta="center">
-                            <Badge variant="light" size="xs" color="blue">{part.shift}</Badge>
-                          </Table.Td>
-                          {DAYS_OF_WEEK.map(day => {
-                            const record = part.dailyRecords.find(r => r.dayOfWeek === day);
-                            const actualValue = record?.actual ?? null;
-                            const targetValue = record?.target ?? null;
-                            
-                            // Panama Schedule Logic
-                            const anchorDate = store.shiftSettings[part.shift];
-                            const targetDate = record?.date ? parseISOLocal(record.date) : null;
-                            const isWorking = targetDate ? isWorkingDay(targetDate, anchorDate) : true;
-                            const isDayOff = !isWorking;
-
-                            const displayedActual = actualValue !== null ? actualValue * multiplier : null;
-                            const displayedTarget = targetValue !== null ? targetValue * multiplier : 0;
-
-                            // Apply color styles only if actual production is recorded
-                            const performanceStyles = (actualValue !== null && targetValue !== null) 
-                              ? getCellStyles(actualValue, targetValue) 
-                              : {};
-
-                            // Final Background Logic: Recede scheduled off days
-                            let cellBg = performanceStyles.bg || 'transparent';
-                            if (isDayOff) {
-                              cellBg = 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))';
-                            }
-
-                            // Content Logic: Muted em-dash for empty off days
-                            const isInactiveOffDay = isDayOff && (actualValue === 0 || actualValue === null) && (targetValue === 0 || targetValue === null);
-                            const displayValue = isInactiveOffDay ? '—' : (displayedActual ?? '-');
-                            const textColor = isInactiveOffDay ? 'dimmed' : (performanceStyles.color || (actualValue === null ? 'gray.4' : 'black'));
-
-                            return (
-                              <Table.Td 
-                                key={day} 
-                                ta="center" 
-                                bg={cellBg} 
-                                p={0}
-                                className={`${isDayOff ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-gray-50'} transition-colors`}
-                                onClick={() => !isDayOff && record && handleCellClick(part.id, part.partNumber, part.shift, day, record)}
-                              >
-                                <Tooltip 
-                                  label={
-                                    <Stack gap={2}>
-                                      <Group gap="xs" justify="space-between">
-                                        <Text size="xs" fw={700}>Part: {part.partNumber} (Shift {part.shift})</Text>
-                                        {isDayOff && <Badge size="9px" variant="light" color="gray">Off Schedule</Badge>}
-                                      </Group>
-                                      <Text size="xs">Actual: {displayedActual ?? 'Not recorded'}</Text>
-                                      <Text size="xs">Target: {displayedTarget ?? 0}</Text>
-                                      {record?.reasonCode && (
-                                        <Text size="xs" c="orange.7" fw={600}>Reason: {record.reasonCode}</Text>
-                                      )}
-                                      {!isDayOff && <Text size="xs" c="indigo.4" mt={4} fw={700}>Click to Record Actual</Text>}
-                                      {isDayOff && <Text size="xs" c="red.4" mt={4} fw={700}>Off Schedule - Entry Locked</Text>}
-                                    </Stack>
-                                  }
-                                  withArrow
-                                  position="top"
-                                >
-                                  <Box py="xs" px="xs">
-                                    <Text size="sm" fw={performanceStyles.fw || 500} c={textColor}>
-                                      {displayValue}
-                                    </Text>
-                                    <Text size="10px" c="dimmed">Tgt: {displayedTarget ?? 0}</Text>
-                                  </Box>
-                                </Tooltip>
-                              </Table.Td>
-                            );
-                          })}
-                          <Table.Td ta="center" bg="gray.1">
-                            <Text size="sm" fw={600}>{totalActual * multiplier}</Text>
-                          </Table.Td>
-                          <Table.Td ta="center" bg="gray.1">
-                            <Text size="sm" fw={600}>{totalTarget * multiplier}</Text>
-                          </Table.Td>
-                          <Table.Td ta="center" bg={gap < 0 ? 'red.0' : 'green.0'}>
-                            <Text size="sm" fw={600} c={gap < 0 ? 'red.8' : 'green.8'}>
-                              {gap > 0 ? `+${gap * multiplier}` : gap * multiplier}
-                            </Text>
-                          </Table.Td>
-                          <Table.Td ta="center" bg={part.rollingGap < 0 ? 'red.0' : 'green.0'}>
-                            <Text size="sm" fw={600} c={part.rollingGap < 0 ? 'red.8' : 'green.8'}>
-                              {part.rollingGap > 0 ? `+${part.rollingGap * multiplier}` : part.rollingGap * multiplier}
-                            </Text>
-                          </Table.Td>
-                        </Table.Tr>
-                      );
-                    })}
-                  </React.Fragment>
-                );
-              })}
-              {groupedParts.length === 0 && (
-                <Table.Tr>
-                  <Table.Td colSpan={11} ta="center" py="xl">
-                    <Text c="dimmed">No parts tracked for this week yet.</Text>
-                  </Table.Td>
-                </Table.Tr>
+                  </Table.Tfoot>
+                </Table>
+              ) : (
+                <Text c="dimmed" ta="center" py="xl">No work week selected or no data available.</Text>
               )}
-            </Table.Tbody>
-            <Table.Tfoot 
-              className="sticky bottom-0 z-10 bg-gray-50 shadow-[0_-2px_4px_rgba(0,0,0,0.05)]"
-              style={{ borderTop: '2px solid var(--mantine-color-gray-3)' }}
-            >
-              <Table.Tr fw={800}>
-                <Table.Td>
-                  <Text size="sm" fw={800}>GRAND TOTAL ({displayUnit === 'batches' ? 'Batches' : 'Pieces'})</Text>
-                </Table.Td>
-                <Table.Td ta="center">
-                  <Badge variant="filled" size="xs" color="indigo">TOTALS</Badge>
-                </Table.Td>
-                {calculatedTotals.daily.map((day, idx) => (
-                  <Table.Td key={idx} ta="center">
-                    <Box py="xs" px="xs">
-                      <Text size="sm" fw={800}>{day.actual.toLocaleString()}</Text>
-                      <Text size="10px" c="dimmed">Tgt: {day.target.toLocaleString()}</Text>
-                    </Box>
-                  </Table.Td>
-                ))}
-                <Table.Td ta="center" bg="indigo.0">
-                  <Text size="sm" fw={900}>{calculatedTotals.totalActual.toLocaleString()}</Text>
-                </Table.Td>
-                <Table.Td ta="center" bg="indigo.0">
-                  <Text size="sm" fw={900}>{calculatedTotals.totalTarget.toLocaleString()}</Text>
-                </Table.Td>
-                <Table.Td ta="center" bg={calculatedTotals.gap < 0 ? 'red.0' : 'green.0'}>
-                  <Text size="sm" fw={900} c={calculatedTotals.gap < 0 ? 'red.9' : 'green.9'}>
-                    {calculatedTotals.gap > 0 ? `+${calculatedTotals.gap.toLocaleString()}` : calculatedTotals.gap.toLocaleString()}
-                  </Text>
-                </Table.Td>
-                <Table.Td ta="center" bg={calculatedTotals.rollingGap < 0 ? 'red.0' : 'green.0'}>
-                  <Text size="sm" fw={900} c={calculatedTotals.rollingGap < 0 ? 'red.9' : 'green.9'}>
-                    {calculatedTotals.rollingGap > 0 ? `+${calculatedTotals.rollingGap.toLocaleString()}` : calculatedTotals.rollingGap.toLocaleString()}
-                  </Text>
-                </Table.Td>
-              </Table.Tr>
-            </Table.Tfoot>
-          </Table>
-        ) : (
-          <Text c="dimmed" ta="center" py="xl">No work week selected or no data available.</Text>
-        )}
-            </Box>
-          </Box>
-        </Stack>
-      </Paper>
+                </Box>
+              </Stack>
+            </Paper>
+          </Stack>
+        </Grid.Col>
 
-      {activeDepartment && activeWeek && editingEntry && (
-        <EditEntryModal
-          opened={editModalOpened}
-          onClose={() => setEditModalOpened(false)}
-          departmentName={activeDepartment.departmentName}
-          weekId={activeWeek.weekId}
-          weekLabel={activeWeek.weekLabel}
-          partNumber={editingEntry.partNumber}
-          shift={editingEntry.shift}
-          rowId={editingEntry.rowId}
-          dayOfWeek={editingEntry.dayOfWeek}
-          initialData={editingEntry.record}
-        />
-      )}
-
-      <ShiftProductionEntryModal
-        opened={shiftModalOpened}
-        onClose={() => setShiftModalOpened(false)}
-        onSuccess={() => {
-          // Refresh scorecard data after submission
-        }}
-      />
-
-      {activeTab && (
-        <Tabs defaultValue="pareto" mt="xl" variant="outline">
-          <Tabs.List>
-            <Tabs.Tab value="pareto" leftSection={<IconChartBar size={16} />}>Loss Pareto</Tabs.Tab>
-            <Tabs.Tab value="attainment" leftSection={<IconTarget size={16} />}>Shift Attainment</Tabs.Tab>
-          </Tabs.List>
-
-          <Tabs.Panel value="pareto">
-            <DeliveryLossPareto 
-              weekData={activeWeek}
-              departmentName={activeTab}
+        {/* ═══════ GROUP B: Charts Container (Right in widescreen) ═══════ */}
+        <Grid.Col span={isWidescreen ? { base: 12, lg: 5 } : 12}>
+          {activeDepartment && activeWeek && editingEntry && (
+            <EditEntryModal
+              opened={editModalOpened}
+              onClose={() => setEditModalOpened(false)}
+              departmentName={activeDepartment.departmentName}
+              weekId={activeWeek.weekId}
+              weekLabel={activeWeek.weekLabel}
+              partNumber={editingEntry.partNumber}
+              shift={editingEntry.shift}
+              rowId={editingEntry.rowId}
+              dayOfWeek={editingEntry.dayOfWeek}
+              initialData={editingEntry.record}
             />
-          </Tabs.Panel>
+          )}
 
-          <Tabs.Panel value="attainment">
-            <ShiftAttainmentChart 
-              weekData={activeWeek}
-              departmentName={activeTab}
-            />
-          </Tabs.Panel>
-        </Tabs>
-      )}
+          <ShiftProductionEntryModal
+            opened={shiftModalOpened}
+            onClose={() => setShiftModalOpened(false)}
+            onSuccess={() => {
+              // Refresh scorecard data after submission
+            }}
+          />
+
+          {activeTab && (
+            <Tabs defaultValue="pareto" variant="outline">
+              <Tabs.List>
+                <Tabs.Tab value="pareto" leftSection={<IconChartBar size={16} />}>Loss Pareto</Tabs.Tab>
+                <Tabs.Tab value="attainment" leftSection={<IconTarget size={16} />}>Shift Attainment</Tabs.Tab>
+              </Tabs.List>
+
+              <Tabs.Panel value="pareto">
+                <DeliveryLossPareto 
+                  weekData={activeWeek}
+                  departmentName={activeTab}
+                  compact={isWidescreen}
+                />
+              </Tabs.Panel>
+
+              <Tabs.Panel value="attainment">
+                <ShiftAttainmentChart 
+                  weekData={activeWeek}
+                  departmentName={activeTab}
+                  compact={isWidescreen}
+                />
+              </Tabs.Panel>
+            </Tabs>
+          )}
+        </Grid.Col>
+      </Grid>
     </Stack>
   );
 }

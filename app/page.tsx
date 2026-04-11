@@ -22,7 +22,7 @@ import { PipelineDataPreview } from '@/components/PipelineDataPreview';
 import { PlanDataPreview } from '@/components/PlanDataPreview';
 import EquipmentScheduler from '@/components/EquipmentScheduler';
 import EquipmentManagement from '@/components/EquipmentManagement';
-import { useFullscreen } from '@mantine/hooks';
+import { useFullscreen, useLocalStorage } from '@mantine/hooks';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { invoke } from '@tauri-apps/api/core';
@@ -62,6 +62,13 @@ export default function ProductionForecaster() {
   const [mainTab, setMainTab] = useState<string>('scorecard-dash');
 
   const { toggle: toggleFullscreen, fullscreen, ref: tableRef } = useFullscreen<HTMLDivElement>();
+
+  const [layoutMode] = useLocalStorage<'stacked' | 'widescreen'>({
+    key: 'dashboard-layout-mode',
+    defaultValue: 'stacked',
+  });
+
+  const isFluidLayout = layoutMode === 'widescreen' && mainTab === 'scorecard-dash';
 
   const requestSort = (key: string) => {
     let direction: 'asc' | 'desc' = 'asc';
@@ -550,7 +557,10 @@ export default function ProductionForecaster() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans p-4 md:p-8 transition-colors duration-300">
-      <div className="max-w-7xl mx-auto space-y-6">
+      <div className={cn(
+        "mx-auto space-y-6 transition-all duration-300",
+        isFluidLayout ? "max-w-full px-4" : "max-w-7xl"
+      )}>
         <header className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800">
           <div>
             <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50 tracking-tight">Production Manager</h1>
