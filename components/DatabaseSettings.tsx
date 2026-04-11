@@ -85,7 +85,7 @@ interface ReasonCodeData {
   reasonCode?: string;
 }
 
-export function DatabaseSettings() {
+export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'planner' }) {
   const fetchGlobalProcesses = useProcessStore((state) => state.fetchProcesses);
   const globalProcesses = useProcessStore((state) => state.processes);
   const shiftSettings = useScorecardStore((state) => state.shiftSettings);
@@ -1143,7 +1143,8 @@ export function DatabaseSettings() {
         </Stack>
       </Card>
 
-      <Card shadow="sm" p="lg" radius="md" withBorder>
+      {roleMode === 'planner' && (
+        <Card shadow="sm" p="lg" radius="md" withBorder>
         <Stack gap="md">
           <Group justify="space-between">
             <Group gap="xs">
@@ -1263,7 +1264,8 @@ export function DatabaseSettings() {
             </Tabs.Panel>
           </Tabs>
         </Stack>
-      </Card>
+        </Card>
+      )}
     </Stack>
   );
 }

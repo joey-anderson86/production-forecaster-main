@@ -7,12 +7,12 @@ import {
   AlertCircle, CheckCircle2, BarChart3, Info,
   DownloadCloud, Search, Filter, Columns,
   Maximize, Minimize, LayoutList,
-  ArrowUpDown, ArrowUp, ArrowDown
+  ArrowUpDown, ArrowUp, ArrowDown, Shield, User
 } from 'lucide-react';
 import {
   TextInput, ActionIcon, Group, Tooltip,
   Menu, Button, Stack, Text, Box, Slider, Modal, Tabs,
-  Popover, MultiSelect, Badge
+  Popover, MultiSelect, Badge, SegmentedControl, Center
 } from '@mantine/core';
 import { ColorSchemeToggle } from '@/components/ColorSchemeToggle';
 import DeliveryScorecardManagement from '@/components/DeliveryScorecardManagement';
@@ -22,7 +22,8 @@ import { PipelineDataPreview } from '@/components/PipelineDataPreview';
 import { PlanDataPreview } from '@/components/PlanDataPreview';
 import EquipmentScheduler from '@/components/EquipmentScheduler';
 import EquipmentManagement from '@/components/EquipmentManagement';
-import { useFullscreen, useLocalStorage } from '@mantine/hooks';
+import { PlannerAuthModal } from '@/components/PlannerAuthModal';
+import { useFullscreen, useLocalStorage, useDisclosure } from '@mantine/hooks';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { invoke } from '@tauri-apps/api/core';
@@ -60,6 +61,13 @@ export default function ProductionForecaster() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const [mainTab, setMainTab] = useState<string>('scorecard-dash');
+
+  const [roleMode, setRoleMode] = useLocalStorage<'supervisor' | 'planner'>({
+    key: 'app-role-mode',
+    defaultValue: 'supervisor',
+  });
+
+  const [authModalOpened, { open: openAuthModal, close: closeAuthModal }] = useDisclosure(false);
 
   const { toggle: toggleFullscreen, fullscreen, ref: tableRef } = useFullscreen<HTMLDivElement>();
 
@@ -566,7 +574,39 @@ export default function ProductionForecaster() {
             <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50 tracking-tight">Production Manager</h1>
             <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Production Management and Planning Tool</p>
           </div>
-          <Group align="center" gap="md">
+          <Group align="center" gap="xl">
+            <SegmentedControl
+              value={roleMode}
+              onChange={(value) => {
+                if (value === 'planner') {
+                  openAuthModal();
+                } else {
+                  setRoleMode('supervisor');
+                }
+              }}
+              data={[
+                {
+                  value: 'supervisor',
+                  label: (
+                    <Center style={{ gap: 10 }}>
+                      <User size={16} />
+                      <span>Supervisor</span>
+                    </Center>
+                  ),
+                },
+                {
+                  value: 'planner',
+                  label: (
+                    <Center style={{ gap: 10 }}>
+                      <Shield size={16} />
+                      <span>Planner</span>
+                    </Center>
+                  ),
+                },
+              ]}
+              color="indigo"
+              radius="md"
+            />
             <ColorSchemeToggle />
             <BarChart3 className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
           </Group>
@@ -576,9 +616,13 @@ export default function ProductionForecaster() {
           <Tabs value={mainTab} onChange={(val) => setMainTab(val as string)} variant="pills" color="indigo" radius="md">
             <Tabs.List>
               <Tabs.Tab value="scorecard-dash">Delivery Dashboard</Tabs.Tab>
-              <Tabs.Tab value="scorecard-mgmt">Production Planner</Tabs.Tab>
+              {roleMode === 'planner' && (
+                <>
+                  <Tabs.Tab value="scorecard-mgmt">Production Planner</Tabs.Tab>
+                  <Tabs.Tab value="equipment-mgmt">Equipment Management</Tabs.Tab>
+                </>
+              )}
               {/*<Tabs.Tab value="production-board">Production Board</Tabs.Tab>*/}
-              <Tabs.Tab value="equipment-mgmt">Equipment Management</Tabs.Tab>
               {/*<Tabs.Tab value="forecaster">Production Forecaster</Tabs.Tab>*/}
               <Tabs.Tab value="settings">Settings</Tabs.Tab>
             </Tabs.List>
@@ -1096,13 +1140,13 @@ export default function ProductionForecaster() {
           </>
         )}
 
-        {mainTab === 'scorecard-mgmt' && (
+        {mainTab === 'scorecard-mgmt' && roleMode === 'planner' && (
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
             <DeliveryScorecardManagement />
           </div>
         )}
 
-        {mainTab === 'equipment-mgmt' && (
+        {mainTab === 'equipment-mgmt' && roleMode === 'planner' && (
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
             <EquipmentManagement />
           </div>
@@ -1122,13 +1166,33 @@ export default function ProductionForecaster() {
 
         {mainTab === 'settings' && (
           <div className="max-w-7xl mx-auto w-full mt-4 space-y-8">
-            <DatabaseSettings />
-            <PipelineDataPreview />
-            <PlanDataPreview />
+            <DatabaseSettings roleMode={roleMode} />
+            {roleMode === 'planner' && (
+              <>
+                <PipelineDataPreview />
+                <PlanDataPreview />
+              </>
+            )}
+            {roleMode === 'supervisor' && (
+              <Box className="bg-white dark:bg-slate-900 rounded-2xl p-8 border border-slate-200 dark:border-slate-800 text-center">
+                <Shield className="w-8 h-8 text-slate-300 mx-auto mb-3" />
+                <Text fw={600} size="md">Advanced Data Previews Restricted</Text>
+                <Text c="dimmed" size="xs" mt="xs">Pipeline and Plan data previews require Planner Mode. Switch in the header to unlock.</Text>
+                <Button variant="light" color="indigo" size="xs" mt="md" onClick={openAuthModal}>Unlock All Previews</Button>
+              </Box>
+            )}
           </div>
         )}
       </div>
 
+      <PlannerAuthModal
+        opened={authModalOpened}
+        onClose={closeAuthModal}
+        onSuccess={() => {
+          setRoleMode('planner');
+          closeAuthModal();
+        }}
+      />
     </div>
   );
 }
