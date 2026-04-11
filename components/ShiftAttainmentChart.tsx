@@ -8,7 +8,7 @@ import {
 import { BarChart } from '@mantine/charts';
 import { IconTarget, IconInfoCircle } from '@tabler/icons-react';
 import { WeeklyScorecard } from '@/lib/scorecardStore';
-import { calculateShiftAttainment } from '@/lib/attainmentUtils';
+import { useAttainmentMath } from '@/lib/hooks/useAttainmentMath';
 
 interface ShiftAttainmentChartProps {
   weekData?: WeeklyScorecard | null;
@@ -18,7 +18,7 @@ interface ShiftAttainmentChartProps {
 export function ShiftAttainmentChart({ weekData, departmentName }: ShiftAttainmentChartProps) {
   const theme = useMantineTheme();
   
-  const attainmentData = useMemo(() => calculateShiftAttainment(weekData || null), [weekData]);
+  const { cappedShiftAttainment: attainmentData } = useAttainmentMath(weekData?.parts);
 
   const hasData = attainmentData.some(d => d.attainment > 0);
 

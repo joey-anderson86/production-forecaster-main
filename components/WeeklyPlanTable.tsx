@@ -70,6 +70,8 @@ interface WeeklyPlanTableProps {
   processInfo?: ProcessInfoRecord[];
   partInfo?: PartInfoRecord[];
   displayUnit: ProductionDisplayUnit;
+  expandAllSignal?: number;
+  collapseAllSignal?: number;
 }
 
 export function distributeDemand(
@@ -451,6 +453,8 @@ export default function WeeklyPlanTable({
   processInfo,
   partInfo,
   displayUnit,
+  expandAllSignal,
+  collapseAllSignal,
 }: WeeklyPlanTableProps) {
   
   const shiftSettings = useScorecardStore(state => state.shiftSettings);
@@ -489,6 +493,19 @@ export default function WeeklyPlanTable({
       return next;
     });
   };
+
+  // Expand All / Collapse All via signal props
+  useEffect(() => {
+    if (expandAllSignal && expandAllSignal > 0) {
+      setExpandedParts(new Set(Object.keys(groupedParts)));
+    }
+  }, [expandAllSignal]);
+
+  useEffect(() => {
+    if (collapseAllSignal && collapseAllSignal > 0) {
+      setExpandedParts(new Set());
+    }
+  }, [collapseAllSignal]);
 
   const weekDates = useMemo(() => {
     try {
@@ -650,6 +667,29 @@ export default function WeeklyPlanTable({
     return metrics;
   }, [parts, partInfo, processInfo, department, weekDates, shiftSettings]);
 
+  const calculatedTotals = useMemo(() => {
+    const totals = {
+      daily: DAYS_OF_WEEK.map(() => 0),
+      grandTotal: 0
+    };
+
+    parts.forEach(part => {
+      const batchSize = batchSizeMap.get(part.partNumber) || 1;
+      const multiplier = displayUnit === 'pieces' ? batchSize : 1;
+      
+      part.dailyRecords.forEach((record) => {
+        const idx = DAYS_OF_WEEK.indexOf(record.dayOfWeek);
+        if (idx !== -1) {
+          const val = (record.target || 0) * multiplier;
+          totals.daily[idx] += val;
+          totals.grandTotal += val;
+        }
+      });
+    });
+
+    return totals;
+  }, [parts, displayUnit, batchSizeMap]);
+
   const handleLevelLoad = useCallback((childRows: PartScorecard[], totalDemand: number) => {
     // Find processing time for this specific part group
     const partNumber = childRows[0]?.partNumber;
@@ -775,6 +815,24 @@ export default function WeeklyPlanTable({
         </Table.Tbody>
 
         <Table.Tfoot>
+          <Table.Tr fw={700}>
+            <Table.Td colSpan={3}>
+              <Text size="sm" fw={800}>GRAND TOTAL ({displayUnit === 'batches' ? 'Batches' : 'Pieces'})</Text>
+            </Table.Td>
+            {calculatedTotals.daily.map((total, idx) => (
+              <Table.Td key={idx} ta="center" style={{ borderLeft: '1px solid var(--mantine-color-gray-2)' }}>
+                <Text fw={800} size="xs" c="indigo.9">
+                  {total.toLocaleString()}
+                </Text>
+              </Table.Td>
+            ))}
+            <Table.Td bg="indigo.1" style={{ borderLeft: '2px solid var(--mantine-color-indigo-2)' }}>
+              <Text fw={900} ta="center" size="sm" c="indigo.9">
+                {calculatedTotals.grandTotal.toLocaleString()}
+              </Text>
+            </Table.Td>
+            <Table.Td></Table.Td>
+          </Table.Tr>
           <Table.Tr bg="gray.0" style={{ borderTop: '2px solid var(--mantine-color-gray-3)' }}>
             <Table.Td colSpan={3}>
               <Group justify="flex-end" px="sm">

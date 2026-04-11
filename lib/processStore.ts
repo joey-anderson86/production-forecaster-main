@@ -33,7 +33,8 @@ export const useProcessStore = create<ProcessStore>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const data = await invoke<Process[]>('get_processes_preview', { connectionString });
-      set({ processes: data.map(p => p.processName), isLoading: false });
+      const distinctNames = Array.from(new Set(data.map(p => p.processName))).sort();
+      set({ processes: distinctNames, isLoading: false });
     } catch (err: any) {
       console.error('Failed to fetch processes:', err);
       set({ error: err.toString(), isLoading: false });

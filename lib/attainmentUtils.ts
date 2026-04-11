@@ -23,11 +23,13 @@ export function calculateShiftAttainment(weekData: WeeklyScorecard | null): Shif
     }
 
     part.dailyRecords.forEach(record => {
-      const actual = record.actual ?? 0;
+      const actual = record.actual;
       const target = record.target ?? 0;
 
-      // Exclude zero target records to prevent division by zero and irrelevant data
-      if (target > 0) {
+      // STRICT RULE: Only include day if actual is recorded (not null)
+      // This ensures WTD (Week-to-Date) attainment doesn't penalize 
+      // future days where production hasn't happened yet.
+      if (actual !== null && actual !== undefined && target > 0) {
         shiftTotals[shift].cappedActual += Math.min(actual, target);
         shiftTotals[shift].totalTarget += target;
       }

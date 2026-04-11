@@ -4,11 +4,13 @@ import React, { useState } from 'react';
 import { useLocalStorage } from '@mantine/hooks';
 import { useScorecardStore, DayOfWeek, DailyScorecardRecord, PartScorecard } from '@/lib/scorecardStore';
 import { 
-  Tabs, Select, Table, Card, Text, Group, Badge, Title, Box, Tooltip, Stack, Button, ActionIcon, Paper, SegmentedControl
+  Tabs, Select, Table, Card, Text, Group, Badge, Title, Box, Tooltip, Stack, Button, ActionIcon, Paper, SegmentedControl,
+  RingProgress, Divider as MantineDivider, TextInput
 } from '@mantine/core';
 import { 
   IconPlus, IconChevronDown, IconChevronRight, IconSearch, IconArrowsSort, 
-  IconSortAscending, IconSortDescending, IconChartBar, IconTarget, IconRefresh
+  IconSortAscending, IconSortDescending, IconChartBar, IconTarget, IconRefresh,
+  IconChevronsDown, IconChevronsUp, IconActivity, IconCalendar
 } from '@tabler/icons-react';
 import { EditEntryModal } from './EditEntryModal';
 import { ShiftProductionEntryModal } from './ShiftProductionEntryModal';
@@ -16,8 +18,8 @@ import { DeliveryLossPareto } from './DeliveryLossPareto';
 import { ShiftAttainmentChart } from './ShiftAttainmentChart';
 import { DAYS_OF_WEEK, getTodayNumeric, getWeekDates, isWorkingDay, parseISOLocal } from '@/lib/dateUtils';
 import { useProcessStore } from '@/lib/processStore';
-import { TextInput } from '@mantine/core';
 import { useProductionDisplayUnit } from '@/hooks/useProductionDisplayUnit';
+import { useAttainmentMath } from '@/lib/hooks/useAttainmentMath';
 
 
 
@@ -109,6 +111,14 @@ export default function DeliveryScorecardDisplay() {
     });
   };
 
+  const handleExpandAll = () => {
+    setExpandedParts(new Set(groupedParts.map(g => g.partNumber)));
+  };
+
+  const handleCollapseAll = () => {
+    setExpandedParts(new Set());
+  };
+
   // Edit Modal State
   const [editModalOpened, setEditModalOpened] = useState(false);
   const [editingEntry, setEditingEntry] = useState<{
@@ -151,6 +161,8 @@ export default function DeliveryScorecardDisplay() {
   }, [activeDepartment, selectedWeekId]);
 
   const activeWeek = activeDepartment && selectedWeekId ? activeDepartment.weeks[selectedWeekId] : null;
+
+  const attainmentMetrics = useAttainmentMath(activeWeek?.parts);
 
   const getCellStyles = (actual: number | null, target: number | null) => {
     if (actual === null || target === null) return {};
@@ -258,6 +270,29 @@ export default function DeliveryScorecardDisplay() {
      return results;
   }, [activeWeek, searchQuery, sortConfig, displayUnit, batchSizeMap]);
 
+  const calculatedTotals = React.useMemo(() => {
+    const totals = {
+      daily: DAYS_OF_WEEK.map(() => ({ actual: 0, target: 0 })),
+      totalActual: 0,
+      totalTarget: 0,
+      gap: 0,
+      rollingGap: 0
+    };
+
+    groupedParts.forEach(group => {
+      group.aggregatedRecords.forEach((record, idx) => {
+        totals.daily[idx].actual += record.actual || 0;
+        totals.daily[idx].target += record.target || 0;
+      });
+      totals.totalActual += group.totalActual;
+      totals.totalTarget += group.totalTarget;
+      totals.gap += group.gap;
+      totals.rollingGap += group.rollingGap;
+    });
+
+    return totals;
+  }, [groupedParts]);
+
   return (
     <Stack gap="md" className="w-full">
       <Group justify="space-between" align="center">
@@ -266,6 +301,18 @@ export default function DeliveryScorecardDisplay() {
           <Text c="dimmed" size="sm">Daily performance tracking and root cause analysis.</Text>
         </Stack>
         <Group>
+          <Group gap={4}>
+            <Tooltip label="Expand All Rows" withArrow position="bottom">
+              <ActionIcon variant="subtle" color="indigo" size="md" onClick={handleExpandAll}>
+                <IconChevronsDown size={18} />
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip label="Collapse All Rows" withArrow position="bottom">
+              <ActionIcon variant="subtle" color="indigo" size="md" onClick={handleCollapseAll}>
+                <IconChevronsUp size={18} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
           <SegmentedControl
             size="xs"
             value={displayUnit}
@@ -294,6 +341,90 @@ export default function DeliveryScorecardDisplay() {
           </Button>
         </Group>
       </Group>
+      
+      {activeWeek && (
+        <Card withBorder radius="md" p="lg" shadow="sm">
+          <Group justify="space-between" align="stretch">
+            <Stack gap="xs" style={{ flex: 1 }}>
+              <Group gap="xs">
+                <IconActivity size={20} color="var(--mantine-color-indigo-6)" />
+                <Text fw={700} size="sm" tt="uppercase" c="dimmed">Performance Scorecard</Text>
+              </Group>
+              
+              <Group gap="xl" mt="sm">
+                <Box>
+                  <RingProgress
+                    size={120}
+                    thickness={12}
+                    roundCaps
+                    sections={[{ value: attainmentMetrics.cumulativeWTD, color: attainmentMetrics.cumulativeWTD >= 85 ? 'green.6' : 'red.6' }]}
+                    label={
+                      <Stack gap={0} align="center">
+                        <Text ta="center" fw={800} size="xl" style={{ lineHeight: 1 }}>
+                          {attainmentMetrics.cumulativeWTD}%
+                        </Text>
+                        <Text ta="center" size="xs" c="dimmed" fw={700}>WTD</Text>
+                      </Stack>
+                    }
+                  />
+                </Box>
+                
+                <Stack gap={4} justify="center">
+                  <Title order={3} style={{ lineHeight: 1 }}>Cumulative Week-to-Date</Title>
+                  <Text size="sm" c="dimmed" maw={300}>
+                    Strict attainment logic excluding future shifts. Goal: <strong>85%</strong>.
+                  </Text>
+                  <Group gap="xs" mt={4}>
+                    <Badge variant="light" color={attainmentMetrics.cumulativeWTD >= 85 ? 'green' : 'red'} size="sm">
+                      {attainmentMetrics.cumulativeWTD >= 85 ? 'On Track' : 'Below Target'}
+                    </Badge>
+                    <Text size="xs" c="dimmed">Based on recorded shifts only</Text>
+                  </Group>
+                </Stack>
+
+                <MantineDivider orientation="vertical" />
+
+                <Box style={{ flex: 1 }}>
+                  <Group gap="xs" mb="xs">
+                    <IconCalendar size={16} color="var(--mantine-color-gray-6)" />
+                    <Text size="xs" fw={700} c="dimmed">DAILY ATTAINMENT BREAKDOWN</Text>
+                  </Group>
+                  <Group gap="sm" wrap="nowrap">
+                    {DAYS_OF_WEEK.map((day, idx) => {
+                      const score = attainmentMetrics.dailyAttainments[idx];
+                      const isRecorded = score !== null;
+                      
+                      return (
+                        <Paper 
+                          key={day} 
+                          withBorder 
+                          p="xs" 
+                          radius="sm" 
+                          style={{ 
+                            flex: 1, 
+                            textAlign: 'center',
+                            backgroundColor: !isRecorded ? 'var(--mantine-color-gray-0)' : 'transparent',
+                            opacity: !isRecorded ? 0.6 : 1
+                          }}
+                        >
+                          <Text size="10px" fw={800} c="dimmed" mb={2}>{day.toUpperCase()}</Text>
+                          <Text 
+                            size="sm" 
+                            fw={800} 
+                            c={!isRecorded ? 'gray.4' : (score >= 85 ? 'green.7' : 'red.7')}
+                          >
+                            {isRecorded ? `${Math.round(score)}%` : '—'}
+                          </Text>
+                        </Paper>
+                      );
+                    })}
+                  </Group>
+                </Box>
+              </Group>
+            </Stack>
+          </Group>
+        </Card>
+      )}
 
       <Paper withBorder p="sm" radius="md" className="bg-gray-50/30">
         <Stack gap="md">
@@ -609,6 +740,43 @@ export default function DeliveryScorecardDisplay() {
                 </Table.Tr>
               )}
             </Table.Tbody>
+            <Table.Tfoot 
+              className="sticky bottom-0 z-10 bg-gray-50 shadow-[0_-2px_4px_rgba(0,0,0,0.05)]"
+              style={{ borderTop: '2px solid var(--mantine-color-gray-3)' }}
+            >
+              <Table.Tr fw={800}>
+                <Table.Td>
+                  <Text size="sm" fw={800}>GRAND TOTAL ({displayUnit === 'batches' ? 'Batches' : 'Pieces'})</Text>
+                </Table.Td>
+                <Table.Td ta="center">
+                  <Badge variant="filled" size="xs" color="indigo">TOTALS</Badge>
+                </Table.Td>
+                {calculatedTotals.daily.map((day, idx) => (
+                  <Table.Td key={idx} ta="center">
+                    <Box py="xs" px="xs">
+                      <Text size="sm" fw={800}>{day.actual.toLocaleString()}</Text>
+                      <Text size="10px" c="dimmed">Tgt: {day.target.toLocaleString()}</Text>
+                    </Box>
+                  </Table.Td>
+                ))}
+                <Table.Td ta="center" bg="indigo.0">
+                  <Text size="sm" fw={900}>{calculatedTotals.totalActual.toLocaleString()}</Text>
+                </Table.Td>
+                <Table.Td ta="center" bg="indigo.0">
+                  <Text size="sm" fw={900}>{calculatedTotals.totalTarget.toLocaleString()}</Text>
+                </Table.Td>
+                <Table.Td ta="center" bg={calculatedTotals.gap < 0 ? 'red.0' : 'green.0'}>
+                  <Text size="sm" fw={900} c={calculatedTotals.gap < 0 ? 'red.9' : 'green.9'}>
+                    {calculatedTotals.gap > 0 ? `+${calculatedTotals.gap.toLocaleString()}` : calculatedTotals.gap.toLocaleString()}
+                  </Text>
+                </Table.Td>
+                <Table.Td ta="center" bg={calculatedTotals.rollingGap < 0 ? 'red.0' : 'green.0'}>
+                  <Text size="sm" fw={900} c={calculatedTotals.rollingGap < 0 ? 'red.9' : 'green.9'}>
+                    {calculatedTotals.rollingGap > 0 ? `+${calculatedTotals.rollingGap.toLocaleString()}` : calculatedTotals.rollingGap.toLocaleString()}
+                  </Text>
+                </Table.Td>
+              </Table.Tr>
+            </Table.Tfoot>
           </Table>
         ) : (
           <Text c="dimmed" ta="center" py="xl">No work week selected or no data available.</Text>

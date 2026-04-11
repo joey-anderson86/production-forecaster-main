@@ -41,7 +41,7 @@ import {
   IconCalendar,
   IconInfoCircle,
 } from "@tabler/icons-react";
-import { getCurrentWeekId } from "@/lib/dateUtils";
+import { getCurrentWeekId, parseISOLocal } from "@/lib/dateUtils";
 import { useProcessStore } from "@/lib/processStore";
 import { useScorecardStore } from "@/lib/scorecardStore";
 
@@ -687,7 +687,7 @@ export function DatabaseSettings() {
 
   const parseOrNull = (isoStr: string | undefined): Date | null => {
     if (!isoStr) return null;
-    const d = new Date(isoStr);
+    const d = parseISOLocal(isoStr);
     return isNaN(d.getTime()) ? null : d;
   };
 

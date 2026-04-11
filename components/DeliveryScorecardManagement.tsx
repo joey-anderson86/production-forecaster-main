@@ -3,14 +3,15 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { 
   Tabs, Select, Button, TextInput, NumberInput, Card, Grid, Group, Text, 
-  ActionIcon, Divider, Box, Badge, Tooltip as MantineTooltip, Stack, Modal, Switch, Paper, Title, SegmentedControl
+  ActionIcon, Divider, Box, Badge, Tooltip as MantineTooltip, Tooltip, Stack, Modal, Switch, Paper, Title, SegmentedControl
 } from '@mantine/core';
 import { useLocalStorage } from '@mantine/hooks';
 import { 
   IconPlus, IconTrash, 
   IconUpload, IconX, IconDatabase, 
   IconRefresh,
-  IconCloudCheck, IconCloudDownload, IconAlertTriangle
+  IconCloudCheck, IconCloudDownload, IconAlertTriangle,
+  IconChevronsDown, IconChevronsUp
 } from '@tabler/icons-react';
 import { useScorecardStore, DayOfWeek, PartScorecard, BulkImportGroup } from '@/lib/scorecardStore';
 import WeeklyPlanTable from './WeeklyPlanTable';
@@ -53,6 +54,8 @@ export default function DeliveryScorecardManagement() {
   const [newWeekId, setNewWeekId] = useState('');
   const [copySourceWeekId, setCopySourceWeekId] = useState<string | null>('none');
   const [isSubmittingWeek, setIsSubmittingWeek] = useState(false);
+  const [expandAllSignal, setExpandAllSignal] = useState(0);
+  const [collapseAllSignal, setCollapseAllSignal] = useState(0);
 
   const derivedWeekLabel = React.useMemo(() => generateWeekLabel(newWeekId), [newWeekId]);
 
@@ -482,6 +485,18 @@ export default function DeliveryScorecardManagement() {
         <Title order={2}>Production Planner</Title>
         <Group>
           <SyncStatusIndicator />
+          <Group gap={4}>
+            <Tooltip label="Expand All Rows" withArrow position="bottom">
+              <ActionIcon variant="subtle" color="indigo" size="md" onClick={() => setExpandAllSignal(s => s + 1)}>
+                <IconChevronsDown size={18} />
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip label="Collapse All Rows" withArrow position="bottom">
+              <ActionIcon variant="subtle" color="indigo" size="md" onClick={() => setCollapseAllSignal(s => s + 1)}>
+                <IconChevronsUp size={18} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
           <SegmentedControl
             size="xs"
             value={displayUnit}
@@ -564,6 +579,8 @@ export default function DeliveryScorecardManagement() {
               onUpdateRecord={coreHandleUpdateRecord}
               onBatchUpdateRecords={handleBatchUpdateRecords}
               displayUnit={displayUnit}
+              expandAllSignal={expandAllSignal}
+              collapseAllSignal={collapseAllSignal}
               onRemovePart={async (rowId: string) => {
                 const confirmed = await ask("Are you sure you want to remove this row? This will also delete it from the database.", {
                   title: 'Confirm Deletion',

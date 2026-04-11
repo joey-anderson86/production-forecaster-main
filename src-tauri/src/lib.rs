@@ -1208,7 +1208,7 @@ async fn replace_daily_rates(
 async fn get_processes_preview(connection_string: String) -> Result<Vec<Process>, String> {
     let mut client = create_client(&connection_string).await?;
     let stream = client
-        .query("SELECT Process, MachineID FROM dbo.Process", &[])
+        .query("SELECT LTRIM(RTRIM(Process)) as Process, MachineID FROM dbo.Process", &[])
         .await
         .map_err(|e| e.to_string())?;
     let rows = stream
@@ -1430,7 +1430,7 @@ async fn get_machines_by_process(
 async fn get_processes(connection_string: String) -> Result<Vec<String>, String> {
     let mut client = create_client(&connection_string).await?;
     let stream = client
-        .query("SELECT DISTINCT [Process] FROM dbo.Process WHERE [Process] IS NOT NULL ORDER BY [Process]", &[])
+        .query("SELECT DISTINCT LTRIM(RTRIM([Process])) as [Process] FROM dbo.Process WHERE [Process] IS NOT NULL ORDER BY [Process]", &[])
         .await
         .map_err(|e| e.to_string())?;
     let rows = stream

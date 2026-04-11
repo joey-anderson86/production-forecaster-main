@@ -33,6 +33,8 @@ import {
   IconChevronDown,
   IconCalculator,
   IconAlertCircle,
+  IconChevronsDown,
+  IconChevronsUp,
 } from '@tabler/icons-react';
 import { 
   DayOfWeek, 
@@ -507,6 +509,14 @@ export function EquipmentManagement() {
     setExpandedMachines(next);
   };
 
+  const handleExpandAll = () => {
+    setExpandedMachines(new Set(schedules.map(m => m.id)));
+  };
+
+  const handleCollapseAll = () => {
+    setExpandedMachines(new Set());
+  };
+
   const handleUpdateShiftHour = (
     machineId: string,
     shift: 'A' | 'B' | 'C' | 'D',
@@ -666,6 +676,18 @@ export function EquipmentManagement() {
       <Group justify="space-between">
         <Title order={2}>Equipment Management</Title>
         <Group>
+          <Group gap={4}>
+            <Tooltip label="Expand All Rows" withArrow position="bottom">
+              <ActionIcon variant="subtle" color="blue" size="md" onClick={handleExpandAll}>
+                <IconChevronsDown size={18} />
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip label="Collapse All Rows" withArrow position="bottom">
+              <ActionIcon variant="subtle" color="blue" size="md" onClick={handleCollapseAll}>
+                <IconChevronsUp size={18} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
           <Button 
             variant="light" 
             leftSection={<IconDatabase size={16} />} 
