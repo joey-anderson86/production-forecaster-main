@@ -62,7 +62,7 @@ interface WeeklyPlanTableProps {
   availableParts: string[];
   onUpdateRecord: (rowId: string, day: DayOfWeek, field: 'target', value: number | null) => void;
   onBatchUpdateRecords?: (updates: { rowId: string, day: DayOfWeek, field: 'target' | 'actual', value: number | null }[]) => void;
-  onRemovePart: (rowId: string) => void;
+  onRemovePartGroup: (groupKey: string) => void;
   onUpdatePartIdentity: (rowId: string, updates: { partNumber?: string, shift?: string }) => void;
   onUpdatePartGroupIdentity: (groupId: string, partNumber: string) => void;
   onAddPart: (partNumber: string, shift: string) => void;
@@ -173,6 +173,7 @@ const ParentRow = ({
   onUpdatePartGroupIdentity,
   onUpdatePartIdentity,
   onLevelLoad,
+  onRemovePartGroup,
   displayUnit,
   batchSize,
 }: { 
@@ -184,6 +185,7 @@ const ParentRow = ({
   onUpdatePartGroupIdentity: WeeklyPlanTableProps['onUpdatePartGroupIdentity'];
   onUpdatePartIdentity: WeeklyPlanTableProps['onUpdatePartIdentity'];
   onLevelLoad?: (childRows: PartScorecard[], totalDemand: number) => void;
+  onRemovePartGroup: (groupKey: string) => void;
   displayUnit: ProductionDisplayUnit;
   batchSize: number;
 }) => {
@@ -306,10 +308,26 @@ const ParentRow = ({
           {displayedGrandTotal.toLocaleString()}
         </Text>
       </Table.Td>
-      <Table.Td></Table.Td>
-    </Table.Tr>
-  );
-};
+        <Table.Td style={{ width: 50 }}>
+          <Group justify="center" wrap="nowrap">
+            <Tooltip label="Remove Part Group" position="left" withArrow>
+              <ActionIcon 
+                variant="subtle" 
+                color="red" 
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRemovePartGroup(partNumber || childRows[0].groupId || 'Unassigned');
+                }}
+              >
+                <IconTrash size={14} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
+        </Table.Td>
+      </Table.Tr>
+    );
+  };
 
 /**
  * Highly optimized individual row component for individual shift data entry.
@@ -317,7 +335,6 @@ const ParentRow = ({
 const PlanRow = memo(({ 
   part, 
   onUpdateRecord, 
-  onRemovePart,
   onUpdatePartIdentity,
   weekDates,
   shiftSettings,
@@ -326,7 +343,6 @@ const PlanRow = memo(({
 }: { 
   part: PartScorecard;
   onUpdateRecord: WeeklyPlanTableProps['onUpdateRecord'];
-  onRemovePart: WeeklyPlanTableProps['onRemovePart'];
   onUpdatePartIdentity: WeeklyPlanTableProps['onUpdatePartIdentity'];
   weekDates: Date[];
   shiftSettings: Record<string, string>;
@@ -434,18 +450,7 @@ const PlanRow = memo(({
         </Text>
       </Table.Td>
 
-      <Table.Td style={{ width: 50 }}>
-        <Tooltip label="Remove Row" position="left" withArrow>
-          <ActionIcon 
-            variant="subtle" 
-            color="red" 
-            size="sm"
-            onClick={() => onRemovePart(part.id)}
-          >
-            <IconTrash size={14} />
-          </ActionIcon>
-        </Tooltip>
-      </Table.Td>
+      <Table.Td style={{ width: 50 }} />
     </Table.Tr>
   );
 });
@@ -459,7 +464,7 @@ export default function WeeklyPlanTable({
   availableParts,
   onUpdateRecord,
   onBatchUpdateRecords,
-  onRemovePart,
+  onRemovePartGroup,
   onUpdatePartIdentity,
   onUpdatePartGroupIdentity,
   processInfo,
@@ -789,6 +794,7 @@ export default function WeeklyPlanTable({
                 onUpdatePartGroupIdentity={onUpdatePartGroupIdentity}
                 onUpdatePartIdentity={onUpdatePartIdentity}
                 onLevelLoad={handleLevelLoad}
+                onRemovePartGroup={onRemovePartGroup}
                 displayUnit={displayUnit}
                 batchSize={batchSizeMap.get(childRows[0].partNumber) || 1}
               />
@@ -803,7 +809,6 @@ export default function WeeklyPlanTable({
                       key={part.id}
                       part={part}
                       onUpdateRecord={onUpdateRecord}
-                      onRemovePart={onRemovePart}
                       onUpdatePartIdentity={onUpdatePartIdentity}
                       weekDates={weekDates}
                       shiftSettings={shiftSettings}

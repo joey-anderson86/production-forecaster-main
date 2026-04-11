@@ -35,7 +35,13 @@ import {
   IconAlertCircle,
   IconChevronsDown,
   IconChevronsUp,
+  IconCalendarOff,
+  IconDatabaseX,
+  IconTrash
 } from '@tabler/icons-react';
+import { modals } from '@mantine/modals';
+import { notifications } from '@mantine/notifications';
+import { useGlobalWeek } from './WeekContext';
 import {
   DayOfWeek,
   DAYS_OF_WEEK,
@@ -194,6 +200,7 @@ const ShiftRow = ({
           {rowTotal}h
         </Text>
       </Table.Td>
+      <Table.Td style={{ width: 50 }} />
     </Table.Tr>
   );
 };
@@ -205,6 +212,7 @@ const MachineRow = ({
   isExpanded,
   onToggle,
   onUpdateShiftHour,
+  onDelete,
   weekDates,
   shiftSettings,
 }: {
@@ -212,6 +220,7 @@ const MachineRow = ({
   isExpanded: boolean;
   onToggle: () => void;
   onUpdateShiftHour: (shift: 'A' | 'B' | 'C' | 'D', day: DayOfWeek, value: number | null) => void;
+  onDelete: (machineId: string) => void;
   weekDates: Date[];
   shiftSettings: Record<string, string>;
 }) => {
@@ -269,6 +278,23 @@ const MachineRow = ({
           <Text fw={800} ta="center" size="sm" c="blue.9">
             {weeklyTotal}h
           </Text>
+        </Table.Td>
+        <Table.Td style={{ width: 50 }}>
+          <Group justify="center" wrap="nowrap">
+            <Tooltip label="Remove Equipment" position="left" withArrow>
+              <ActionIcon 
+                variant="subtle" 
+                color="red" 
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(schedule.machineId);
+                }}
+              >
+                <IconTrash size={14} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
         </Table.Td>
       </Table.Tr>
       {isExpanded && schedule.shifts.map((s) => (
@@ -409,7 +435,7 @@ export function EquipmentManagement() {
   const [schedules, setSchedules] = useState<MachineSchedule[]>([]);
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const [expandedMachines, setExpandedMachines] = useState<Set<string>>(new Set());
-  const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
+  const { selectedWeekId: selectedWeek, setSelectedWeekId: setSelectedWeek } = useGlobalWeek();
 
   const [processes, setProcesses] = useState<string[]>([]);
   const [activeWeeks, setActiveWeeks] = useState<string[]>([]);
@@ -619,6 +645,58 @@ export function EquipmentManagement() {
     }
   };
 
+  const handleDeleteEquipment = (machineId: string) => {
+    modals.openConfirmModal({
+      title: <Text fw={700}>Remove Equipment</Text>,
+      children: (
+        <Text size="sm">
+          Are you sure you want to remove <strong>{machineId}</strong> and all its scheduled hours for this week? This action cannot be undone.
+        </Text>
+      ),
+      labels: { confirm: 'Remove Equipment', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: async () => {
+        if (!connectionString || !activeTab || !selectedWeek) return;
+        
+        try {
+          const dates = getWeekDates(selectedWeek);
+          const identifiers = [];
+          dates.forEach(date => {
+            (['A', 'B', 'C', 'D'] as const).forEach(shift => {
+              identifiers.push({
+                process: activeTab,
+                date: formatSqlDate(date),
+                machine_id: machineId,
+                shift: shift
+              });
+            });
+          });
+
+          await invoke('delete_process_infos', {
+            connectionString,
+            identifiers
+          });
+
+          // Optimistic update
+          setSchedules(prev => prev.filter(m => m.machineId !== machineId));
+          
+          notifications.show({
+            title: 'Equipment Removed',
+            message: `Successfully removed ${machineId} and all associated shifts.`,
+            color: 'green'
+          });
+        } catch (err) {
+          console.error('Failed to delete equipment:', err);
+          notifications.show({
+            title: 'Deletion Failed',
+            message: 'An error occurred while trying to remove the equipment from the database.',
+            color: 'red'
+          });
+        }
+      }
+    });
+  };
+
   const handleGeneratePlan = async (data: { weekId: string; displayLabel: string; copyFrom: string | null }) => {
     if (!connectionString || !activeTab) return;
 
@@ -770,129 +848,154 @@ export function EquipmentManagement() {
           </Box>
         )}
 
-        <Table verticalSpacing="xs" highlightOnHover withTableBorder>
-          <Table.Thead 
-            style={{ 
-              backgroundColor: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7))',
-              position: 'sticky',
-              top: 0,
-              zIndex: 10,
-              boxShadow: 'var(--mantine-shadow-sm)'
-            }}
-          >
-            <Table.Tr>
-              <Table.Th w={200}><Text size="xs" fw={700} c="dimmed">MACHINE ID</Text></Table.Th>
-              <Table.Th ta="center" w={100}><Text size="xs" fw={700} c="dimmed">SCHEDULE</Text></Table.Th>
-              {DAYS_OF_WEEK.map((day, idx) => {
-                const dateStr = weekDates[idx] ? weekDates[idx].toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }) : '';
-                return (
-                  <Table.Th key={day} ta="center" w={85}>
-                    <Stack gap={0} align="center">
-                      <Text size="xs" fw={700} c="dimmed">{day.toUpperCase()}</Text>
-                      {dateStr && <Text size="10px" c="blue.4" fw={700}>{dateStr}</Text>}
-                    </Stack>
-                  </Table.Th>
-                );
-              })}
-              <Table.Th ta="center" w={100} style={{ backgroundColor: 'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-8))' }}>
-                <Group gap={4} justify="center">
-                  <IconCalculator size={14} />
-                  <Text size="xs" fw={700}>TOTAL</Text>
-                </Group>
-              </Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-
-          <Table.Tbody>
-            {schedules.map((m) => (
-              <MachineRow
-                key={m.id}
-                schedule={m}
-                isExpanded={expandedMachines.has(m.id)}
-                onToggle={() => toggleMachine(m.id)}
-                onUpdateShiftHour={(shift, day, val) => handleUpdateShiftHour(m.id, shift, day, val)}
-                weekDates={weekDates}
-                shiftSettings={shiftSettings}
-              />
-            ))}
-            {!isLoading && schedules.length === 0 && (
+        {schedules.length > 0 ? (
+          <Table verticalSpacing="xs" highlightOnHover withTableBorder>
+            <Table.Thead 
+              style={{ 
+                backgroundColor: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7))',
+                position: 'sticky',
+                top: 0,
+                zIndex: 10,
+                boxShadow: 'var(--mantine-shadow-sm)'
+              }}
+            >
               <Table.Tr>
-                <Table.Td colSpan={10} py="xl">
-                  <Center h={100}>
-                    <Stack gap="xs" align="center">
-                      <IconAlertCircle size={32} color="var(--mantine-color-gray-4)" />
-                      <Text ta="center" c="dimmed" size="sm">No schedules found for this process and week.</Text>
-                    </Stack>
-                  </Center>
-                </Table.Td>
+                <Table.Th w={200}><Text size="xs" fw={700} c="dimmed">MACHINE ID</Text></Table.Th>
+                <Table.Th ta="center" w={100}><Text size="xs" fw={700} c="dimmed">SCHEDULE</Text></Table.Th>
+                {DAYS_OF_WEEK.map((day, idx) => {
+                  const dateStr = weekDates[idx] ? weekDates[idx].toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }) : '';
+                  return (
+                    <Table.Th key={day} ta="center" w={85}>
+                      <Stack gap={0} align="center">
+                        <Text size="xs" fw={700} c="dimmed">{day.toUpperCase()}</Text>
+                        {dateStr && <Text size="10px" c="blue.4" fw={700}>{dateStr}</Text>}
+                      </Stack>
+                    </Table.Th>
+                  );
+                })}
+                <Table.Th ta="center" w={100} style={{ backgroundColor: 'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-8))' }}>
+                  <Group gap={4} justify="center">
+                    <IconCalculator size={14} />
+                    <Text size="xs" fw={700}>TOTAL</Text>
+                  </Group>
+                </Table.Th>
+                <Table.Th key="actions" w={50}></Table.Th>
               </Table.Tr>
-            )}
-          </Table.Tbody>
+            </Table.Thead>
 
-          <Table.Tfoot 
-            style={{ 
-              backgroundColor: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7))',
-              position: 'sticky',
-              bottom: 0,
-              zIndex: 10,
-              boxShadow: '0 -1px 2px rgba(0,0,0,0.05)',
-              borderTop: '2px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-4))'
-            }}
-          >
-            <Table.Tr>
-              <Table.Td colSpan={2}>
-                <Text size="xs" fw={800} c="dimmed" ta="right" pr="md">DAILY CAPACITY UTILIZATION</Text>
-              </Table.Td>
-              {DAYS_OF_WEEK.map((day) => {
-                const { scheduled, available } = dailyUtilization[day];
-                const utilization = available > 0 ? (scheduled / available) * 100 : 0;
-                let color = "teal";
-                if (utilization > 100) color = "red";
-                else if (utilization >= 80) color = "yellow";
+            <Table.Tbody>
+              {schedules.map((m) => (
+                <MachineRow
+                  key={m.id}
+                  schedule={m}
+                  isExpanded={expandedMachines.has(m.id)}
+                  onToggle={() => toggleMachine(m.id)}
+                  onUpdateShiftHour={(shift, day, val) => handleUpdateShiftHour(m.id, shift, day, val)}
+                  onDelete={handleDeleteEquipment}
+                  weekDates={weekDates}
+                  shiftSettings={shiftSettings}
+                />
+              ))}
+            </Table.Tbody>
 
-                return (
-                  <Table.Td key={day} p="xs">
-                    <HoverCard width={220} shadow="md" position="top" withArrow withinPortal>
-                      <HoverCard.Target>
-                        <Stack gap={4} align="center" className="cursor-help">
-                          <Progress
-                            value={Math.min(utilization, 100)}
-                            color={color}
-                            size="md"
-                            radius="xl"
-                            w="100%"
-                          />
-                          <Text size="10px" fw={700} c="dimmed">
-                            {scheduled}h / {available}h
-                          </Text>
-                        </Stack>
-                      </HoverCard.Target>
-                      <HoverCard.Dropdown p="sm">
-                        <Stack gap="xs">
-                          <Text size="sm" fw={700} className="border-b pb-1">Capacity: {day}</Text>
-                          <Group justify="space-between">
-                            <Text size="xs" c="dimmed">Scheduled:</Text>
-                            <Text size="xs" fw={600}>{scheduled}h</Text>
-                          </Group>
-                          <Group justify="space-between">
-                            <Text size="xs" c="dimmed">Available:</Text>
-                            <Text size="xs" fw={600}>{available}h</Text>
-                          </Group>
-                          <Divider />
-                          <Group justify="space-between">
-                            <Text size="xs" fw={700}>Utilization:</Text>
-                            <Text size="xs" fw={800} style={{ color: `var(--mantine-color-${color}-filled)` }}>{utilization.toFixed(1)}%</Text>
-                          </Group>
-                        </Stack>
-                      </HoverCard.Dropdown>
-                    </HoverCard>
-                  </Table.Td>
-                );
-              })}
-              <Table.Td style={{ backgroundColor: 'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-8))' }}></Table.Td>
-            </Table.Tr>
-          </Table.Tfoot>
-        </Table>
+            <Table.Tfoot 
+              style={{ 
+                backgroundColor: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7))',
+                position: 'sticky',
+                bottom: 0,
+                zIndex: 10,
+                boxShadow: '0 -1px 2px rgba(0,0,0,0.05)',
+                borderTop: '2px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-4))'
+              }}
+            >
+              <Table.Tr>
+                <Table.Td colSpan={2}>
+                  <Text size="xs" fw={800} c="dimmed" ta="right" pr="md">DAILY CAPACITY UTILIZATION</Text>
+                </Table.Td>
+                {DAYS_OF_WEEK.map((day) => {
+                  const { scheduled, available } = dailyUtilization[day];
+                  const utilization = available > 0 ? (scheduled / available) * 100 : 0;
+                  let color = "teal";
+                  if (utilization > 100) color = "red";
+                  else if (utilization >= 80) color = "yellow";
+
+                  return (
+                    <Table.Td key={day} p="xs">
+                      <HoverCard width={220} shadow="md" position="top" withArrow withinPortal>
+                        <HoverCard.Target>
+                          <Stack gap={4} align="center" className="cursor-help">
+                            <Progress
+                              value={Math.min(utilization, 100)}
+                              color={color}
+                              size="md"
+                              radius="xl"
+                              w="100%"
+                            />
+                            <Text size="10px" fw={700} c="dimmed">
+                              {scheduled}h / {available}h
+                            </Text>
+                          </Stack>
+                        </HoverCard.Target>
+                        <HoverCard.Dropdown p="sm">
+                          <Stack gap="xs">
+                            <Text size="sm" fw={700} className="border-b pb-1">Capacity: {day}</Text>
+                            <Group justify="space-between">
+                              <Text size="xs" c="dimmed">Scheduled:</Text>
+                              <Text size="xs" fw={600}>{scheduled}h</Text>
+                            </Group>
+                            <Group justify="space-between">
+                              <Text size="xs" c="dimmed">Available:</Text>
+                              <Text size="xs" fw={600}>{available}h</Text>
+                            </Group>
+                            <Divider />
+                            <Group justify="space-between">
+                              <Text size="xs" fw={700}>Utilization:</Text>
+                              <Text size="xs" fw={800} style={{ color: `var(--mantine-color-${color}-filled)` }}>{utilization.toFixed(1)}%</Text>
+                            </Group>
+                          </Stack>
+                        </HoverCard.Dropdown>
+                      </HoverCard>
+                    </Table.Td>
+                  );
+                })}
+                <Table.Td style={{ backgroundColor: 'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-8))' }}></Table.Td>
+                <Table.Td style={{ width: 50, backgroundColor: 'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-8))' }}></Table.Td>
+              </Table.Tr>
+            </Table.Tfoot>
+          </Table>
+        ) : (
+          <Center py={60}>
+            <Stack align="center" gap="md">
+              <Box 
+                p="xl" 
+                style={{ 
+                  borderRadius: '50%', 
+                  background: 'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6))' 
+                }}
+              >
+                <IconCalendarOff size={48} stroke={1.5} color="var(--mantine-color-blue-4)" />
+              </Box>
+              <Stack gap={4} align="center">
+                <Text fw={700} size="lg">No Equipment Management data found</Text>
+                <Text c="dimmed" size="sm" ta="center" maw={400}>
+                  {selectedWeek 
+                    ? `No machine capacity definitions were found for ${generateWeekLabel(selectedWeek)} in the ${activeTab} process.`
+                    : 'Please select a week to manage equipment capacity.'}
+                </Text>
+              </Stack>
+              <Button 
+                variant="light" 
+                color="blue" 
+                size="md" 
+                leftSection={<IconPlus size={18} />}
+                onClick={() => setIsModalOpen(true)}
+                disabled={!activeTab || !selectedWeek}
+              >
+                Create Schedule for {selectedWeek ? generateWeekLabel(selectedWeek) : 'Week'}
+              </Button>
+            </Stack>
+          </Center>
+        )}
       </Box>
       <AddWorkWeekModal
         opened={isModalOpen}

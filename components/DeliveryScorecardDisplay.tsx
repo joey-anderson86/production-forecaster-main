@@ -5,18 +5,20 @@ import { useLocalStorage } from '@mantine/hooks';
 import { useScorecardStore, DayOfWeek, DailyScorecardRecord, PartScorecard } from '@/lib/scorecardStore';
 import { 
   Tabs, Select, Table, Card, Text, Group, Badge, Title, Box, Tooltip, Stack, Button, ActionIcon, Paper, SegmentedControl,
-  RingProgress, Divider as MantineDivider, TextInput, Grid, useMantineTheme, rgba
+  RingProgress, Divider as MantineDivider, TextInput, Grid, useMantineTheme, rgba, Center
 } from '@mantine/core';
 import { 
   IconPlus, IconChevronDown, IconChevronRight, IconSearch, IconArrowsSort, 
   IconSortAscending, IconSortDescending, IconChartBar, IconTarget, IconRefresh,
   IconChevronsDown, IconChevronsUp, IconActivity, IconCalendar,
-  IconLayoutSidebarRight, IconLayoutBottombar
+  IconLayoutSidebarRight, IconLayoutBottombar, IconDatabaseX, IconArrowRight
 } from '@tabler/icons-react';
+import { useGlobalWeek } from './WeekContext';
 import { EditEntryModal } from './EditEntryModal';
 import { ShiftProductionEntryModal } from './ShiftProductionEntryModal';
 import { DeliveryLossPareto } from './DeliveryLossPareto';
 import { ShiftAttainmentChart } from './ShiftAttainmentChart';
+import { notifications } from '@mantine/notifications';
 import { DAYS_OF_WEEK, getTodayNumeric, getWeekDates, isWorkingDay, parseISOLocal } from '@/lib/dateUtils';
 import { useProcessStore } from '@/lib/processStore';
 import { useProductionDisplayUnit } from '@/hooks/useProductionDisplayUnit';
@@ -42,10 +44,7 @@ export default function DeliveryScorecardDisplay() {
     key: 'production-planner-active-tab',
     defaultValue: null
   });
-  const [selectedWeekId, setSelectedWeekId] = useLocalStorage<string | null>({
-    key: 'production-planner-selected-week',
-    defaultValue: null
-  });
+  const { selectedWeekId, setSelectedWeekId } = useGlobalWeek();
   const [expandedParts, setExpandedParts] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [sortConfig, setSortConfig] = useState<{ key: keyof GroupedPartScorecard; direction: 'asc' | 'desc' } | null>({ key: 'partNumber', direction: 'asc' });
@@ -534,7 +533,7 @@ export default function DeliveryScorecardDisplay() {
                     }),
                   }}
                 >
-              {activeWeek ? (
+              {activeWeek && groupedParts.length > 0 ? (
                 <Table 
                   verticalSpacing="sm" 
                   striped 
@@ -799,14 +798,16 @@ export default function DeliveryScorecardDisplay() {
                                             <Text size="xs">Actual: {displayedActual ?? 'Not recorded'}</Text>
                                             <Text size="xs">Target: {displayedTarget ?? 0}</Text>
                                             {record?.reasonCode && (
-                                              <Text size="xs" c="orange.7" fw={600}>Reason: {record.reasonCode}</Text>
+                                              <Box mt={4}>
+                                                <Text size="10px" fw={700} c="dimmed" tt="uppercase">Loss Reason:</Text>
+                                                <Text size="xs" c="orange.7" fw={600}>{record.reasonCode}</Text>
+                                              </Box>
                                             )}
-                                            {!isDayOff && <Text size="xs" c="indigo.4" mt={4} fw={700}>Click to Record Actual</Text>}
-                                            {isDayOff && <Text size="xs" c="red.4" mt={4} fw={700}>Off Schedule - Entry Locked</Text>}
                                           </Stack>
                                         }
                                         withArrow
                                         position="top"
+                                        disabled={record?.actual === 0 && record?.target === 0 && !isDayOff}
                                         styles={{
                                           tooltip: {
                                             backgroundColor: 'light-dark(white, var(--mantine-color-dark-6))',
@@ -816,29 +817,27 @@ export default function DeliveryScorecardDisplay() {
                                         }}
                                       >
                                         <Box py="xs" px="xs">
-                                          <Text size="sm" fw={performanceStyles.fw || 500} c={textColor}>
-                                            {displayValue}
-                                          </Text>
-                                          <Text size="10px" c="light-dark(gray.6, dark.2)">Tgt: {displayedTarget ?? 0}</Text>
+                                          <Text size="xs" fw={700} c={textColor}>{displayValue}</Text>
+                                          {!isInactiveOffDay && <Text size="10px" c="light-dark(gray.5, dark.3)">{displayedTarget}</Text>}
                                         </Box>
                                       </Tooltip>
                                     </Table.Td>
                                   );
                                 })}
-                                <Table.Td ta="center" bg="light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6))">
-                                  <Text size="sm" fw={600}>{totalActual * multiplier}</Text>
+                                <Table.Td ta="center" bg="light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-7))">
+                                  <Text size="xs" fw={700}>{totalActual * multiplier}</Text>
                                 </Table.Td>
-                                <Table.Td ta="center" bg="light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6))">
-                                  <Text size="sm" fw={600}>{totalTarget * multiplier}</Text>
+                                <Table.Td ta="center" bg="light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-7))">
+                                  <Text size="xs" fw={700}>{totalTarget * multiplier}</Text>
                                 </Table.Td>
-                                <Table.Td ta="center" bg={gap < 0 ? 'light-dark(var(--mantine-color-red-0), rgba(139, 0, 0, 0.1))' : 'light-dark(var(--mantine-color-green-0), rgba(0, 100, 0, 0.1))'}>
-                                  <Text size="sm" fw={600} c={gap < 0 ? 'light-dark(var(--mantine-color-red-8), var(--mantine-color-red-3))' : 'light-dark(var(--mantine-color-green-8), var(--mantine-color-green-3))'}>
-                                    {gap > 0 ? `+${gap * multiplier}` : gap * multiplier}
+                                <Table.Td ta="center" bg={gap < 0 ? 'light-dark(red.0, #2c0e0e)' : 'light-dark(green.0, #0e2c0e)'}>
+                                  <Text size="xs" fw={700} c={gap < 0 ? 'red.7' : 'green.7'}>
+                                    {(gap * multiplier) > 0 ? `+${gap * multiplier}` : (gap * multiplier)}
                                   </Text>
                                 </Table.Td>
-                                <Table.Td ta="center" bg={part.rollingGap < 0 ? 'light-dark(var(--mantine-color-red-0), rgba(139, 0, 0, 0.1))' : 'light-dark(var(--mantine-color-green-0), rgba(0, 100, 0, 0.1))'}>
-                                  <Text size="sm" fw={600} c={part.rollingGap < 0 ? 'light-dark(var(--mantine-color-red-8), var(--mantine-color-red-3))' : 'light-dark(var(--mantine-color-green-8), var(--mantine-color-green-3))'}>
-                                    {part.rollingGap > 0 ? `+${part.rollingGap * multiplier}` : part.rollingGap * multiplier}
+                                <Table.Td ta="center" bg={part.rollingGap < 0 ? 'light-dark(red.0, #2c0e0e)' : 'light-dark(green.0, #0e2c0e)'}>
+                                  <Text size="xs" fw={700} c={part.rollingGap < 0 ? 'red.7' : 'green.7'}>
+                                    {(part.rollingGap * multiplier) > 0 ? `+${part.rollingGap * multiplier}` : (part.rollingGap * multiplier)}
                                   </Text>
                                 </Table.Td>
                               </Table.Tr>
@@ -847,13 +846,6 @@ export default function DeliveryScorecardDisplay() {
                         </React.Fragment>
                       );
                     })}
-                    {groupedParts.length === 0 && (
-                      <Table.Tr>
-                        <Table.Td colSpan={11} ta="center" py="xl">
-                          <Text c="dimmed">No parts tracked for this week yet.</Text>
-                        </Table.Td>
-                      </Table.Tr>
-                    )}
                   </Table.Tbody>
                   <Table.Tfoot 
                     className="shadow-[0_-2px_4px_rgba(0,0,0,0.05)]"
@@ -907,7 +899,42 @@ export default function DeliveryScorecardDisplay() {
                   </Table.Tfoot>
                 </Table>
               ) : (
-                <Text c="dimmed" ta="center" py="xl">No work week selected or no data available.</Text>
+                <Center py={60}>
+                  <Stack align="center" gap="md">
+                    <Box 
+                      p="xl" 
+                      style={{ 
+                        borderRadius: '50%', 
+                        background: 'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6))' 
+                      }}
+                    >
+                      <IconDatabaseX size={48} stroke={1.5} color="var(--mantine-color-indigo-4)" />
+                    </Box>
+                    <Stack gap={4} align="center">
+                      <Text fw={700} size="lg">No Delivery Dashboard data found</Text>
+                      <Text c="dimmed" size="sm" ta="center" maw={400}>
+                        {selectedWeekId 
+                          ? `We couldn't find any production data for ${activeTab} during the selected week.`
+                          : 'Please select a week to view performance metrics.'}
+                      </Text>
+                    </Stack>
+                    <Button 
+                      variant="light" 
+                      color="indigo" 
+                      size="md" 
+                      leftSection={<IconArrowRight size={18} />}
+                      onClick={() => {
+                        notifications.show({
+                          title: 'Action Required',
+                          message: 'Please switch to the "Production Planner" tab to initialize this week.',
+                          color: 'blue'
+                        });
+                      }}
+                    >
+                      How to Initialize
+                    </Button>
+                  </Stack>
+                </Center>
               )}
                 </Box>
               </Stack>

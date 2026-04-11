@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { 
   Tabs, Select, Button, TextInput, NumberInput, Card, Grid, Group, Text, 
-  ActionIcon, Divider, Box, Badge, Tooltip as MantineTooltip, Tooltip, Stack, Modal, Switch, Paper, Title, SegmentedControl
+  ActionIcon, Divider, Box, Badge, Tooltip as MantineTooltip, Tooltip, Stack, Modal, Switch, Paper, Title, SegmentedControl, Center
 } from '@mantine/core';
 import { useLocalStorage } from '@mantine/hooks';
 import { 
@@ -11,15 +11,18 @@ import {
   IconUpload, IconX, IconDatabase, 
   IconRefresh,
   IconCloudCheck, IconCloudDownload, IconAlertTriangle,
-  IconChevronsDown, IconChevronsUp
+  IconChevronsDown, IconChevronsUp,
+  IconCalendarOff,
+  IconDatabaseX
 } from '@tabler/icons-react';
 import { useScorecardStore, DayOfWeek, PartScorecard, BulkImportGroup } from '@/lib/scorecardStore';
+import { useGlobalWeek } from './WeekContext';
 import WeeklyPlanTable from './WeeklyPlanTable';
 import { notifications } from '@mantine/notifications';
+import { modals } from '@mantine/modals';
 import Papa from 'papaparse';
 import { getISODateForDay, getCurrentWeekId, generateWeekLabel, getWeekDates, formatISODate } from '@/lib/dateUtils';
 import { useProcessStore } from '@/lib/processStore';
-import { ask } from '@tauri-apps/plugin-dialog';
 import { generateSmartCopy } from '@/lib/copyUtils';
 import { useProductionDisplayUnit } from '@/hooks/useProductionDisplayUnit';
 
@@ -42,10 +45,7 @@ export default function DeliveryScorecardManagement() {
       setActiveTab(processes[0]);
     }
   }, [processes, activeTab]);
-  const [selectedWeekId, setSelectedWeekId] = useLocalStorage<string | null>({
-    key: 'production-planner-selected-week',
-    defaultValue: null
-  });
+  const { selectedWeekId, setSelectedWeekId } = useGlobalWeek();
   const [connectionString, setConnectionString] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -226,33 +226,38 @@ export default function DeliveryScorecardManagement() {
     }
   };
 
-  const handleDeleteWeek = async () => {
+  const handleDeleteWeek = () => {
     if (!activeTab || !selectedWeekId) return;
     
-    const confirmed = await ask("Are you sure you want to delete this entire week's data?", {
-      title: 'Confirm Deletion',
-      kind: 'warning'
-    });
-
-    if (confirmed) {
-      const weekId = selectedWeekId;
-      store.deleteWeek(activeTab, weekId);
-      setSelectedWeekId(null);
-      
-      if (connectionString) {
-        try {
-          const { invoke } = await import('@tauri-apps/api/core');
-          await invoke('delete_scorecard_week', { 
-            connectionString, 
-            department: activeTab, 
-            weekIdentifier: weekId 
-          });
-          notifications.show({ title: 'Success', message: 'Week deleted from database', color: 'green' });
-        } catch (err: any) {
-          notifications.show({ title: 'Database Error', message: err.toString(), color: 'red' });
+    modals.openConfirmModal({
+      title: <Text fw={700}>Confirm Deletion</Text>,
+      children: (
+        <Text size="sm">
+          Are you sure you want to delete this entire week's data? This action cannot be undone.
+        </Text>
+      ),
+      labels: { confirm: 'Delete Week', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: async () => {
+        const weekId = selectedWeekId;
+        store.deleteWeek(activeTab, weekId);
+        setSelectedWeekId(null);
+        
+        if (connectionString) {
+          try {
+            const { invoke } = await import('@tauri-apps/api/core');
+            await invoke('delete_scorecard_week', { 
+              connectionString, 
+              department: activeTab, 
+              weekIdentifier: weekId 
+            });
+            notifications.show({ title: 'Success', message: 'Week deleted from database', color: 'green' });
+          } catch (err: any) {
+            notifications.show({ title: 'Database Error', message: err.toString(), color: 'red' });
+          }
         }
       }
-    }
+    });
   };
 
   const handleAddPart = () => {
@@ -564,85 +569,134 @@ export default function DeliveryScorecardManagement() {
           </Group>
 
 
-          {activeWeek && (
+          {activeWeek && activeWeek.parts.length > 0 ? (
             <Box>
               <Box className="border border-gray-200 rounded-md overflow-hidden mb-md mt-sm">
+                <WeeklyPlanTable 
+                  department={activeTab!}
+                  weekId={selectedWeekId!}
+                  parts={activeWeek.parts}
+                  availableParts={availableParts}
+                  isLoadingParts={isLoadingParts}
+                  processInfo={processInfo}
+                  partInfo={partInfo}
+                  onUpdateRecord={coreHandleUpdateRecord}
+                  onBatchUpdateRecords={handleBatchUpdateRecords}
+                  displayUnit={displayUnit}
+                  expandAllSignal={expandAllSignal}
+                  collapseAllSignal={collapseAllSignal}
+                  onRemovePartGroup={(groupKey: string) => {
+                    const rowsToRemove = activeWeek?.parts.filter(p => {
+                      const key = p.partNumber || p.groupId || 'Unassigned';
+                      return key === groupKey;
+                    }) || [];
 
-            <WeeklyPlanTable 
-              department={activeTab!}
-              weekId={selectedWeekId!}
-              parts={activeWeek.parts}
-              availableParts={availableParts}
-              isLoadingParts={isLoadingParts}
-              processInfo={processInfo}
-              partInfo={partInfo}
-              onUpdateRecord={coreHandleUpdateRecord}
-              onBatchUpdateRecords={handleBatchUpdateRecords}
-              displayUnit={displayUnit}
-              expandAllSignal={expandAllSignal}
-              collapseAllSignal={collapseAllSignal}
-              onRemovePart={async (rowId: string) => {
-                const confirmed = await ask("Are you sure you want to remove this row? This will also delete it from the database.", {
-                  title: 'Confirm Deletion',
-                  kind: 'warning'
-                });
+                    if (rowsToRemove.length === 0) return;
+                    const partName = rowsToRemove[0].partNumber || "Unassigned Part";
 
-                if (confirmed) {
-                  const partRow = activeWeek?.parts.find(p => p.id === rowId);
-                  // Relaxing the guard to allow deleting rows even if partNumber is missing (anonymous records)
-                  if (partRow && connectionString) {
-                    store.deletePartFromDb(connectionString, activeTab!, selectedWeekId!, partRow.partNumber || "", partRow.shift || "")
-                      .catch(err => console.error("Sync delete failed:", err));
+                    modals.openConfirmModal({
+                      title: <Text fw={700}>Remove Part</Text>,
+                      children: (
+                        <Text size="sm">
+                          Are you sure you want to remove <strong>{partName}</strong> and all its shifts? This action will also delete them from the database and cannot be undone.
+                        </Text>
+                      ),
+                      labels: { confirm: 'Remove Part', cancel: 'Cancel' },
+                      confirmProps: { color: 'red' },
+                      onConfirm: async () => {
+                        if (connectionString) {
+                          // Collect all unique deletion tasks
+                          for (const row of rowsToRemove) {
+                            if (row.partNumber && row.shift) {
+                              store.deletePartFromDb(connectionString, activeTab!, selectedWeekId!, row.partNumber, row.shift)
+                                .catch(err => console.error("Sync delete failed:", err));
+                            }
+                          }
+                        }
+                        
+                        // Remove from local store
+                        rowsToRemove.forEach(row => {
+                          store.removePartNumber(activeTab!, selectedWeekId!, row.id);
+                        });
+
+                        notifications.show({
+                          title: 'Part Removed',
+                          message: `Successfully removed ${partName} and all associated shifts.`,
+                          color: 'green'
+                        });
+                      }
+                    });
+                  }}
+                  onUpdatePartIdentity={(rowId: string, updates) => {
+                    store.updatePartIdentity(activeTab!, selectedWeekId!, rowId, updates);
+                    if (connectionString) {
+                      store.saveRowToDb(connectionString, activeTab!, selectedWeekId!, rowId)
+                        .catch(e => console.error("Identity sync failed:", e));
+                    }
+                  }}
+                  onUpdatePartGroupIdentity={(groupId: string, partNum: string) => {
+                    store.updatePartGroupIdentity(activeTab!, selectedWeekId!, groupId, partNum);
+                    if (connectionString) {
+                       const rowsToSync = activeWeek?.parts.filter(p => p.groupId === groupId);
+                       rowsToSync?.forEach(row => {
+                          store.saveRowToDb(connectionString, activeTab!, selectedWeekId!, row.id)
+                            .catch(e => console.error("Group identity sync failed:", e));
+                       });
+                    }
+                  }}
+                  onAddPart={(partNum: string, shift: string) => 
+                    store.addPartNumber(activeTab!, selectedWeekId!, partNum, shift)
                   }
-                  store.removePartNumber(activeTab!, selectedWeekId!, rowId);
-                }
-              }}
-              onUpdatePartIdentity={(rowId: string, updates) => {
-                store.updatePartIdentity(activeTab!, selectedWeekId!, rowId, updates);
-                // Trigger a full row sync once identity is established/updated
-                if (connectionString) {
-                  store.saveRowToDb(connectionString, activeTab!, selectedWeekId!, rowId)
-                    .catch(e => console.error("Identity sync failed:", e));
-                }
-              }}
-              onUpdatePartGroupIdentity={(groupId: string, partNum: string) => {
-                store.updatePartGroupIdentity(activeTab!, selectedWeekId!, groupId, partNum);
-                // Trigger sync for all group members if connection is available
-                if (connectionString) {
-                   const rowsToSync = activeWeek?.parts.filter(p => p.groupId === groupId);
-                   rowsToSync?.forEach(row => {
-                      store.saveRowToDb(connectionString, activeTab!, selectedWeekId!, row.id)
-                        .catch(e => console.error("Group identity sync failed:", e));
-                   });
-                }
-              }}
-              onAddPart={(partNum: string, shift: string) => 
-                store.addPartNumber(activeTab!, selectedWeekId!, partNum, shift)
-              }
-            />
-          </Box>
-
-          <Group mb="sm" justify="flex-end">
-            <Stack gap={0} align="flex-end">
-              <Group gap="xs">
-                <Text size="sm" fw={600}>Schedule All Shifts</Text>
-                <Switch 
-                  checked={scheduleAllShifts} 
-                  onChange={(event) => setScheduleAllShifts(event.currentTarget.checked)}
-                  color="indigo"
-                  size="md"
                 />
+              </Box>
+
+              <Group mb="sm" justify="flex-end">
+                <Stack gap={0} align="flex-end">
+                  <Group gap="xs">
+                    <Text size="sm" fw={600}>Schedule All Shifts</Text>
+                    <Switch 
+                      checked={scheduleAllShifts} 
+                      onChange={(event) => setScheduleAllShifts(event.currentTarget.checked)}
+                      color="indigo"
+                      size="md"
+                    />
+                  </Group>
+                  <Text size="xs" c="dimmed">Automatically add Shifts A, B, C, and D</Text>
+                </Stack>
               </Group>
-              <Text size="xs" c="dimmed">Automatically add Shifts A, B, C, and D</Text>
-            </Stack>
-          </Group>
-
-
             </Box>
-          )}
-
-          {!activeWeek && weekOptions.length === 0 && (
-             <Text c="dimmed" ta="center" mt="xl">No work weeks defined for this department. Click "Add New Week" to start.</Text>
+          ) : (
+            <Center py={60}>
+              <Stack align="center" gap="md">
+                <Box 
+                  p="xl" 
+                  style={{ 
+                    borderRadius: '50%', 
+                    background: 'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6))' 
+                  }}
+                >
+                  <IconCalendarOff size={48} stroke={1.5} color="var(--mantine-color-indigo-4)" />
+                </Box>
+                <Stack gap={4} align="center">
+                  <Text fw={700} size="lg">No Production Planner data found</Text>
+                  <Text c="dimmed" size="sm" ta="center" maw={400}>
+                    {selectedWeekId 
+                      ? `There is no schedule data for ${generateWeekLabel(selectedWeekId)} in the ${activeTab} department.`
+                      : 'Please select a week to view or initialize the production schedule.'}
+                  </Text>
+                </Stack>
+                <Button 
+                  variant="light" 
+                  color="indigo" 
+                  size="md" 
+                  leftSection={<IconPlus size={18} />}
+                  onClick={handleAddWeek}
+                  disabled={!activeTab || !selectedWeekId}
+                >
+                  Initialize Week
+                </Button>
+              </Stack>
+            </Center>
           )}
 
       {/* Add Week Modal */}

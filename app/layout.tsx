@@ -4,8 +4,10 @@ import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
 import '@mantine/dates/styles.css';
 import { Notifications } from '@mantine/notifications';
+import { ModalsProvider } from '@mantine/modals';
 import { ZoomManager } from '../components/ZoomManager';
 import { StoreInitializer } from '../components/StoreInitializer';
+import { WeekProvider } from '@/components/WeekContext';
 import './globals.css'; // Global styles
 
 export const metadata: Metadata = {
@@ -40,9 +42,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body suppressHydrationWarning>
         <MantineProvider theme={theme}>
           <Notifications />
-          <ZoomManager />
-          <StoreInitializer />
-          {children}
+          <ModalsProvider>
+            <ZoomManager />
+            <StoreInitializer />
+            <WeekProvider>
+              {children}
+            </WeekProvider>
+          </ModalsProvider>
         </MantineProvider>
       </body>
     </html>
