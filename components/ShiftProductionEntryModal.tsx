@@ -187,16 +187,18 @@ export function ShiftProductionEntryModal({
   }, [activeWeekId]);
 
   // ── Date Filtering Logic ──
-  const shouldExcludeDate = React.useCallback((date: any) => {
-    const d = dayjs(date);
+  const shouldExcludeDate = React.useCallback((date: Date) => {
     // 1. Must be within the active week
     if (!weekRange) return true;
+    
+    // Normalize date to compare by day only
+    const d = dayjs(date);
     const isOutsideWeek = d.isBefore(weekRange.start, 'day') || d.isAfter(weekRange.end, 'day');
     if (isOutsideWeek) return true;
 
     // 2. Must be a working day for the selected shift
     if (selectedShift && shiftSettings[selectedShift]) {
-      return !isWorkingDay(d.toDate(), shiftSettings[selectedShift]);
+      return !isWorkingDay(date, shiftSettings[selectedShift]);
     }
 
     return false;
@@ -533,8 +535,7 @@ export function ShiftProductionEntryModal({
                 setEntries([]);
               }}
               disabled={!selectedShift}
-              excludeDate={shouldExcludeDate as any}
-              maxDate={new Date()}
+              excludeDate={shouldExcludeDate}
               size="sm"
               valueFormat="YYYY-MM-DD"
               clearable

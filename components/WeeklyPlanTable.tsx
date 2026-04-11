@@ -886,7 +886,20 @@ export default function WeeklyPlanTable({
                                 }
                                 
                                 return (
-                                  <Tooltip key={s} label={`Shift ${s}: ${sMetric.isWorking ? (sMetric.isOver ? 'Over Capacity' : 'Healthy') : 'OFF'}`} position="top" withinPortal>
+                                  <Tooltip 
+                                    key={s} 
+                                    label={`Shift ${s}: ${sMetric.isWorking ? (sMetric.isOver ? 'Over Capacity' : 'Healthy') : 'OFF'}`} 
+                                    position="top" 
+                                    withinPortal
+                                    styles={{
+                                      tooltip: {
+                                        backgroundColor: 'light-dark(white, var(--mantine-color-dark-6))',
+                                        color: 'light-dark(var(--mantine-color-black), var(--mantine-color-white))',
+                                        border: '1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4))',
+                                        fontWeight: 600
+                                      }
+                                    }}
+                                  >
                                     <Badge 
                                       circle 
                                       size="xs" 

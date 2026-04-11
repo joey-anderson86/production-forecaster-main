@@ -683,6 +683,13 @@ export default function DeliveryScorecardDisplay() {
                                      withArrow
                                      position="top"
                                      disabled={record.actual === 0 && record.target === 0}
+                                     styles={{
+                                       tooltip: {
+                                         backgroundColor: 'light-dark(white, var(--mantine-color-dark-6))',
+                                         color: 'light-dark(var(--mantine-color-black), var(--mantine-color-white))',
+                                         border: '1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4))',
+                                       }
+                                     }}
                                   >
                                     <Box py="xs" px="xs">
                                       <Text size="sm" fw={700} c={styles.color}>{record.actual}</Text>
@@ -800,6 +807,13 @@ export default function DeliveryScorecardDisplay() {
                                         }
                                         withArrow
                                         position="top"
+                                        styles={{
+                                          tooltip: {
+                                            backgroundColor: 'light-dark(white, var(--mantine-color-dark-6))',
+                                            color: 'light-dark(var(--mantine-color-black), var(--mantine-color-white))',
+                                            border: '1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4))',
+                                          }
+                                        }}
                                       >
                                         <Box py="xs" px="xs">
                                           <Text size="sm" fw={performanceStyles.fw || 500} c={textColor}>

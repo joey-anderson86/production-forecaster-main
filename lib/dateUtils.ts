@@ -164,14 +164,15 @@ export function getDayOfWeekLabel(date: Date): DayOfWeek {
  * Cycle (14 days): 2 ON, 2 OFF, 3 ON, 2 OFF, 2 ON, 3 OFF
  * Working days: Day 0, 1, 4, 5, 6, 9, 10
  */
-export function isWorkingDay(targetDate: Date, anchorDateString: string): boolean {
+export function isWorkingDay(targetDate: Date | string, anchorDateString: string): boolean {
   if (!anchorDateString) return true; // Default to working if no anchor is set
   
   const PANAMA_WORKING_DAYS = [0, 1, 4, 5, 6, 9, 10];
   const anchor = parseISOLocal(anchorDateString);
+  const target = typeof targetDate === 'string' ? parseISOLocal(targetDate) : targetDate;
   
   // Normalize both to midnight local time to avoid DST and time-of-day issues
-  const t = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
+  const t = new Date(target.getFullYear(), target.getMonth(), target.getDate());
   const a = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());
   
   const diffTime = t.getTime() - a.getTime();
