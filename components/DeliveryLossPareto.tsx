@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { 
   Card, Text, Title, Group, Badge, Stack, Box, useMantineTheme, 
-  Paper, Divider, Tooltip, ActionIcon
+  Paper, Divider, Tooltip, ActionIcon, Select, Button
 } from '@mantine/core';
 import { 
   Bar, 
@@ -102,25 +102,41 @@ export function DeliveryLossPareto({
   const theme = useMantineTheme();
   const chartHeight = compact ? 500 : 400;
   
-  const paretoData = useMemo(() => 
-    generateParetoData(weekData, displayUnit, batchSizeMap), 
-    [weekData, displayUnit, batchSizeMap]
-  );
+  const [shiftFilter, setShiftFilter] = useState<string | null>(null);
+  const [partFilter, setPartFilter] = useState<string | null>(null);
 
-  if (!weekData || paretoData.length === 0) {
-    return (
-      <Card withBorder shadow="sm" radius="md" p="xl" mt="xl" className="bg-slate-50/50 dark:bg-slate-800/20">
-        <Stack align="center" gap="xs">
-          <IconChartBar size={48} color={theme.colors.gray[3]} />
-          <Title order={4} c="dimmed">Loss Pareto — {departmentName}</Title>
-          <Text c="dimmed" size="sm" ta="center">
-            No root cause data available for this week.<br/>
-            Enter "Reason Codes" in the scorecard for production misses to generate this chart.
-          </Text>
-        </Stack>
-      </Card>
-    );
-  }
+  // Generate unique shifts and parts for the filter dropdowns
+  const filterOptions = useMemo(() => {
+    if (!weekData?.parts) return { shifts: [], parts: [] };
+    const shifts = Array.from(new Set(weekData.parts.map(p => p.shift))).sort();
+    const parts = Array.from(new Set(weekData.parts.map(p => p.partNumber))).sort();
+    
+    return {
+      shifts: shifts.map(s => ({ value: s, label: `Shift ${s}` })),
+      parts: parts.map(p => ({ value: p, label: p }))
+    };
+  }, [weekData]);
+
+  const paretoData = useMemo(() => {
+    if (!weekData) return [];
+    
+    // Apply filters to the weekData parts before generating Pareto data
+    const filteredParts = weekData.parts.filter(p => {
+      const matchShift = !shiftFilter || p.shift === shiftFilter;
+      const matchPart = !partFilter || p.partNumber === partFilter;
+      return matchShift && matchPart;
+    });
+
+    const filteredWeekData = {
+      ...weekData,
+      parts: filteredParts
+    };
+
+    return generateParetoData(filteredWeekData, displayUnit, batchSizeMap);
+  }, [weekData, displayUnit, batchSizeMap, shiftFilter, partFilter]);
+
+  // Determine if we should show the "no data" placeholder instead of the chart
+  const showPlaceholder = !weekData || paretoData.length === 0;
 
   return (
     <Card withBorder shadow="sm" radius="md" p={compact ? 'md' : 'lg'} mt={compact ? 'md' : 'xl'}>
@@ -133,86 +149,131 @@ export function DeliveryLossPareto({
               <Badge variant="light" color="orange" size="sm">Root Cause Analysis</Badge>
             </Group>
             <Text c="dimmed" size="xs">
-              Cumulative distribution of production misses by reason code for <strong>{departmentName}</strong> ({weekData.weekLabel}).
+              Cumulative distribution of production misses by reason code for <strong>{departmentName}</strong> ({weekData?.weekLabel || 'Selected Week'}).
             </Text>
           </Box>
           
-          <Tooltip label="Pareto principle: 80% of problems often come from 20% of causes. Focus on the tallest bars first." multiline w={220} withArrow>
-            <ActionIcon variant="subtle" color="gray" radius="xl">
-              <IconAlertCircle size={18} />
-            </ActionIcon>
-          </Tooltip>
+          <Group gap="sm">
+            <Select 
+              placeholder="Filter by Shift"
+              data={filterOptions.shifts}
+              value={shiftFilter}
+              onChange={setShiftFilter}
+              clearable
+              size="xs"
+              w={140}
+              className="dark:bg-dark-7"
+            />
+            <Select 
+              placeholder="Filter by Part"
+              data={filterOptions.parts}
+              value={partFilter}
+              onChange={setPartFilter}
+              clearable
+              size="xs"
+              w={180}
+              className="dark:bg-dark-7"
+            />
+            <Tooltip label="Pareto principle: 80% of problems often come from 20% of causes. Focus on the tallest bars first." multiline w={220} withArrow>
+              <ActionIcon variant="subtle" color="gray" radius="xl">
+                <IconAlertCircle size={18} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
         </Group>
 
-        <Box h={chartHeight} w="100%">
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart
-              data={paretoData}
-              margin={{ top: 20, right: 40, left: 0, bottom: 60 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme.colors.gray[2]} />
-              
-              <XAxis 
-                dataKey="reason" 
-                angle={compact ? -60 : -45} 
-                textAnchor="end" 
-                interval={0}
-                height={compact ? 100 : 80}
-                tick={{ fontSize: compact ? 10 : 11, fontWeight: 500 }}
-                stroke={theme.colors.gray[6]}
-              />
-              
-              {/* Left Y-Axis: Frequency count */}
-              <YAxis 
-                yAxisId="left" 
-                orientation="left" 
-                label={{ value: 'Frequency (Misses)', angle: -90, position: 'insideLeft', offset: 10, style: { fontSize: 12, fontWeight: 600, fill: theme.colors.gray[6] } }}
-                tick={{ fontSize: 11 }}
-                stroke={theme.colors.gray[6]}
-              />
-              
-              {/* Right Y-Axis: Cumulative Percentage */}
-              <YAxis 
-                yAxisId="right" 
-                orientation="right" 
-                domain={[0, 100]}
-                label={{ value: 'Cumulative %', angle: 90, position: 'insideRight', offset: 10, style: { fontSize: 12, fontWeight: 600, fill: theme.colors.orange[7] } }}
-                tick={{ fontSize: 11 }}
-                stroke={theme.colors.orange[7]}
-              />
-              
-              <RechartsTooltip content={<CustomTooltip displayUnit={displayUnit} />} />
-              <Legend verticalAlign="top" height={36}/>
-
-              <Bar 
-                yAxisId="left" 
-                dataKey="frequency" 
-                name="Loss Frequency"
-                radius={[4, 4, 0, 0]}
-                barSize={40}
-              >
-                {paretoData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={index === 0 ? theme.colors.indigo[7] : theme.colors.indigo[4]} />
-                ))}
-              </Bar>
-
-              <Line 
-                yAxisId="right" 
-                type="monotone" 
-                dataKey="cumulativePercentage" 
-                name="Cumulative %"
-                stroke={theme.colors.orange[7]} 
-                strokeWidth={3} 
-                dot={{ r: 4, fill: theme.colors.orange[7], strokeWidth: 2, stroke: '#fff' }}
-                activeDot={{ r: 6, strokeWidth: 0 }}
-              />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </Box>
-        
-        <Text size="xs" c="dimmed" fs="italic" ta="center">
-          Hover over bars to see the specific part numbers contributing to each loss category.
-        </Text>
+        {showPlaceholder ? (
+          <Box py={60}>
+            <Stack align="center" gap="xs">
+              <IconChartBar size={48} color={theme.colors.gray[3]} />
+              <Title order={4} c="dimmed">No Root Cause Data</Title>
+              <Text c="dimmed" size="sm" ta="center">
+                {(!shiftFilter && !partFilter) 
+                  ? "No reason codes recorded for misses this week." 
+                  : "No data matches the selected filters."}
+                <br/>
+                Enter "Reason Codes" in the scorecard for production misses to generate this chart.
+              </Text>
+              {(shiftFilter || partFilter) && (
+                <Button variant="subtle" size="xs" onClick={() => { setShiftFilter(null); setPartFilter(null); }}>
+                  Clear All Filters
+                </Button>
+              )}
+            </Stack>
+          </Box>
+        ) : (
+          <>
+            <Box h={chartHeight} w="100%">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart
+                  data={paretoData}
+                  margin={{ top: 20, right: 40, left: 0, bottom: 60 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme.colors.gray[2]} />
+                  
+                  <XAxis 
+                    dataKey="reason" 
+                    angle={compact ? -60 : -45} 
+                    textAnchor="end" 
+                    interval={0}
+                    height={compact ? 100 : 80}
+                    tick={{ fontSize: compact ? 10 : 11, fontWeight: 500 }}
+                    stroke={theme.colors.gray[6]}
+                  />
+                  
+                  {/* Left Y-Axis: Frequency count */}
+                  <YAxis 
+                    yAxisId="left" 
+                    orientation="left" 
+                    label={{ value: 'Frequency (Misses)', angle: -90, position: 'insideLeft', offset: 10, style: { fontSize: 12, fontWeight: 600, fill: theme.colors.gray[6] } }}
+                    tick={{ fontSize: 11 }}
+                    stroke={theme.colors.gray[6]}
+                  />
+                  
+                  {/* Right Y-Axis: Cumulative Percentage */}
+                  <YAxis 
+                    yAxisId="right" 
+                    orientation="right" 
+                    domain={[0, 100]}
+                    label={{ value: 'Cumulative %', angle: 90, position: 'insideRight', offset: 10, style: { fontSize: 12, fontWeight: 600, fill: theme.colors.orange[7] } }}
+                    tick={{ fontSize: 11 }}
+                    stroke={theme.colors.orange[7]}
+                  />
+                  
+                  <RechartsTooltip content={<CustomTooltip displayUnit={displayUnit} />} />
+                  <Legend verticalAlign="top" height={36}/>
+    
+                  <Bar 
+                    yAxisId="left" 
+                    dataKey="frequency" 
+                    name="Loss Frequency"
+                    radius={[4, 4, 0, 0]}
+                    barSize={40}
+                  >
+                    {paretoData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={index === 0 ? theme.colors.indigo[7] : theme.colors.indigo[4]} />
+                    ))}
+                  </Bar>
+    
+                  <Line 
+                    yAxisId="right" 
+                    type="monotone" 
+                    dataKey="cumulativePercentage" 
+                    name="Cumulative %"
+                    stroke={theme.colors.orange[7]} 
+                    strokeWidth={3} 
+                    dot={{ r: 4, fill: theme.colors.orange[7], strokeWidth: 2, stroke: '#fff' }}
+                    activeDot={{ r: 6, strokeWidth: 0 }}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </Box>
+            
+            <Text size="xs" c="dimmed" fs="italic" ta="center">
+              Hover over bars to see the specific part numbers contributing to each loss category.
+            </Text>
+          </>
+        )}
       </Stack>
     </Card>
   );
