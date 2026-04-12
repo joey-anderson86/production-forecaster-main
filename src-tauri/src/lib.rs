@@ -2035,6 +2035,30 @@ async fn save_scheduler_state(
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+#[tauri::command]
+async fn save_csv_file(
+    app: tauri::AppHandle,
+    content: String,
+    filename: String
+) -> Result<(), String> {
+    use tauri_plugin_dialog::DialogExt;
+    
+    let file_path = app.dialog()
+        .file()
+        .set_title("Save Changeover Schedule")
+        .set_file_name(filename)
+        .add_filter("CSV", &["csv"])
+        .blocking_save_file();
+
+    if let Some(path) = file_path {
+        let path_str: String = path.to_string();
+        std::fs::write(path_str, content).map_err(|e| e.to_string())?;
+        Ok(())
+    } else {
+        Err("Save cancelled".to_string())
+    }
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::new().build())
@@ -2095,7 +2119,8 @@ pub fn run() {
             get_active_weeks,
             get_machines_by_process,
             get_rolling_gaps,
-            calculate_demand_distribution
+            calculate_demand_distribution,
+            save_csv_file
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

@@ -4,7 +4,7 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult, DroppableProvided, DraggableProvided, DraggableStateSnapshot, DroppableStateSnapshot } from '@hello-pangea/dnd';
 import { Portal, Box, Paper, Text, Group, Stack, ScrollArea, Tooltip, HoverCard, Title, Badge, Select, ActionIcon, Divider, Loader, Center, Button, Popover, NumberInput } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconAlertTriangle, IconClock, IconBox, IconBolt } from '@tabler/icons-react';
+import { IconAlertTriangle, IconClock, IconBox, IconBolt, IconFileExport } from '@tabler/icons-react';
 import { invoke } from '@tauri-apps/api/core';
 import { load } from '@tauri-apps/plugin-store';
 import { DAYS_OF_WEEK, DayOfWeek, isWorkingDay, getWeekDates, getCurrentWeekId } from '@/lib/dateUtils';
@@ -622,6 +622,75 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
     }
   };
 
+  const handleGenerateChangeover = async () => {
+    if (!data) return;
+
+    const rows: string[] = ["Machine,Start Day,Start Shift,Part Number,Total Run Qty,Next Changeover Part"];
+
+    Object.values(data.machines).forEach(machine => {
+      let currentRun: any = null;
+      let lastPartNumber = "";
+
+      // daysWithShifts is chronological Mon -> Sun and contains only working/enabled shifts
+      daysWithShifts.forEach(dayInfo => {
+        dayInfo.shifts.forEach(shiftInfo => {
+          const shiftData = machine.schedule[dayInfo.day]?.[shiftInfo.id];
+          if (!shiftData || shiftData.jobs.length === 0) return;
+
+          shiftData.jobs.forEach(job => {
+            // Consolidation logic: check if same part continues
+            if (job.partNumber.trim().toLowerCase() === lastPartNumber.trim().toLowerCase() && currentRun) {
+              currentRun.totalQty += job.targetQty;
+            } else {
+              if (currentRun) {
+                // Close out previous run by recording the transition
+                currentRun.nextPart = job.partNumber;
+                rows.push(`"${currentRun.machine}","${currentRun.startDay}","${currentRun.startShift}","${currentRun.partNumber}",${currentRun.totalQty},"${currentRun.nextPart}"`);
+              }
+
+              // Start new run
+              currentRun = {
+                machine: machine.machineId,
+                startDay: dayInfo.day,
+                startShift: shiftInfo.id,
+                partNumber: job.partNumber,
+                totalQty: job.targetQty,
+                nextPart: "END"
+              };
+              lastPartNumber = job.partNumber;
+            }
+          });
+        });
+      });
+
+      // Handle the tail run for each machine
+      if (currentRun) {
+        rows.push(`"${currentRun.machine}","${currentRun.startDay}","${currentRun.startShift}","${currentRun.partNumber}",${currentRun.totalQty},"${currentRun.nextPart}"`);
+      }
+    });
+
+    const csvContent = rows.join("\n");
+    const safeProcessName = processName.replace(/[^a-zA-Z0-9]/g, '_');
+    const filename = `Changeover_Schedule_${currentWeekId}_${safeProcessName}.csv`;
+
+    try {
+      await invoke("save_csv_file", { content: csvContent, filename });
+      notifications.show({
+        title: 'Export Successful',
+        message: `Saved to local file system.`,
+        color: 'green'
+      });
+    } catch (err: any) {
+      if (err !== "Save cancelled") {
+        notifications.show({
+          title: 'Export Error',
+          message: err.toString(),
+          color: 'red'
+        });
+      }
+    }
+  };
+
   const daysWithShifts = useMemo(() => {
     if (!data) return [];
     const ALL_SHIFTS = ['A', 'B', 'C', 'D'];
@@ -709,6 +778,15 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
             </Group>
 
             <Group gap="xs">
+              <Button 
+                variant="light" 
+                color="indigo" 
+                size="sm" 
+                onClick={handleGenerateChangeover} 
+                leftSection={<IconFileExport size={16} />}
+              >
+                Generate Changeover Schedule
+              </Button>
               <Button variant="light" color="gray" size="sm" disabled={!dirty || isSubmitting} onClick={() => fetchUtilization()}>Reset</Button>
               <Button variant="filled" color="indigo" size="sm" disabled={!dirty || isSubmitting} loading={isSubmitting} onClick={handleSubmit} leftSection={<IconBolt size={16} />}>Submit Schedule</Button>
             </Group>
