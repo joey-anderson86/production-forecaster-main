@@ -96,3 +96,10 @@ CREATE TABLE dbo.DailyRate (
     CONSTRAINT PK_DailyRate PRIMARY KEY (PartNumber, Week, Year)
 );
 GO
+
+-- Phase 3: Transition to Machine-ID Scheduling
+IF COL_LENGTH('dbo.DeliveryData', 'MachineID') IS NULL
+BEGIN
+    ALTER TABLE dbo.DeliveryData ADD MachineID NVARCHAR(50) NULL;
+END
+GO

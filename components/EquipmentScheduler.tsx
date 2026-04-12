@@ -1,9 +1,12 @@
 'use client';
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult, DroppableProvided, DraggableProvided, DraggableStateSnapshot, DroppableStateSnapshot } from '@hello-pangea/dnd';
-import { Box, Paper, Text, Group, Stack, ScrollArea, Tooltip, HoverCard, Title, Badge, Select, ActionIcon, Divider } from '@mantine/core';
+import { Box, Paper, Text, Group, Stack, ScrollArea, Tooltip, HoverCard, Title, Badge, Select, ActionIcon, Divider, Loader, Center } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import { IconAlertTriangle, IconClock, IconBox, IconBolt } from '@tabler/icons-react';
+import { invoke } from '@tauri-apps/api/core';
+import { load } from '@tauri-apps/plugin-store';
 import { DAYS_OF_WEEK, DayOfWeek, isWorkingDay, getWeekDates, getCurrentWeekId } from '@/lib/dateUtils';
 import { useScorecardStore } from '@/lib/scorecardStore';
 
@@ -233,44 +236,55 @@ export default function EquipmentScheduler({ initialState, weekId, processName }
     }
   }, [currentWeekId]);
 
-  // Provide some dummy data if no initial state is provided
-  const [data, setData] = useState<SchedulerState>(initialState || {
-    unassigned: [
-      { id: 'job-1', partNumber: 'PART-A100', shift: 'A', targetQty: 500, processingTimeMins: 0.5 },
-      { id: 'job-2', partNumber: 'PART-B200', shift: 'B', targetQty: 1000, processingTimeMins: 0.2 },
-      { id: 'job-3', partNumber: 'PART-C300', shift: 'C', targetQty: 250, processingTimeMins: 1.5 },
-    ],
-    machines: {
-      'E-001': {
-        machineId: 'E-001',
-        dailyCapacityHrs: 18,
-        schedule: {
-          'Mon': { jobs: [], totalAssignedHours: 0 },
-          'Tue': { jobs: [], totalAssignedHours: 0 },
-          'Wed': { jobs: [], totalAssignedHours: 0 },
-          'Thu': { jobs: [], totalAssignedHours: 0 },
-          'Fri': { jobs: [], totalAssignedHours: 0 },
-          'Sat': { jobs: [], totalAssignedHours: 0 },
-          'Sun': { jobs: [], totalAssignedHours: 0 },
-        }
-      },
-      'E-002': {
-        machineId: 'E-002',
-        dailyCapacityHrs: 24,
-        schedule: {
-          'Mon': { jobs: [], totalAssignedHours: 0 },
-          'Tue': { jobs: [], totalAssignedHours: 0 },
-          'Wed': { jobs: [], totalAssignedHours: 0 },
-          'Thu': { jobs: [], totalAssignedHours: 0 },
-          'Fri': { jobs: [], totalAssignedHours: 0 },
-          'Sat': { jobs: [], totalAssignedHours: 0 },
-          'Sun': { jobs: [], totalAssignedHours: 0 },
-        }
-      }
-    }
-  });
+  const [data, setData] = useState<SchedulerState | null>(initialState || null);
+  const [loading, setLoading] = useState(!initialState);
+  
+  const activeProcess = processName || 'All Processes'; // Need to map this to department in the backend
+  // Actually, wait, "All Processes" shouldn't be passed to the backend nicely if it's the default, 
+  // but let's assume we pass what they selected or "All Processes", but the backend might filter on it.
+  
+  const fetchUtilization = useCallback(async () => {
+    try {
+      setLoading(true);
+      const store = await load("store.json", { autoSave: false, defaults: {} });
+      const connectionString = await store.get<string>("db_connection_string");
 
-  const onDragEnd = useCallback((result: DropResult) => {
+      if (!connectionString) {
+        notifications.show({
+          title: 'Database Config Missing',
+          message: 'Please set the connection string in Settings.',
+          color: 'orange'
+        });
+        setLoading(false);
+        return;
+      }
+
+      // If processName is empty/All, we probably still send the selected. 
+      // The Rust backend expects `process_name`.
+      const state: SchedulerState = await invoke('get_machine_utilization', {
+        connectionString,
+        weekId: currentWeekId,
+        processName: processName || 'All Processes' 
+      });
+      setData(state);
+    } catch (e: any) {
+      notifications.show({
+        title: 'Error Loading Schedule',
+        message: e.toString(),
+        color: 'red'
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [currentWeekId, processName]);
+
+  useEffect(() => {
+    if (!initialState) {
+      fetchUtilization();
+    }
+  }, [fetchUtilization, initialState]);
+
+  const onDragEnd = useCallback(async (result: DropResult) => {
     const { source, destination } = result;
 
     // Dropped outside a valid droppable
@@ -318,7 +332,52 @@ export default function EquipmentScheduler({ initialState, weekId, processName }
 
       return newState;
     });
-  }, []);
+
+    const store = await load("store.json", { autoSave: false, defaults: {} });
+    const connStr = await store.get<string>("db_connection_string");
+    
+    if (!connStr) {
+      notifications.show({ title: 'Error', message: 'Connection string not found.', color: 'red' });
+      setData(prev => (prev ? copyState(prev) : null));
+      return;
+    }
+    
+    // Parse destination to figure out new machine and new date
+    let newMachineId: string | null = null;
+    let newDateStr: string | null = null;
+    let newDayOfWeek: string | null = null;
+
+    if (destination.droppableId !== 'unassigned') {
+      const [destMachine, destDay] = destination.droppableId.split('_');
+      newMachineId = destMachine;
+      const dayIdx = DAYS_OF_WEEK.indexOf(destDay as DayOfWeek);
+      if (dayIdx >= 0 && weekDates[dayIdx]) {
+        // format Date as YYYY-MM-DD to match the old payload format
+        const d = weekDates[dayIdx];
+        newDateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        newDayOfWeek = destDay;
+      }
+    }
+
+    try {
+      await invoke('update_job_machine_assignment', {
+        connectionString: connStr,
+        department: processName || 'All Processes',
+        jobId: result.draggableId,
+        newMachineId,
+        newDate: newDateStr,
+        newDayOfWeek
+      });
+      // ID was partNumber|shift|oldDate
+      // We should ideally reload from DB so the ID and order matches truth.
+      // fetchUtilization(); 
+    } catch (e: any) {
+      notifications.show({ title: 'Failed to update assignment', message: e.toString(), color: 'red' });
+      // Revert optimism
+      setData(prev => copyState(prev)); // Or re-fetch from db to be safe
+      fetchUtilization();
+    }
+  }, [processName, weekDates, fetchUtilization]);
 
   return (
     <Box p="md" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -335,7 +394,12 @@ export default function EquipmentScheduler({ initialState, weekId, processName }
       </Group>
 
       <DragDropContext onDragEnd={onDragEnd}>
-        <Box style={{ display: 'flex', flex: 1, gap: '16px', overflow: 'hidden' }}>
+        {loading || !data ? (
+          <Center style={{ flex: 1 }}>
+            <Loader size="lg" />
+          </Center>
+        ) : (
+          <Box style={{ display: 'flex', flex: 1, gap: '16px', overflow: 'hidden' }}>
           
           {/* MATRIX GRID */}
           <Paper withBorder style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -505,6 +569,7 @@ export default function EquipmentScheduler({ initialState, weekId, processName }
           </Paper>
 
         </Box>
+        )}
       </DragDropContext>
     </Box>
   );

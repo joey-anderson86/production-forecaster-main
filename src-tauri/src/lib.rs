@@ -147,6 +147,39 @@ pub struct DistributeDemandResult {
     pub value: i32,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobBlock {
+    pub id: String,
+    pub part_number: String,
+    pub shift: String,
+    pub target_qty: i32,
+    pub processing_time_mins: f64,
+    pub standard_batch_size: Option<i32>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DaySchedule {
+    pub jobs: Vec<JobBlock>,
+    pub total_assigned_hours: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MachineSchedule {
+    pub machine_id: String,
+    pub daily_capacity_hrs: f64,
+    pub schedule: std::collections::HashMap<String, DaySchedule>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SchedulerState {
+    pub unassigned: Vec<JobBlock>,
+    pub machines: std::collections::HashMap<String, MachineSchedule>,
+}
+
 // State for managing the MSSQL connection status and settings
 pub struct DbState {
     pub connection_string: Mutex<Option<String>>,
@@ -1720,6 +1753,159 @@ async fn get_active_weeks(connection_string: String) -> Result<Vec<String>, Stri
     Ok(result)
 }
 
+#[tauri::command]
+async fn get_machine_utilization(
+    connection_string: String,
+    week_id: String,
+    process_name: String
+) -> Result<SchedulerState, String> {
+    let mut client = create_client(&connection_string).await?;
+    
+    // 1. Get machines and capacity
+    let query1 = "
+        SELECT MachineID, MAX(DailyHours) as MaxDailyHours
+        FROM (
+            SELECT MachineID, Date, CAST(SUM(ISNULL(HoursAvailable, 0)) AS FLOAT) as DailyHours
+            FROM dbo.ProcessInfo
+            WHERE ProcessName = @p1 AND WeekIdentifier = @p2 AND MachineID IS NOT NULL AND MachineID != ''
+            GROUP BY MachineID, Date
+        ) t
+        GROUP BY MachineID
+    ";
+    let stream1 = client.query(query1, &[&process_name, &week_id]).await.map_err(|e| e.to_string())?;
+    let rows1 = stream1.into_first_result().await.map_err(|e| e.to_string())?;
+    
+    let mut machines = std::collections::HashMap::new();
+    let days_of_week = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    
+    for row in rows1 {
+        let m_id: String = row.get::<&str, _>("MachineID").unwrap_or_default().trim().to_string();
+        let cap: f64 = row.get::<f64, _>("MaxDailyHours").unwrap_or(0.0);
+        
+        let mut schedule = std::collections::HashMap::new();
+        for day in days_of_week {
+            schedule.insert(day.to_string(), DaySchedule {
+                jobs: Vec::new(),
+                total_assigned_hours: 0.0,
+            });
+        }
+        
+        machines.insert(m_id.clone(), MachineSchedule {
+            machine_id: m_id,
+            daily_capacity_hrs: cap,
+            schedule,
+        });
+    }
+
+    // 2. Get jobs
+    let query2 = "
+        SELECT 
+            d.PartNumber, d.Shift, CONVERT(VARCHAR, d.Date, 23) as Date, d.MachineID, d.Target, d.DayOfWeek,
+            p.ProcessingTime, p.BatchSize
+        FROM dbo.DeliveryData d
+        LEFT JOIN dbo.PartInfo p ON d.PartNumber = p.PartNumber AND d.Department = p.ProcessName
+        WHERE d.WeekIdentifier = @p1 AND d.Department = @p2
+    ";
+    let stream2 = client.query(query2, &[&week_id, &process_name]).await.map_err(|e| e.to_string())?;
+    let rows2 = stream2.into_first_result().await.map_err(|e| e.to_string())?;
+
+    let mut unassigned = Vec::new();
+
+    for row in rows2 {
+        let part_number = row.get::<&str, _>("PartNumber").unwrap_or_default().trim().to_string();
+        let shift = row.get::<&str, _>("Shift").unwrap_or_default().trim().to_string();
+        let date_str = row.get::<&str, _>("Date").unwrap_or_default().trim().to_string();
+        let machine_id = row.get::<&str, _>("MachineID").map(|s| s.trim().to_string()).unwrap_or_default();
+        let target_qty = get_i16_robust(&row, "Target").unwrap_or(0) as i32;
+        let day_of_week = row.get::<&str, _>("DayOfWeek").unwrap_or_default().trim().to_string();
+        
+        let proc_time_i16 = get_i16_robust(&row, "ProcessingTime").unwrap_or(0);
+        let processing_time_mins = proc_time_i16 as f64;
+        let standard_batch_size = get_i16_robust(&row, "BatchSize").map(|v| v as i32);
+
+        let id = format!("{}|{}|{}", part_number, shift, date_str);
+        
+        let job = JobBlock {
+            id,
+            part_number,
+            shift,
+            target_qty,
+            processing_time_mins,
+            standard_batch_size,
+        };
+
+        if machine_id.is_empty() {
+            unassigned.push(job);
+        } else {
+            if !machines.contains_key(&machine_id) {
+                // Machine not in ProcessInfo -> create it with 0 capacity
+                let mut schedule = std::collections::HashMap::new();
+                for day in days_of_week {
+                    schedule.insert(day.to_string(), DaySchedule {
+                        jobs: Vec::new(),
+                        total_assigned_hours: 0.0,
+                    });
+                }
+                machines.insert(machine_id.clone(), MachineSchedule {
+                    machine_id: machine_id.clone(),
+                    daily_capacity_hrs: 0.0,
+                    schedule,
+                });
+            }
+            if let Some(m) = machines.get_mut(&machine_id) {
+                if let Some(day_sched) = m.schedule.get_mut(&day_of_week) {
+                    let hrs = (target_qty as f64 * processing_time_mins) / 60.0;
+                    day_sched.total_assigned_hours += hrs;
+                    day_sched.jobs.push(job);
+                } else {
+                    unassigned.push(job);
+                }
+            }
+        }
+    }
+
+    Ok(SchedulerState {
+        unassigned,
+        machines,
+    })
+}
+
+#[tauri::command]
+async fn update_job_machine_assignment(
+    connection_string: String,
+    department: String,
+    job_id: String,
+    new_machine_id: Option<String>,
+    new_date: Option<String>,
+    new_day_of_week: Option<String>
+) -> Result<(), String> {
+    let mut client = create_client(&connection_string).await?;
+    
+    let parts: Vec<&str> = job_id.split('|').collect();
+    if parts.len() != 3 {
+        return Err("Invalid job_id format".to_string());
+    }
+    let part_number = parts[0];
+    let shift = parts[1];
+    let old_date = parts[2];
+
+    if let (Some(nd), Some(ndow)) = (&new_date, &new_day_of_week) {
+        let sql = "UPDATE dbo.DeliveryData SET MachineID = @p1, Date = CAST(@p2 as DATE), DayOfWeek = @p3 WHERE Department = @p4 AND PartNumber = @p5 AND Shift = @p6 AND Date = CAST(@p7 as DATE)";
+        client.execute(
+            sql,
+            &[&new_machine_id, nd, ndow, &department, &part_number, &shift, &old_date]
+        ).await.map_err(|e| format!("Failed to update assignment: {}", e))?;
+    } else {
+        let sql = "UPDATE dbo.DeliveryData SET MachineID = @p1 WHERE Department = @p2 AND PartNumber = @p3 AND Shift = @p4 AND Date = CAST(@p5 as DATE)";
+        client.execute(
+            sql,
+            &[&new_machine_id, &department, &part_number, &shift, &old_date]
+        ).await.map_err(|e| format!("Failed to update assignment: {}", e))?;
+    }
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1730,6 +1916,8 @@ pub fn run() {
             connection_string: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
+            get_machine_utilization,
+            update_job_machine_assignment,
             get_scorecard_data,
             upsert_scorecard_data,
             delete_scorecard_week,

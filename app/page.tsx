@@ -619,6 +619,7 @@ export default function ProductionForecaster() {
               {roleMode === 'planner' && (
                 <>
                   <Tabs.Tab value="scorecard-mgmt">Production Planner</Tabs.Tab>
+                  <Tabs.Tab value="equipment-scheduler">Machine Scheduler</Tabs.Tab>
                   <Tabs.Tab value="equipment-mgmt">Equipment Management</Tabs.Tab>
                 </>
               )}
@@ -1158,7 +1159,7 @@ export default function ProductionForecaster() {
           </div>
         )}
 
-        {mainTab === 'production-board' && (
+        {(mainTab === 'equipment-scheduler' || mainTab === 'production-board') && (
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 min-h-[600px]">
             <EquipmentScheduler />
           </div>
