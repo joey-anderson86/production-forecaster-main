@@ -22,6 +22,8 @@ export interface JobBlock {
   batchIndex: number;
   isBatchSplit: boolean;
   maxQty?: number; // Added to track original limit
+  originalShift?: string;
+  originalDate?: string;
 }
 
 export interface ShiftSchedule {
@@ -112,7 +114,8 @@ const JobCard = ({
   weekDates, 
   columnIndex,
   shiftSettings,
-  onUpdateQty
+  onUpdateQty,
+  onPreviewChange
 }: { 
   job: JobBlock; 
   index: number;
@@ -120,15 +123,25 @@ const JobCard = ({
   columnIndex: number; // -1 for unassigned, 0-6 for Mon-Sun
   shiftSettings: Record<string, string>;
   onUpdateQty?: (jobId: string, newQty: number) => void;
+  onPreviewChange?: (jobId: string, newQty: number | null) => void;
 }) => {
   const [editQty, setEditQty] = useState<number>(job.targetQty);
   const [opened, setOpened] = useState(false);
   
+  // Update local editQty if the job's targetQty changes externally
+  useEffect(() => {
+    setEditQty(job.targetQty);
+  }, [job.targetQty]);
+  
   const shiftColor = SHIFT_COLORS[job.shift] || 'gray.5';
-  const processingHrs = ((job.targetQty * (job.processingTimeMins || 0)) / 60).toFixed(1);
+  const processingHrs = ((editQty * (job.processingTimeMins || 0)) / 60).toFixed(1);
   
   const isWarning = job.standardBatchSize && job.targetQty > job.standardBatchSize;
   const warningMessage = isWarning ? `Over batch size (${job.standardBatchSize})` : '';
+
+  const jobDateStr = job.id.split('|')[2];
+  const hasMoved = (job.originalShift && job.shift !== job.originalShift) || (job.originalDate && jobDateStr !== job.originalDate);
+  const moveLabel = hasMoved ? `Prior: SH ${job.originalShift} on ${job.originalDate}` : '';
 
   return (
     <Draggable draggableId={job.id} index={index}>
@@ -172,9 +185,18 @@ const JobCard = ({
                 )}
                 
                 <Stack gap={2}>
-                  <Text fw={800} style={{ fontSize: '11px', lineHeight: 1.2 }} truncate="end">
-                    {job.partNumber}
-                  </Text>
+                  <Group gap={4} wrap="nowrap" align="center" style={{ width: '100%' }}>
+                    <Text fw={800} style={{ fontSize: '11px', lineHeight: 1.2, flex: 1 }} truncate="end">
+                      {job.partNumber}
+                    </Text>
+                    {hasMoved && (
+                      <Tooltip label={moveLabel} withinPortal position="top">
+                        <Badge size="xs" color="gray" variant="outline" p={0} styles={{ root: { width: 14, height: 14, minWidth: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' } }}>
+                          <IconAlertTriangle size={10} color="var(--mantine-color-orange-6)" />
+                        </Badge>
+                      </Tooltip>
+                    )}
+                  </Group>
                   
                   <Group gap={4} wrap="nowrap" align="center">
                     <Badge 
@@ -186,7 +208,21 @@ const JobCard = ({
                       {job.shift}
                     </Badge>
                     
-                    <Popover opened={opened} onChange={setOpened} position="bottom" withArrow shadow="md" withinPortal trapFocus={false}>
+                    <Popover 
+                      opened={opened} 
+                      onChange={(o) => {
+                        setOpened(o);
+                        if (!o) {
+                          onPreviewChange?.(job.id, null);
+                          setEditQty(job.targetQty);
+                        }
+                      }} 
+                      position="bottom" 
+                      withArrow 
+                      shadow="md" 
+                      withinPortal 
+                      trapFocus={false}
+                    >
                       <Popover.Target>
                         <Badge 
                           size="xs" 
@@ -206,7 +242,11 @@ const JobCard = ({
                               <NumberInput
                                 size="xs"
                                 value={editQty}
-                                onChange={(val) => setEditQty(Number(val))}
+                                onChange={(val) => {
+                                  const num = Number(val);
+                                  setEditQty(num);
+                                  onPreviewChange?.(job.id, num);
+                                }}
                                 min={1}
                                 max={job.maxQty || job.targetQty}
                                 step={1}
@@ -287,6 +327,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
   const [processName, setProcessName] = useState(initialProcessName || 'All Processes');
   const [backlogDay, setBacklogDay] = useState<DayOfWeek | 'All'>('Mon');
   const [meta, setMeta] = useState<SchedulerMeta | null>(null);
+  const [previewData, setPreviewData] = useState<{ jobId: string, qty: number } | null>(null);
 
   const consolidateJobsList = useCallback((jobs: JobBlock[]) => {
     const consolidated: JobBlock[] = [];
@@ -333,7 +374,17 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
       Object.values(machine.schedule).forEach(dayShifts => {
         Object.values(dayShifts).forEach(shiftData => {
           totalCapacity += shiftData.capacityHrs;
-          totalLoad += shiftData.totalAssignedHours;
+          
+          let shiftLoad = shiftData.totalAssignedHours;
+          if (previewData) {
+            const previewedJob = shiftData.jobs.find(j => j.id === previewData.jobId);
+            if (previewedJob) {
+              const oldHrs = (previewedJob.targetQty * previewedJob.processingTimeMins) / 60;
+              const newHrs = (previewData.qty * previewedJob.processingTimeMins) / 60;
+              shiftLoad = shiftLoad - oldHrs + newHrs;
+            }
+          }
+          totalLoad += shiftLoad;
         });
       });
     });
@@ -343,7 +394,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
       totalCapacity,
       utilization: totalCapacity > 0 ? (totalLoad / totalCapacity) * 100 : 0
     };
-  }, [data]);
+  }, [data, previewData]);
   
   const fetchMeta = useCallback(async () => {
     try {
@@ -378,7 +429,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
       // Initialize maxQty for local tracking
       const initializedState: SchedulerState = {
         ...state,
-        unassigned: state.unassigned.map(j => ({ ...j, maxQty: j.targetQty })),
+        unassigned: state.unassigned.map(j => ({ ...j, maxQty: j.targetQty, originalShift: j.shift, originalDate: j.id.split('|')[2] })),
         machines: Object.fromEntries(
           Object.entries(state.machines).map(([mId, mInfo]) => [
             mId,
@@ -390,7 +441,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                   Object.fromEntries(
                     Object.entries(shifts).map(([sId, sData]) => [
                       sId,
-                      { ...sData, jobs: sData.jobs.map(j => ({ ...j, maxQty: j.targetQty })) }
+                      { ...sData, jobs: sData.jobs.map(j => ({ ...j, maxQty: j.targetQty, originalShift: j.shift, originalDate: j.id.split('|')[2] })) }
                     ])
                   )
                 ])
@@ -451,12 +502,23 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
       const oldQty = foundJob.targetQty;
       const diff = oldQty - newQty;
 
+      // Create updated job object immutably
+      const updatedJob = { ...foundJob, targetQty: newQty };
+      
+      // Update its place in the state
+      if (uIdx !== -1) {
+        newState.unassigned[uIdx] = updatedJob;
+      } else if (machineId && day && shift) {
+        const sData = newState.machines[machineId].schedule[day][shift];
+        const jIdx = sData.jobs.findIndex(j => j.id === jobId);
+        if (jIdx !== -1) sData.jobs[jIdx] = updatedJob;
+      }
+
       if (diff > 0) {
         // Decrease qty -> Create remainder card in backlog
-        foundJob.targetQty = newQty;
         const remainderCard: JobBlock = {
-          ...foundJob,
-          id: `${foundJob.id}|split|${Date.now()}`,
+          ...updatedJob,
+          id: `${updatedJob.id}|split|${Date.now()}`,
           targetQty: diff,
           maxQty: diff, // The new card has its own max based on the split
           isBatchSplit: true
@@ -471,14 +533,14 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
           sData.totalAssignedHours = calculateTotalHours(sData.jobs);
         }
       } else if (diff < 0) {
-        // Increase qty (only up to maxQty)
-        foundJob.targetQty = newQty;
+        // Increase qty
         if (machineId && day && shift) {
           const sData = newState.machines[machineId].schedule[day][shift];
           sData.totalAssignedHours = calculateTotalHours(sData.jobs);
         }
       }
 
+      setPreviewData(null); // Clear preview after update
       return newState;
     });
     setDirty(true);
@@ -534,7 +596,22 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
         }
         newState.unassigned = consolidateJobsList(newState.unassigned);
       } else {
-        const [destMachine, destDay, destShift] = destination.droppableId.split('|');
+         const [destMachine, destDay, destShift] = destination.droppableId.split('|');
+        
+        // UPDATE METADATA IMMUTABLY
+        const dayIdx = DAYS_OF_WEEK.indexOf(destDay as DayOfWeek);
+        const d = weekDates[dayIdx];
+        const newDateStr = d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` : '';
+
+        const idParts = movedJob.id.split('|');
+        if (idParts.length >= 3) idParts[2] = newDateStr;
+        const newId = idParts.join('|');
+
+        movedJob = { 
+          ...movedJob, 
+          shift: destShift, 
+          id: newId 
+        };
         
         // Safety: ensure keys exist (should be populated by backend)
         if (!newState.machines[destMachine].schedule[destDay]) {
@@ -550,14 +627,11 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
 
         if (existingJobIdx !== -1) {
           const existingJob = shiftData.jobs[existingJobIdx];
-          existingJob.targetQty += movedJob.targetQty;
-          
-          // Aggregate maxQty if present, reflecting the new combined potential volume
-          if (existingJob.maxQty !== undefined || movedJob.maxQty !== undefined) {
-            existingJob.maxQty = (existingJob.maxQty || 0) + (movedJob.maxQty || movedJob.targetQty);
-          }
-          
-          // No splice needed; original is already removed from source and we've updated the destination's existing copy
+          shiftData.jobs[existingJobIdx] = {
+            ...existingJob,
+            targetQty: existingJob.targetQty + movedJob.targetQty,
+            maxQty: (existingJob.maxQty || 0) + (movedJob.maxQty || movedJob.targetQty)
+          };
         } else {
           // Standard move: insert at the specified index
           shiftData.jobs.splice(destination.index, 0, movedJob);
@@ -570,7 +644,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
     });
 
     setDirty(true);
-  }, []);
+  }, [weekDates]);
 
   const handleSubmit = async () => {
     if (!data) return;
@@ -880,11 +954,21 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                                       const cellId = `${machine.machineId}|${d.day}|${s.id}`;
                                       const shiftData = machine.schedule[d.day]?.[s.id];
                                       
-                                      const isOver = shiftData && shiftData.totalAssignedHours > shiftData.capacityHrs;
-                                      const util = shiftData && shiftData.capacityHrs > 0 ? (shiftData.totalAssignedHours / shiftData.capacityHrs) * 100 : 0;
+                                      let effectiveHours = shiftData?.totalAssignedHours || 0;
+                                      if (previewData && shiftData) {
+                                        const previewedJob = shiftData.jobs.find(j => j.id === previewData.jobId);
+                                        if (previewedJob) {
+                                          const oldHrs = (previewedJob.targetQty * previewedJob.processingTimeMins) / 60;
+                                          const newHrs = (previewData.qty * previewedJob.processingTimeMins) / 60;
+                                          effectiveHours = effectiveHours - oldHrs + newHrs;
+                                        }
+                                      }
+
+                                      const isOver = shiftData && effectiveHours > (shiftData.capacityHrs || 0);
+                                      const util = shiftData && shiftData.capacityHrs > 0 ? (effectiveHours / shiftData.capacityHrs) * 100 : 0;
                                       
                                       return (
-                                        <Droppable key={cellId} droppableId={cellId} isDropDisabled={!s.isWorking}>
+                                        <Droppable key={cellId} droppableId={cellId} isDropDisabled={!s.isWorking || (shiftData && shiftData.capacityHrs === 0)}>
                                           {(provided, snapshot) => (
                                             <Box 
                                               ref={provided.innerRef} 
@@ -896,20 +980,20 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                                                 borderRight: '1px solid var(--mantine-color-gray-2)', 
                                                 transition: 'background-color 0.2s',
                                                 position: 'relative',
-                                                backgroundColor: !s.isWorking 
+                                                backgroundColor: !s.isWorking || (shiftData && shiftData.capacityHrs === 0)
                                                   ? 'var(--mantine-color-gray-1)' 
                                                   : snapshot.isDraggingOver ? 'var(--mantine-color-indigo-0)' : 'white',
-                                                backgroundImage: !s.isWorking 
+                                                backgroundImage: !s.isWorking || (shiftData && shiftData.capacityHrs === 0)
                                                   ? 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(0,0,0,0.02) 10px, rgba(0,0,0,0.02) 20px)' 
                                                   : undefined
                                               }}
                                             >
-                                              {s.isWorking ? (
+                                              {s.isWorking && (!shiftData || shiftData.capacityHrs > 0) ? (
                                                 <>
                                                   <Box p="6px" style={{ borderBottom: '1px solid var(--mantine-color-gray-1)', backgroundColor: isOver ? 'var(--mantine-color-red-0)' : 'transparent' }}>
                                                     <Group justify="space-between" gap={0} wrap="nowrap">
-                                                      <Text size="9px" fw={800} c={isOver ? 'red.7' : (shiftData?.totalAssignedHours ? 'dark' : 'dimmed')}>
-                                                        {shiftData?.totalAssignedHours.toFixed(1) || '0.0'}h
+                                                      <Text size="9px" fw={800} c={isOver ? 'red.7' : (effectiveHours ? 'dark' : 'dimmed')}>
+                                                        {effectiveHours.toFixed(1)}h
                                                       </Text>
                                                       <Text size="8px" fw={700} c="dimmed">/ {shiftData?.capacityHrs || 0}h</Text>
                                                     </Group>
@@ -927,6 +1011,10 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                                                         columnIndex={d.dateIdx} 
                                                         shiftSettings={shiftSettings} 
                                                         onUpdateQty={handleUpdateJobQty}
+                                                        onPreviewChange={(id, qty) => {
+                                                          if (qty === null) setPreviewData(null);
+                                                          else setPreviewData({ jobId: id, qty });
+                                                        }}
                                                       />
                                                     ))}
                                                     {provided.placeholder}
@@ -934,7 +1022,9 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                                                 </>
                                               ) : (
                                                 <Center style={{ height: '100%', padding: '20px' }}>
-                                                  <Text size="10px" fw={800} c="gray.4" style={{ transform: 'rotate(-45deg)', whiteSpace: 'nowrap' }}>SHIFT OFF</Text>
+                                                  <Text size="10px" fw={800} c="gray.4" style={{ transform: 'rotate(-45deg)', whiteSpace: 'nowrap' }}>
+                                                    {shiftData && shiftData.capacityHrs === 0 ? "CAPACITY 0h" : "SHIFT OFF"}
+                                                  </Text>
                                                 </Center>
                                               )}
                                             </Box>
@@ -995,6 +1085,10 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                             columnIndex={-1} 
                             shiftSettings={shiftSettings} 
                             onUpdateQty={handleUpdateJobQty}
+                            onPreviewChange={(id, qty) => {
+                              if (qty === null) setPreviewData(null);
+                              else setPreviewData({ jobId: id, qty });
+                            }}
                           />
                         ))}
                       {provided.placeholder}

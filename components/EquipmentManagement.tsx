@@ -179,6 +179,7 @@ const ShiftRow = ({
                       fontSize: '12px',
                       fontWeight: isDisabled ? 400 : 500,
                       opacity: isDisabled ? 0.6 : 1,
+                      color: 'inherit',
                       cursor: isDisabled ? 'not-allowed' : 'text',
                       '&:focus': {
                         backgroundColor: 'light-dark(white, var(--mantine-color-dark-7))',
@@ -196,7 +197,7 @@ const ShiftRow = ({
         backgroundColor: 'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-7))',
         borderLeft: '2px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4))' 
       }}>
-        <Text fw={700} ta="center" size="xs" c={rowTotal > 0 ? 'blue.7' : 'dimmed'}>
+        <Text fw={700} ta="center" size="xs" c={rowTotal > 0 ? 'light-dark(blue.8, blue.3)' : 'dimmed'}>
           {rowTotal}h
         </Text>
       </Table.Td>
@@ -266,7 +267,7 @@ const MachineRow = ({
         </Table.Td>
         {dailyTotals.map((total, i) => (
           <Table.Td key={i} ta="center" style={{ borderLeft: '1px solid light-dark(var(--mantine-color-blue-1), var(--mantine-color-dark-4))' }}>
-            <Text fw={700} size="xs" c={total > 0 ? 'blue.9' : 'dimmed'}>
+            <Text fw={700} size="xs" c={total > 0 ? 'light-dark(blue.8, blue.3)' : 'dimmed'}>
               {total > 0 ? `${total}h` : '—'}
             </Text>
           </Table.Td>
@@ -275,7 +276,7 @@ const MachineRow = ({
           backgroundColor: 'light-dark(var(--mantine-color-blue-1), rgba(24, 100, 171, 0.2))',
           borderLeft: '2px solid light-dark(var(--mantine-color-blue-2), var(--mantine-color-dark-4))' 
         }}>
-          <Text fw={800} ta="center" size="sm" c="blue.9">
+          <Text fw={800} ta="center" size="sm" c="light-dark(blue.9, blue.2)">
             {weeklyTotal}h
           </Text>
         </Table.Td>
@@ -849,16 +850,30 @@ export function EquipmentManagement() {
         )}
 
         {schedules.length > 0 ? (
-          <Table verticalSpacing="xs" highlightOnHover withTableBorder>
-            <Table.Thead 
-              style={{ 
+          <Table 
+            verticalSpacing="xs" 
+            highlightOnHover 
+            withTableBorder
+            styles={{
+              thead: {
                 backgroundColor: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7))',
                 position: 'sticky',
                 top: 0,
                 zIndex: 10,
-                boxShadow: 'var(--mantine-shadow-sm)'
-              }}
-            >
+                boxShadow: 'var(--mantine-shadow-xs)'
+              },
+              tfoot: {
+                backgroundColor: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7))',
+                position: 'sticky',
+                bottom: 0,
+                zIndex: 10,
+                boxShadow: '0 -1px 2px rgba(0,0,0,0.05)',
+                borderTop: '2px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-4))'
+              },
+              th: { borderBottom: '1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4))' }
+            }}
+          >
+            <Table.Thead>
               <Table.Tr>
                 <Table.Th w={200}><Text size="xs" fw={700} c="dimmed">MACHINE ID</Text></Table.Th>
                 <Table.Th ta="center" w={100}><Text size="xs" fw={700} c="dimmed">SCHEDULE</Text></Table.Th>
@@ -868,7 +883,7 @@ export function EquipmentManagement() {
                     <Table.Th key={day} ta="center" w={85}>
                       <Stack gap={0} align="center">
                         <Text size="xs" fw={700} c="dimmed">{day.toUpperCase()}</Text>
-                        {dateStr && <Text size="10px" c="blue.4" fw={700}>{dateStr}</Text>}
+                        {dateStr && <Text size="10px" c="light-dark(blue.6, blue.4)" fw={700}>{dateStr}</Text>}
                       </Stack>
                     </Table.Th>
                   );
@@ -898,16 +913,7 @@ export function EquipmentManagement() {
               ))}
             </Table.Tbody>
 
-            <Table.Tfoot 
-              style={{ 
-                backgroundColor: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7))',
-                position: 'sticky',
-                bottom: 0,
-                zIndex: 10,
-                boxShadow: '0 -1px 2px rgba(0,0,0,0.05)',
-                borderTop: '2px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-4))'
-              }}
-            >
+            <Table.Tfoot>
               <Table.Tr>
                 <Table.Td colSpan={2}>
                   <Text size="xs" fw={800} c="dimmed" ta="right" pr="md">DAILY CAPACITY UTILIZATION</Text>
