@@ -76,7 +76,7 @@ export default function ProductionForecaster() {
     defaultValue: 'stacked',
   });
 
-  const isFluidLayout = layoutMode === 'widescreen' && mainTab === 'scorecard-dash';
+  const isFluidLayout = layoutMode === 'widescreen' && (mainTab === 'scorecard-dash' || mainTab === 'equipment-scheduler');
 
   const requestSort = (key: string) => {
     let direction: 'asc' | 'desc' = 'asc';

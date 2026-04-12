@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult, DroppableProvided, DraggableProvided, DraggableStateSnapshot, DroppableStateSnapshot } from '@hello-pangea/dnd';
-import { Box, Paper, Text, Group, Stack, ScrollArea, Tooltip, HoverCard, Title, Badge, Select, ActionIcon, Divider, Loader, Center } from '@mantine/core';
+import { Portal, Box, Paper, Text, Group, Stack, ScrollArea, Tooltip, HoverCard, Title, Badge, Select, ActionIcon, Divider, Loader, Center, Button, Popover, NumberInput } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconAlertTriangle, IconClock, IconBox, IconBolt } from '@tabler/icons-react';
 import { invoke } from '@tauri-apps/api/core';
@@ -19,17 +19,21 @@ export interface JobBlock {
   targetQty: number;
   processingTimeMins: number; // For scheduling capacity
   standardBatchSize?: number;
+  batchIndex: number;
+  isBatchSplit: boolean;
+  maxQty?: number; // Added to track original limit
 }
 
-export interface DaySchedule {
+export interface ShiftSchedule {
   jobs: JobBlock[];
+  capacityHrs: number;
   totalAssignedHours: number;
 }
 
 export interface MachineSchedule {
   machineId: string;
   dailyCapacityHrs: number;
-  schedule: Record<DayOfWeek, DaySchedule>;
+  schedule: Record<string, Record<string, ShiftSchedule>>; // Day -> Map of Shifts
 }
 
 export interface SchedulerState {
@@ -39,8 +43,21 @@ export interface SchedulerState {
 
 interface EquipmentSchedulerProps {
   initialState?: SchedulerState;
-  weekId?: string;
-  processName?: string;
+  initialWeekId?: string;
+  initialProcessName?: string;
+}
+
+interface SchedulerMeta {
+  activeWeeks: string[];
+  processHierarchy: Record<string, string[]>;
+}
+
+interface JobAssignment {
+  jobId: string;
+  machineId: string | null;
+  date: string;
+  dayOfWeek: string;
+  qty: number;
 }
 
 // --- Helper Functions ---
@@ -62,16 +79,20 @@ const SHIFT_COLORS_BG: Record<string, string> = {
 function copyState(state: SchedulerState): SchedulerState {
   const newMachines: Record<string, MachineSchedule> = {};
   for (const [mId, mInfo] of Object.entries(state.machines)) {
-    const newSchedule: Partial<Record<DayOfWeek, DaySchedule>> = {};
-    for (const day of DAYS_OF_WEEK) {
-      newSchedule[day] = {
-        jobs: [...mInfo.schedule[day].jobs],
-        totalAssignedHours: mInfo.schedule[day].totalAssignedHours
-      };
+    const newSchedule: Record<string, Record<string, ShiftSchedule>> = {};
+    for (const [day, dayShifts] of Object.entries(mInfo.schedule)) {
+      newSchedule[day] = {};
+      for (const [shift, shiftData] of Object.entries(dayShifts)) {
+        newSchedule[day][shift] = {
+          jobs: [...shiftData.jobs],
+          capacityHrs: shiftData.capacityHrs,
+          totalAssignedHours: shiftData.totalAssignedHours
+        };
+      }
     }
     newMachines[mId] = {
       ...mInfo,
-      schedule: newSchedule as Record<DayOfWeek, DaySchedule>
+      schedule: newSchedule
     };
   }
   return {
@@ -90,144 +111,207 @@ const JobCard = ({
   index, 
   weekDates, 
   columnIndex,
-  shiftSettings
+  shiftSettings,
+  onUpdateQty
 }: { 
   job: JobBlock; 
   index: number;
   weekDates: Date[];
   columnIndex: number; // -1 for unassigned, 0-6 for Mon-Sun
   shiftSettings: Record<string, string>;
+  onUpdateQty?: (jobId: string, newQty: number) => void;
 }) => {
-  const shiftColor = SHIFT_COLORS[job.shift] || 'gray.5';
-  const shiftBg = SHIFT_COLORS_BG[job.shift] || 'gray.0';
+  const [editQty, setEditQty] = useState<number>(job.targetQty);
+  const [opened, setOpened] = useState(false);
   
-  // Panama schedule check
-  let isWarning = false;
-  let warningMessage = "";
-  if (columnIndex >= 0) {
-    const date = weekDates[columnIndex];
-    const anchorDate = shiftSettings[job.shift];
-    if (date && anchorDate && !isWorkingDay(date, anchorDate)) {
-      isWarning = true;
-      warningMessage = `Shift ${job.shift} is OFF on this day (Panama Schedule constraint)`;
-    }
-  }
-
-  const processingHrs = ((job.targetQty * job.processingTimeMins) / 60).toFixed(1);
+  const shiftColor = SHIFT_COLORS[job.shift] || 'gray.5';
+  const processingHrs = ((job.targetQty * (job.processingTimeMins || 0)) / 60).toFixed(1);
+  
+  const isWarning = job.standardBatchSize && job.targetQty > job.standardBatchSize;
+  const warningMessage = isWarning ? `Over batch size (${job.standardBatchSize})` : '';
 
   return (
     <Draggable draggableId={job.id} index={index}>
-      {(provided: DraggableProvided, snapshot: DraggableStateSnapshot) => (
-        <HoverCard position="right" shadow="md" withinPortal openDelay={300}>
-          <HoverCard.Target>
-            <Paper
-              ref={provided.innerRef}
-              {...provided.draggableProps}
-              {...provided.dragHandleProps}
-              shadow={snapshot.isDragging ? "lg" : "xs"}
-              p={6}
-              mb={8}
-              withBorder
-              style={{
-                ...provided.draggableProps.style,
-                backgroundColor: snapshot.isDragging ? 'var(--mantine-color-gray-0)' : 'white',
-                opacity: snapshot.isDragging ? 0.9 : 1,
-                cursor: 'grab',
-                position: 'relative',
-                borderRadius: '6px',
-                // Use separate longhand properties to avoid React style conflicts
-                borderLeftWidth: '3px',
-                borderLeftStyle: 'solid',
-                borderLeftColor: isWarning 
-                  ? 'var(--mantine-color-red-5)' 
-                  : `var(--mantine-color-${shiftColor.replace('.', '-')})`,
-                outline: isWarning ? '2px dashed var(--mantine-color-red-4)' : undefined,
-                outlineOffset: isWarning ? '-2px' : undefined,
-              }}
-            >
-              {isWarning && (
-                <Tooltip label={warningMessage} withinPortal>
-                  <Box style={{ position: 'absolute', top: -10, right: -10, zIndex: 10, background: 'white', borderRadius: '50%', boxShadow: 'var(--mantine-shadow-xs)' }}>
-                    <IconAlertTriangle size={14} color="var(--mantine-color-red-6)" fill="white" />
-                  </Box>
-                </Tooltip>
-              )}
-              
-              <Stack gap={2}>
-                <Text fw={800} style={{ fontSize: '11px', lineHeight: 1.2 }} truncate="end">
-                  {job.partNumber}
-                </Text>
+      {(provided: DraggableProvided, snapshot: DraggableStateSnapshot) => {
+        const card = (
+          <HoverCard position="right" shadow="md" withinPortal openDelay={200} disabled={snapshot.isDragging}>
+            <HoverCard.Target>
+              <Paper
+                ref={provided.innerRef}
+                {...provided.draggableProps}
+                {...provided.dragHandleProps}
+                shadow={snapshot.isDragging ? "xl" : "xs"}
+                p={6}
+                mb={8}
+                withBorder
+                style={{
+                  ...provided.draggableProps.style,
+                  backgroundColor: snapshot.isDragging ? 'var(--mantine-color-indigo-0)' : 'white',
+                  opacity: snapshot.isDragging ? 0.9 : 1,
+                  cursor: 'grab',
+                  position: 'relative',
+                  borderRadius: '6px',
+                  borderLeftWidth: '3px',
+                  borderLeftStyle: 'solid',
+                  borderLeftColor: isWarning 
+                    ? 'var(--mantine-color-red-5)' 
+                    : `var(--mantine-color-${shiftColor.replace('.', '-')})`,
+                  outline: isWarning ? '2px dashed var(--mantine-color-red-4)' : undefined,
+                  outlineOffset: isWarning ? '-2px' : undefined,
+                  zIndex: snapshot.isDragging ? 9999 : 1,
+                  // Maintain width when dragging in Portal
+                  width: snapshot.isDragging ? '240px' : 'auto',
+                }}
+              >
+                {isWarning && (
+                  <Tooltip label={warningMessage} withinPortal>
+                    <Box style={{ position: 'absolute', top: -10, right: -10, zIndex: 10, background: 'white', borderRadius: '50%', boxShadow: 'var(--mantine-shadow-xs)' }}>
+                      <IconAlertTriangle size={14} color="var(--mantine-color-red-6)" fill="white" />
+                    </Box>
+                  </Tooltip>
+                )}
                 
-                <Group gap={4} wrap="nowrap" align="center">
-                  <Badge 
-                    size="xs" 
-                    variant="filled" 
-                    color={shiftColor.split('.')[0]} 
-                    styles={{ root: { height: 14, padding: '0 4px', fontSize: '9px', fontWeight: 800 } }}
-                  >
-                    {job.shift}
-                  </Badge>
-                  <Text size="10px" fw={600} c="dimmed" truncate>
-                    {job.targetQty.toLocaleString()}
+                <Stack gap={2}>
+                  <Text fw={800} style={{ fontSize: '11px', lineHeight: 1.2 }} truncate="end">
+                    {job.partNumber}
                   </Text>
-                </Group>
-
-                <Group gap={3} wrap="nowrap">
-                  <IconClock size={10} color="var(--mantine-color-gray-6)" />
-                  <Text size="10px" fw={700} c="indigo.7" style={{ letterSpacing: '0.01em' }}>
-                    {processingHrs}h
-                  </Text>
-                </Group>
-              </Stack>
-            </Paper>
-          </HoverCard.Target>
-          <HoverCard.Dropdown p="sm">
-            <Stack gap="xs">
-              <Text size="sm" fw={700} style={{ borderBottom: '1px solid var(--mantine-color-gray-2)', paddingBottom: 4 }}>
-                Job Details
-              </Text>
-              <Group justify="space-between" mt={4}>
-                <Text size="xs" c="dimmed">Part Number:</Text>
-                <Text size="xs" fw={600}>{job.partNumber}</Text>
-              </Group>
-              <Group justify="space-between">
-                <Text size="xs" c="dimmed">Target Qty:</Text>
-                <Text size="xs" fw={600}>{job.targetQty}</Text>
-              </Group>
-              <Group justify="space-between">
-                <Text size="xs" c="dimmed">Processing Hrs:</Text>
-                <Text size="xs" fw={600}>{processingHrs} hrs</Text>
-              </Group>
-              {job.standardBatchSize && (
-                <Group justify="space-between">
-                  <Text size="xs" c="dimmed">Batch Size:</Text>
-                  <Text size="xs" fw={600}>{job.standardBatchSize}</Text>
-                </Group>
-              )}
-              {isWarning && (
-                <>
-                  <Divider my={4} color="gray.2" />
-                  <Group gap={4} wrap="nowrap">
-                    <IconAlertTriangle size={14} color="var(--mantine-color-red-5)" />
-                    <Text size="xs" c="red.6" fw={600}>{warningMessage}</Text>
+                  
+                  <Group gap={4} wrap="nowrap" align="center">
+                    <Badge 
+                      size="xs" 
+                      variant="filled" 
+                      color={shiftColor.split('.')[0]} 
+                      styles={{ root: { height: 14, padding: '0 4px', fontSize: '9px', fontWeight: 800 } }}
+                    >
+                      {job.shift}
+                    </Badge>
+                    
+                    <Popover opened={opened} onChange={setOpened} position="bottom" withArrow shadow="md" withinPortal trapFocus={false}>
+                      <Popover.Target>
+                        <Badge 
+                          size="xs" 
+                          variant="light" 
+                          color="gray"
+                          onClick={(e) => { e.stopPropagation(); setOpened(o => !o); }}
+                          style={{ cursor: 'pointer', height: 14, fontSize: '9px', fontWeight: 800 }}
+                        >
+                          {job.targetQty.toLocaleString()}
+                        </Badge>
+                      </Popover.Target>
+                      <Popover.Dropdown p={8} onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+                        <Stack gap={8}>
+                          <Text size="10px" fw={700}>Adjust Quantity</Text>
+                          <Group gap={4} wrap="nowrap">
+                            <Box style={{ width: 80 }}>
+                              <NumberInput
+                                size="xs"
+                                value={editQty}
+                                onChange={(val) => setEditQty(Number(val))}
+                                min={1}
+                                max={job.maxQty || job.targetQty}
+                                step={1}
+                                styles={{ input: { fontSize: '10px', height: 24, minHeight: 24 } }}
+                              />
+                            </Box>
+                            <Button 
+                              size="compact-xs" 
+                              variant="filled" 
+                              color="indigo"
+                              onClick={() => {
+                                onUpdateQty?.(job.id, editQty);
+                                setOpened(false);
+                              }}
+                            >
+                              Update
+                            </Button>
+                          </Group>
+                          <Text size="8px" c="dimmed">Max permitted: {job.maxQty || job.targetQty}</Text>
+                        </Stack>
+                      </Popover.Dropdown>
+                    </Popover>
                   </Group>
-                </>
-              )}
-            </Stack>
-          </HoverCard.Dropdown>
-        </HoverCard>
-      )}
+
+                  <Group gap={3} wrap="nowrap">
+                    <IconClock size={10} color="var(--mantine-color-gray-6)" />
+                    <Text size="10px" fw={700} c="indigo.7" style={{ letterSpacing: '0.01em' }}>
+                      {processingHrs}h
+                    </Text>
+                  </Group>
+                </Stack>
+              </Paper>
+            </HoverCard.Target>
+            <HoverCard.Dropdown p="sm">
+              <Stack gap="xs">
+                <Text size="sm" fw={700} style={{ borderBottom: '1px solid var(--mantine-color-gray-2)', paddingBottom: 4 }}>
+                  Job Details
+                </Text>
+                <Group justify="space-between" mt={4}>
+                  <Text size="xs" c="dimmed">Part Number:</Text>
+                  <Text size="xs" fw={600}>{job.partNumber}</Text>
+                </Group>
+                <Group justify="space-between">
+                  <Text size="xs" c="dimmed">Target Qty:</Text>
+                  <Text size="xs" fw={600}>{job.targetQty}</Text>
+                </Group>
+                <Group justify="space-between">
+                  <Text size="xs" c="dimmed">Processing Hrs:</Text>
+                  <Text size="xs" fw={600}>{processingHrs} hrs</Text>
+                </Group>
+                {job.standardBatchSize && (
+                  <Group justify="space-between">
+                    <Text size="xs" c="dimmed">Batch Size:</Text>
+                    <Text size="xs" fw={600}>{job.standardBatchSize}</Text>
+                  </Group>
+                )}
+              </Stack>
+            </HoverCard.Dropdown>
+          </HoverCard>
+        );
+
+        if (snapshot.isDragging) {
+          return <Portal>{card}</Portal>;
+        }
+        return card;
+      }}
     </Draggable>
   );
 };
 
 
 // --- Main Component ---
-export default function EquipmentScheduler({ initialState, weekId, processName }: EquipmentSchedulerProps) {
+export default function EquipmentScheduler({ initialState, initialWeekId, initialProcessName }: EquipmentSchedulerProps) {
   
   const shiftSettings = useScorecardStore(state => state.shiftSettings);
   
-  const currentWeekId = weekId || getCurrentWeekId();
+  const [currentWeekId, setCurrentWeekId] = useState(initialWeekId || getCurrentWeekId());
+  const [processName, setProcessName] = useState(initialProcessName || 'All Processes');
+  const [backlogDay, setBacklogDay] = useState<DayOfWeek | 'All'>('Mon');
+  const [meta, setMeta] = useState<SchedulerMeta | null>(null);
+
+  const consolidateJobsList = useCallback((jobs: JobBlock[]) => {
+    const consolidated: JobBlock[] = [];
+    jobs.forEach(item => {
+      const itemDate = item.id.split('|')[2];
+      const existingIdx = consolidated.findIndex(j => 
+        j.partNumber.trim().toLowerCase() === item.partNumber.trim().toLowerCase() &&
+        j.shift === item.shift &&
+        j.id.split('|')[2] === itemDate
+      );
+      
+      if (existingIdx !== -1) {
+        consolidated[existingIdx].targetQty += item.targetQty;
+        if (consolidated[existingIdx].maxQty !== undefined || item.maxQty !== undefined) {
+          consolidated[existingIdx].maxQty = (consolidated[existingIdx].maxQty || 0) + (item.maxQty || item.targetQty);
+        }
+      } else {
+        consolidated.push({ ...item });
+      }
+    });
+    return consolidated;
+  }, []);
+  const [dirty, setDirty] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const weekDates = useMemo(() => {
     try {
       return getWeekDates(currentWeekId);
@@ -237,11 +321,42 @@ export default function EquipmentScheduler({ initialState, weekId, processName }
   }, [currentWeekId]);
 
   const [data, setData] = useState<SchedulerState | null>(initialState || null);
-  const [loading, setLoading] = useState(!initialState);
+  const [loading, setLoading] = useState(true);
+
+  const aggregateStats = useMemo(() => {
+    if (!data) return { totalLoad: 0, totalCapacity: 0, utilization: 0 };
+    
+    let totalLoad = 0;
+    let totalCapacity = 0;
+    
+    Object.values(data.machines).forEach(machine => {
+      Object.values(machine.schedule).forEach(dayShifts => {
+        Object.values(dayShifts).forEach(shiftData => {
+          totalCapacity += shiftData.capacityHrs;
+          totalLoad += shiftData.totalAssignedHours;
+        });
+      });
+    });
+    
+    return {
+      totalLoad,
+      totalCapacity,
+      utilization: totalCapacity > 0 ? (totalLoad / totalCapacity) * 100 : 0
+    };
+  }, [data]);
   
-  const activeProcess = processName || 'All Processes'; // Need to map this to department in the backend
-  // Actually, wait, "All Processes" shouldn't be passed to the backend nicely if it's the default, 
-  // but let's assume we pass what they selected or "All Processes", but the backend might filter on it.
+  const fetchMeta = useCallback(async () => {
+    try {
+      const store = await load("store.json", { autoSave: false, defaults: {} });
+      const connectionString = await store.get<string>("db_connection_string");
+      if (!connectionString) return;
+
+      const metadata: SchedulerMeta = await invoke('get_scheduler_meta', { connectionString });
+      setMeta(metadata);
+    } catch (e) {
+      console.error("Failed to fetch metadata", e);
+    }
+  }, []);
   
   const fetchUtilization = useCallback(async () => {
     try {
@@ -250,23 +365,44 @@ export default function EquipmentScheduler({ initialState, weekId, processName }
       const connectionString = await store.get<string>("db_connection_string");
 
       if (!connectionString) {
-        notifications.show({
-          title: 'Database Config Missing',
-          message: 'Please set the connection string in Settings.',
-          color: 'orange'
-        });
         setLoading(false);
         return;
       }
 
-      // If processName is empty/All, we probably still send the selected. 
-      // The Rust backend expects `process_name`.
       const state: SchedulerState = await invoke('get_machine_utilization', {
         connectionString,
         weekId: currentWeekId,
         processName: processName || 'All Processes' 
       });
-      setData(state);
+
+      // Initialize maxQty for local tracking
+      const initializedState: SchedulerState = {
+        ...state,
+        unassigned: state.unassigned.map(j => ({ ...j, maxQty: j.targetQty })),
+        machines: Object.fromEntries(
+          Object.entries(state.machines).map(([mId, mInfo]) => [
+            mId,
+            {
+              ...mInfo,
+              schedule: Object.fromEntries(
+                Object.entries(mInfo.schedule).map(([day, shifts]) => [
+                  day,
+                  Object.fromEntries(
+                    Object.entries(shifts).map(([sId, sData]) => [
+                      sId,
+                      { ...sData, jobs: sData.jobs.map(j => ({ ...j, maxQty: j.targetQty })) }
+                    ])
+                  )
+                ])
+              )
+            }
+          ])
+        )
+      };
+
+      initializedState.unassigned = consolidateJobsList(initializedState.unassigned);
+      setData(initializedState);
+      setDirty(false);
     } catch (e: any) {
       notifications.show({
         title: 'Error Loading Schedule',
@@ -278,297 +414,518 @@ export default function EquipmentScheduler({ initialState, weekId, processName }
     }
   }, [currentWeekId, processName]);
 
+  const handleUpdateJobQty = useCallback((jobId: string, newQty: number) => {
+    setData(prev => {
+      if (!prev) return null;
+      const newState = copyState(prev);
+
+      let foundJob: JobBlock | null = null;
+      let machineId: string | undefined;
+      let day: string | undefined;
+      let shift: string | undefined;
+
+      // Find job in unassigned
+      const uIdx = newState.unassigned.findIndex(j => j.id === jobId);
+      if (uIdx !== -1) {
+        foundJob = newState.unassigned[uIdx];
+      } else {
+        // Search machines
+        outer: for (const [mId, mInfo] of Object.entries(newState.machines)) {
+          for (const [dKey, dShifts] of Object.entries(mInfo.schedule)) {
+            for (const [sKey, sData] of Object.entries(dShifts)) {
+              const jIdx = sData.jobs.findIndex(j => j.id === jobId);
+              if (jIdx !== -1) {
+                foundJob = sData.jobs[jIdx];
+                machineId = mId;
+                day = dKey;
+                shift = sKey;
+                break outer;
+              }
+            }
+          }
+        }
+      }
+
+      if (!foundJob) return prev;
+
+      const oldQty = foundJob.targetQty;
+      const diff = oldQty - newQty;
+
+      if (diff > 0) {
+        // Decrease qty -> Create remainder card in backlog
+        foundJob.targetQty = newQty;
+        const remainderCard: JobBlock = {
+          ...foundJob,
+          id: `${foundJob.id}|split|${Date.now()}`,
+          targetQty: diff,
+          maxQty: diff, // The new card has its own max based on the split
+          isBatchSplit: true
+        };
+        newState.unassigned.push(remainderCard);
+        // Consolidate backlog after split
+        newState.unassigned = consolidateJobsList(newState.unassigned);
+        
+        // If it was on a machine, update the machine's assigned hours
+        if (machineId && day && shift) {
+          const sData = newState.machines[machineId].schedule[day][shift];
+          sData.totalAssignedHours = calculateTotalHours(sData.jobs);
+        }
+      } else if (diff < 0) {
+        // Increase qty (only up to maxQty)
+        foundJob.targetQty = newQty;
+        if (machineId && day && shift) {
+          const sData = newState.machines[machineId].schedule[day][shift];
+          sData.totalAssignedHours = calculateTotalHours(sData.jobs);
+        }
+      }
+
+      return newState;
+    });
+    setDirty(true);
+  }, [data]);
+
   useEffect(() => {
-    if (!initialState) {
-      fetchUtilization();
-    }
-  }, [fetchUtilization, initialState]);
+    fetchMeta();
+  }, [fetchMeta]);
+
+  useEffect(() => {
+    fetchUtilization();
+  }, [fetchUtilization]);
 
   const onDragEnd = useCallback(async (result: DropResult) => {
     const { source, destination } = result;
-
-    // Dropped outside a valid droppable
     if (!destination) return;
-
-    // No movement
-    if (source.droppableId === destination.droppableId && source.index === destination.index) {
-      return;
-    }
+    if (source.droppableId === destination.droppableId && source.index === destination.index) return;
 
     setData(prev => {
+      if (!prev) return null;
       const newState = copyState(prev);
 
-      // 1. Remove from source
       let movedJob: JobBlock;
-
+      // 1. Remove from source
       if (source.droppableId === 'unassigned') {
         movedJob = newState.unassigned[source.index];
         newState.unassigned.splice(source.index, 1);
       } else {
-        const [sourceMachine, sourceDay] = source.droppableId.split('_');
-        const sourceDayEnum = sourceDay as DayOfWeek;
-        movedJob = newState.machines[sourceMachine].schedule[sourceDayEnum].jobs[source.index];
-        newState.machines[sourceMachine].schedule[sourceDayEnum].jobs.splice(source.index, 1);
-        
-        // Recalculate source hours
-        newState.machines[sourceMachine].schedule[sourceDayEnum].totalAssignedHours = calculateTotalHours(
-          newState.machines[sourceMachine].schedule[sourceDayEnum].jobs
-        );
+        const [sourceMachine, sourceDay, sourceShift] = source.droppableId.split('|');
+        const shiftData = newState.machines[sourceMachine].schedule[sourceDay][sourceShift];
+        movedJob = shiftData.jobs[source.index];
+        shiftData.jobs.splice(source.index, 1);
+        shiftData.totalAssignedHours = calculateTotalHours(shiftData.jobs);
       }
 
-      // 2. Insert into destination
+      // 2. Add to destination
       if (destination.droppableId === 'unassigned') {
-        newState.unassigned.splice(destination.index, 0, movedJob);
+        const filteredUnassigned = newState.unassigned
+          .map((job, idx) => ({ job, idx }))
+          .filter(({ job }) => {
+            if (backlogDay === 'All') return true;
+            const jobDateStr = job.id.split('|')[2];
+            const dayIdx = weekDates.findIndex(d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` === jobDateStr);
+            return DAYS_OF_WEEK[dayIdx] === backlogDay;
+          });
+
+        if (filteredUnassigned.length > 0 && destination.index < filteredUnassigned.length) {
+          const targetIndex = filteredUnassigned[destination.index].idx;
+          newState.unassigned.splice(targetIndex, 0, movedJob);
+        } else {
+          // If list is empty or dropping at the end, just push or append
+          newState.unassigned.push(movedJob);
+        }
+        newState.unassigned = consolidateJobsList(newState.unassigned);
       } else {
-        const [destMachine, destDay] = destination.droppableId.split('_');
-        const destDayEnum = destDay as DayOfWeek;
-        newState.machines[destMachine].schedule[destDayEnum].jobs.splice(destination.index, 0, movedJob);
+        const [destMachine, destDay, destShift] = destination.droppableId.split('|');
         
-        // Recalculate destination hours
-        newState.machines[destMachine].schedule[destDayEnum].totalAssignedHours = calculateTotalHours(
-          newState.machines[destMachine].schedule[destDayEnum].jobs
+        // Safety: ensure keys exist (should be populated by backend)
+        if (!newState.machines[destMachine].schedule[destDay]) {
+          newState.machines[destMachine].schedule[destDay] = {};
+        }
+        const shiftData = newState.machines[destMachine].schedule[destDay][destShift];
+        
+        // AUTO-CONSOLIDATION (MERGE)
+        // Check if a card with the exact same part number already exists in this machine/shift
+        const existingJobIdx = shiftData.jobs.findIndex(j => 
+          j.partNumber.trim().toLowerCase() === movedJob.partNumber.trim().toLowerCase()
         );
+
+        if (existingJobIdx !== -1) {
+          const existingJob = shiftData.jobs[existingJobIdx];
+          existingJob.targetQty += movedJob.targetQty;
+          
+          // Aggregate maxQty if present, reflecting the new combined potential volume
+          if (existingJob.maxQty !== undefined || movedJob.maxQty !== undefined) {
+            existingJob.maxQty = (existingJob.maxQty || 0) + (movedJob.maxQty || movedJob.targetQty);
+          }
+          
+          // No splice needed; original is already removed from source and we've updated the destination's existing copy
+        } else {
+          // Standard move: insert at the specified index
+          shiftData.jobs.splice(destination.index, 0, movedJob);
+        }
+        
+        shiftData.totalAssignedHours = calculateTotalHours(shiftData.jobs);
       }
 
       return newState;
     });
 
-    const store = await load("store.json", { autoSave: false, defaults: {} });
-    const connStr = await store.get<string>("db_connection_string");
-    
-    if (!connStr) {
-      notifications.show({ title: 'Error', message: 'Connection string not found.', color: 'red' });
-      setData(prev => (prev ? copyState(prev) : null));
-      return;
-    }
-    
-    // Parse destination to figure out new machine and new date
-    let newMachineId: string | null = null;
-    let newDateStr: string | null = null;
-    let newDayOfWeek: string | null = null;
+    setDirty(true);
+  }, []);
 
-    if (destination.droppableId !== 'unassigned') {
-      const [destMachine, destDay] = destination.droppableId.split('_');
-      newMachineId = destMachine;
-      const dayIdx = DAYS_OF_WEEK.indexOf(destDay as DayOfWeek);
-      if (dayIdx >= 0 && weekDates[dayIdx]) {
-        // format Date as YYYY-MM-DD to match the old payload format
-        const d = weekDates[dayIdx];
-        newDateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-        newDayOfWeek = destDay;
-      }
-    }
-
+  const handleSubmit = async () => {
+    if (!data) return;
     try {
-      await invoke('update_job_machine_assignment', {
-        connectionString: connStr,
-        department: processName || 'All Processes',
-        jobId: result.draggableId,
-        newMachineId,
-        newDate: newDateStr,
-        newDayOfWeek
+      setIsSubmitting(true);
+      const store = await load("store.json", { autoSave: false, defaults: {} });
+      const connectionString = await store.get<string>("db_connection_string");
+      if (!connectionString) throw new Error("Connection string not found");
+
+      const assignments: JobAssignment[] = [];
+      data.unassigned.forEach(job => {
+        assignments.push({ 
+          jobId: job.id, 
+          machineId: null, 
+          date: job.id.split('|')[2], 
+          dayOfWeek: 'Unassigned',
+          qty: job.targetQty
+        });
       });
-      // ID was partNumber|shift|oldDate
-      // We should ideally reload from DB so the ID and order matches truth.
-      // fetchUtilization(); 
-    } catch (e: any) {
-      notifications.show({ title: 'Failed to update assignment', message: e.toString(), color: 'red' });
-      // Revert optimism
-      setData(prev => copyState(prev)); // Or re-fetch from db to be safe
+
+      Object.entries(data.machines).forEach(([mId, mInfo]) => {
+        Object.entries(mInfo.schedule).forEach(([day, dayShifts]) => {
+          const dayIdx = DAYS_OF_WEEK.indexOf(day as DayOfWeek);
+          const d = weekDates[dayIdx];
+          const dateStr = d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` : '';
+          
+          Object.entries(dayShifts).forEach(([shift, shiftData]) => {
+            shiftData.jobs.forEach(job => {
+              assignments.push({ 
+                jobId: job.id, 
+                machineId: mId, 
+                date: dateStr, 
+                dayOfWeek: day,
+                qty: job.targetQty
+              });
+            });
+          });
+        });
+      });
+
+      await invoke('save_scheduler_state', { connectionString, department: processName, assignments });
+      notifications.show({ title: 'Schedule Submitted', message: 'Successfully updated database.', color: 'green' });
+      setDirty(false);
       fetchUtilization();
+    } catch (e: any) {
+      notifications.show({ title: 'Submission Failed', message: e.toString(), color: 'red' });
+    } finally {
+      setIsSubmitting(false);
     }
-  }, [processName, weekDates, fetchUtilization]);
+  };
+
+  const daysWithShifts = useMemo(() => {
+    if (!data) return [];
+    const ALL_SHIFTS = ['A', 'B', 'C', 'D'];
+    return DAYS_OF_WEEK.map((day, idx) => {
+      const date = weekDates[idx];
+      const shifts = ALL_SHIFTS.map(sId => {
+        const anchor = shiftSettings[sId];
+        // Panama Logic: Check if the shift is ON for this specific day
+        const isWorking = date && anchor ? isWorkingDay(date, anchor) : true;
+        return { id: sId, isWorking };
+      }).filter(s => s.isWorking);
+
+      return { 
+        day, 
+        dateStr: date ? date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '',
+        shifts,
+        dateIdx: idx
+      };
+    }).filter(d => d.shifts.length > 0);
+  }, [data, weekDates, shiftSettings]);
 
   return (
-    <Box p="md" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <Group justify="space-between" mb="md">
-        <Title order={3}>Equipment Scheduler - {processName || 'All Processes'}</Title>
-        <Group>
-          <Text fw={600} size="sm" c="dimmed">{currentWeekId}</Text>
-          <Select 
-            data={['All Processes', 'Molding', 'Assembly', 'Packaging']} 
-            defaultValue={processName || 'All Processes'}
-            size="sm"
-          />
+    <Box p={0} style={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--mantine-color-gray-0)' }}>
+      <Paper shadow="sm" p="sm" mb="md" withBorder style={{ borderRadius: '12px' }}>
+        <Group justify="space-between">
+          <Stack gap={0}>
+            <Title order={3} fw={900} c="indigo.9">Machine Scheduler</Title>
+            <Text size="xs" c="dimmed" fw={600}>DRAFT MODE: Granular Batch Scheduling</Text>
+          </Stack>
+          
+          <Group gap="xl">
+            <Group gap="xs">
+              <Stack gap={0} align="flex-end">
+                <Text size="xs" fw={700} c="dimmed">TARGET WEEK</Text>
+                <Select 
+                  data={meta?.activeWeeks || [currentWeekId]} 
+                  value={currentWeekId}
+                  onChange={(val) => val && setCurrentWeekId(val)}
+                  size="xs"
+                  variant="filled"
+                  style={{ width: 140 }}
+                  styles={{ input: { fontWeight: 800 } }}
+                />
+              </Stack>
+              <Stack gap={0} align="flex-end">
+                <Text size="xs" fw={700} c="dimmed">PROCESS LINE</Text>
+                <Select 
+                  data={['All Processes', ...Object.keys(meta?.processHierarchy || {})]} 
+                  value={processName}
+                  onChange={(val) => val && setProcessName(val)}
+                  size="xs"
+                  variant="filled"
+                  style={{ width: 160 }}
+                  styles={{ input: { fontWeight: 800 } }}
+                />
+              </Stack>
+            </Group>
+
+            <Divider orientation="vertical" />
+
+            <Group gap="xs">
+              <Stack gap={0} align="flex-end">
+                <Text size="10px" fw={800} c="dimmed">LINE LOAD</Text>
+                <Group gap={6}>
+                  <Text size="lg" fw={900} c="indigo.9">{aggregateStats.totalLoad.toFixed(1)}h</Text>
+                  <Text size="xs" c="dimmed" fw={700}>/ {aggregateStats.totalCapacity.toFixed(0)}h</Text>
+                </Group>
+              </Stack>
+              <Stack gap={2} w={120}>
+                <Group justify="space-between" gap={0}>
+                  <Text size="10px" fw={800} c="indigo.7">UTILIZATION</Text>
+                  <Text size="10px" fw={800} c={aggregateStats.utilization > 100 ? 'red.7' : 'indigo.7'}>
+                    {aggregateStats.utilization.toFixed(1)}%
+                  </Text>
+                </Group>
+                <Box style={{ height: 6, borderRadius: 3, backgroundColor: 'var(--mantine-color-gray-2)', overflow: 'hidden' }}>
+                  <Box style={{ 
+                    height: '100%', 
+                    width: `${Math.min(aggregateStats.utilization, 100)}%`, 
+                    backgroundColor: aggregateStats.utilization > 100 ? 'var(--mantine-color-red-6)' : 'var(--mantine-color-indigo-6)',
+                    transition: 'width 0.3s'
+                  }} />
+                </Box>
+              </Stack>
+            </Group>
+
+            <Group gap="xs">
+              <Button variant="light" color="gray" size="sm" disabled={!dirty || isSubmitting} onClick={() => fetchUtilization()}>Reset</Button>
+              <Button variant="filled" color="indigo" size="sm" disabled={!dirty || isSubmitting} loading={isSubmitting} onClick={handleSubmit} leftSection={<IconBolt size={16} />}>Submit Schedule</Button>
+            </Group>
+          </Group>
         </Group>
-      </Group>
+      </Paper>
 
       <DragDropContext onDragEnd={onDragEnd}>
         {loading || !data ? (
-          <Center style={{ flex: 1 }}>
-            <Loader size="lg" />
-          </Center>
+          <Center style={{ flex: 1 }}><Loader size="lg" /></Center>
         ) : (
           <Box style={{ display: 'flex', flex: 1, gap: '16px', overflow: 'hidden' }}>
-          
-          {/* MATRIX GRID */}
-          <Paper withBorder style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            {/* Header Row */}
-            <Box style={{ display: 'flex', borderBottom: '2px solid var(--mantine-color-gray-3)', backgroundColor: 'var(--mantine-color-gray-0)' }}>
-              <Box p="md" style={{ width: '120px', flexShrink: 0, borderRight: '1px solid var(--mantine-color-gray-3)' }}>
-                <Text fw={700} c="dimmed" size="xs">MACHINE</Text>
-              </Box>
-              {DAYS_OF_WEEK.map((day, idx) => {
-                const dateStr = weekDates[idx] ? weekDates[idx].toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
-                return (
-                  <Box key={day} p="sm" style={{ flex: 1, minWidth: '100px', borderRight: '1px solid var(--mantine-color-gray-2)', textAlign: 'center' }}>
-                    <Text fw={700} size="sm">{day.toUpperCase()}</Text>
-                    {dateStr && <Text size="xs" c="indigo.6" fw={600}>{dateStr}</Text>}
-                  </Box>
-                )
-              })}
-            </Box>
-
-            {/* Matrix Body */}
-            <ScrollArea style={{ flex: 1 }}>
-              <Stack gap={0}>
-                {Object.values(data.machines).map((machine) => (
-                  <Box key={machine.machineId} style={{ display: 'flex', borderBottom: '1px solid var(--mantine-color-gray-3)' }}>
+            <Paper withBorder style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: '12px', backgroundColor: 'white' }}>
+              <ScrollArea style={{ flex: 1 }} type="always">
+                <Box style={{ minWidth: 'max-content', width: '100%' }}>
+                  {/* --- Header Row --- */}
+                  <Box style={{ 
+                    display: 'flex', 
+                    position: 'sticky', 
+                    top: 0, 
+                    zIndex: 100, 
+                    backgroundColor: 'var(--mantine-color-gray-0)',
+                    borderBottom: '2px solid var(--mantine-color-gray-3)'
+                  }}>
+                    {/* Machine Column Header */}
+                    <Box style={{ 
+                      width: '140px', 
+                      flexShrink: 0, 
+                      padding: '12px',
+                      borderRight: '1px solid var(--mantine-color-gray-3)',
+                      position: 'sticky',
+                      left: 0,
+                      zIndex: 110,
+                      backgroundColor: 'var(--mantine-color-gray-0)'
+                    }}><Text fw={700} c="dimmed" size="xs">MACHINE</Text></Box>
                     
-                    {/* Y-Axis Label */}
-                    <Box p="md" style={{ width: '120px', flexShrink: 0, borderRight: '2px solid var(--mantine-color-gray-3)', backgroundColor: 'var(--mantine-color-gray-0)' }}>
-                      <Stack gap={4}>
-                        <Text fw={800} size="sm" c="indigo.8" truncate>{machine.machineId}</Text>
-                        <Group gap={4} wrap="nowrap">
-                          <IconBolt size={12} color="var(--mantine-color-green-6)" />
-                          <Text size="10px" c="dimmed" fw={600}>{machine.dailyCapacityHrs}h</Text>
-                        </Group>
-                      </Stack>
-                    </Box>
-
-                    {/* Droppable Cells representing X-Axis Days */}
-                    {DAYS_OF_WEEK.map((day, idx) => {
-                      const cellId = `${machine.machineId}_${day}`;
-                      const dayData = machine.schedule[day];
-                      
-                      const isOverAllocated = dayData.totalAssignedHours > machine.dailyCapacityHrs;
-                      
-                      return (
-                        <Droppable key={cellId} droppableId={cellId}>
-                          {(provided: DroppableProvided, snapshot: DroppableStateSnapshot) => (
-                            <Box 
-                              style={{ 
-                                flex: 1, 
-                                minWidth: '100px', 
-                                borderRight: '1px solid var(--mantine-color-gray-2)',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                transition: 'background-color 0.2s',
-                                backgroundColor: snapshot.isDraggingOver 
-                                  ? 'var(--mantine-color-indigo-0)' 
-                                  : 'white'
-                              }}
-                            >
-                              {/* Cell Header - Capacity */}
-                              <Box p="xs" style={{ 
-                                  borderBottom: '1px solid var(--mantine-color-gray-2)', 
-                                  backgroundColor: isOverAllocated ? 'var(--mantine-color-red-0)' : 'transparent',
-                                  transition: 'background-color 0.2s'
-                                }}
-                              >
-                                <Group justify="center" gap={4}>
-                                  <Text 
-                                    size="xs" 
-                                    fw={800} 
-                                    c={isOverAllocated ? 'red.7' : (dayData.totalAssignedHours > 0 ? 'dark' : 'dimmed')}
-                                  >
-                                    {dayData.totalAssignedHours.toFixed(1)}h 
-                                  </Text>
-                                  <Text size="xs" c="dimmed">/ {machine.dailyCapacityHrs}h</Text>
-                                  {isOverAllocated && (
-                                    <Tooltip label="Machine is over capacity!" withinPortal position="top">
-                                      <IconAlertTriangle size={14} color="var(--mantine-color-red-6)" />
-                                    </Tooltip>
-                                  )}
-                                </Group>
-                              </Box>
-
-                              {/* Drop Zone */}
-                              <Box
-                                ref={provided.innerRef}
-                                {...provided.droppableProps}
-                                p="xs"
-                                style={{ 
-                                  flex: 1,
-                                  minHeight: '120px',
-                                  border: isOverAllocated ? '2px solid var(--mantine-color-red-4)' : '2px solid transparent',
-                                  borderTop: 'none',
-                                }}
-                              >
-                                {dayData.jobs.map((job, jobIdx) => (
-                                  <JobCard 
-                                    key={job.id} 
-                                    job={job} 
-                                    index={jobIdx} 
-                                    weekDates={weekDates}
-                                    columnIndex={idx}
-                                    shiftSettings={shiftSettings}
-                                  />
-                                ))}
-                                {provided.placeholder}
-                              </Box>
+                    {/* Day Headers */}
+                    {daysWithShifts.map((d) => (
+                      <Box key={d.day} style={{ flexGrow: 1, flexBasis: 0, display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--mantine-color-gray-3)' }}>
+                        <Box p="xs" style={{ borderBottom: '1px solid var(--mantine-color-gray-2)', textAlign: 'center', backgroundColor: 'var(--mantine-color-gray-1)' }}>
+                          <Text fw={800} size="xs">{d.day.toUpperCase()} ({d.dateStr})</Text>
+                        </Box>
+                        <Box style={{ display: 'flex' }}>
+                          {d.shifts.map(s => (
+                            <Box key={s.id} p="6px" style={{ flexGrow: 1, flexBasis: 0, textAlign: 'center', borderRight: s.id !== d.shifts[d.shifts.length-1].id ? '1px solid var(--mantine-color-gray-1)' : 'none' }}>
+                              <Text fw={700} size="9px" c={s.isWorking ? "dimmed" : "red.5"}>SH {s.id} {s.isWorking ? "" : "OFF"}</Text>
                             </Box>
-                          )}
-                        </Droppable>
-                      )
-                    })}
-                  </Box>
-                ))}
-              </Stack>
-            </ScrollArea>
-          </Paper>
-
-          {/* UNASSIGNED BACKLOG */}
-          <Paper withBorder style={{ width: '240px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <Box p="md" style={{ borderBottom: '2px solid var(--mantine-color-gray-3)', backgroundColor: 'var(--mantine-color-gray-0)' }}>
-              <Group justify="space-between">
-                <Group gap={8}>
-                  <IconBox size={20} color="var(--mantine-color-indigo-6)" />
-                  <Text fw={800} size="sm">Unassigned Backlog</Text>
-                </Group>
-                <Badge color="gray">{data.unassigned.length}</Badge>
-              </Group>
-              <Text size="xs" c="dimmed" mt={4}>
-                Drag jobs to the schedule matrix to assign capacity.
-              </Text>
-            </Box>
-
-            <Droppable droppableId="unassigned">
-              {(provided: DroppableProvided, snapshot: DroppableStateSnapshot) => (
-                <ScrollArea style={{ flex: 1 }}>
-                  <Box
-                    ref={provided.innerRef}
-                    {...provided.droppableProps}
-                    p="md"
-                    style={{ 
-                      minHeight: '100%',
-                      backgroundColor: snapshot.isDraggingOver ? 'var(--mantine-color-indigo-0)' : 'white',
-                      transition: 'background-color 0.2s',
-                    }}
-                  >
-                    {data.unassigned.map((job, index) => (
-                      <JobCard 
-                        key={job.id} 
-                        job={job} 
-                        index={index} 
-                        weekDates={weekDates}
-                        columnIndex={-1}
-                        shiftSettings={shiftSettings}
-                      />
+                          ))}
+                        </Box>
+                      </Box>
                     ))}
-                    {provided.placeholder}
-                    {data.unassigned.length === 0 && (
-                      <Text size="sm" c="dimmed" ta="center" mt="xl" fs="italic">
-                        All jobs have been scheduled!
-                      </Text>
-                    )}
                   </Box>
-                </ScrollArea>
-              )}
-            </Droppable>
-          </Paper>
+                <Stack gap={0}>
+                  {Object.entries(meta?.processHierarchy || {}).map(([pName, mIds]) => {
+                    if (processName !== 'All Processes' && processName !== pName) return null;
+                    return (
+                      <Box key={pName}>
+                        <Box px="md" py="xs" style={{ 
+                          backgroundColor: 'var(--mantine-color-indigo-0)', 
+                          borderBottom: '1px solid var(--mantine-color-indigo-2)',
+                          position: 'sticky',
+                          left: 0,
+                          zIndex: 5
+                        }}>
+                          <Text fw={900} size="xs" c="indigo.9" style={{ letterSpacing: '0.05em' }}>{pName.toUpperCase()}</Text>
+                        </Box>
+                          {mIds.map((mId) => {
+                            const machine = data.machines[mId];
+                            if (!machine) return null;
+                            return (
+                              <Box key={machine.machineId} style={{ display: 'flex', borderBottom: '1px solid var(--mantine-color-gray-3)' }}>
+                                {/* Sticky Machine Info Column */}
+                                <Box p="md" style={{ 
+                                  width: '140px', 
+                                  flexShrink: 0, 
+                                  borderRight: '2px solid var(--mantine-color-gray-3)', 
+                                  backgroundColor: 'white',
+                                  position: 'sticky',
+                                  left: 0,
+                                  zIndex: 10
+                                }}>
+                                  <Stack gap={4}>
+                                    <Text fw={800} size="sm" c="indigo.8" truncate>{machine.machineId}</Text>
+                                    <Group gap={4} wrap="nowrap"><IconBolt size={12} color="var(--mantine-color-green-6)" /><Text size="10px" c="dimmed" fw={600}>CAP: {machine.dailyCapacityHrs}h</Text></Group>
+                                  </Stack>
+                                </Box>
+                                
+                                {daysWithShifts.map((d) => (
+                                  <Box key={d.day} style={{ flexGrow: 1, flexBasis: 0, display: 'flex' }}>
+                                    {d.shifts.map(s => {
+                                      const cellId = `${machine.machineId}|${d.day}|${s.id}`;
+                                      const shiftData = machine.schedule[d.day]?.[s.id];
+                                      
+                                      const isOver = shiftData && shiftData.totalAssignedHours > shiftData.capacityHrs;
+                                      const util = shiftData && shiftData.capacityHrs > 0 ? (shiftData.totalAssignedHours / shiftData.capacityHrs) * 100 : 0;
+                                      
+                                      return (
+                                        <Droppable key={cellId} droppableId={cellId} isDropDisabled={!s.isWorking}>
+                                          {(provided, snapshot) => (
+                                            <Box 
+                                              ref={provided.innerRef} 
+                                              {...provided.droppableProps} 
+                                              style={{ 
+                                                flexGrow: 1, 
+                                                flexBasis: 0, 
+                                                minWidth: '80px',
+                                                borderRight: '1px solid var(--mantine-color-gray-2)', 
+                                                transition: 'background-color 0.2s',
+                                                position: 'relative',
+                                                backgroundColor: !s.isWorking 
+                                                  ? 'var(--mantine-color-gray-1)' 
+                                                  : snapshot.isDraggingOver ? 'var(--mantine-color-indigo-0)' : 'white',
+                                                backgroundImage: !s.isWorking 
+                                                  ? 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(0,0,0,0.02) 10px, rgba(0,0,0,0.02) 20px)' 
+                                                  : undefined
+                                              }}
+                                            >
+                                              {s.isWorking ? (
+                                                <>
+                                                  <Box p="6px" style={{ borderBottom: '1px solid var(--mantine-color-gray-1)', backgroundColor: isOver ? 'var(--mantine-color-red-0)' : 'transparent' }}>
+                                                    <Group justify="space-between" gap={0} wrap="nowrap">
+                                                      <Text size="9px" fw={800} c={isOver ? 'red.7' : (shiftData?.totalAssignedHours ? 'dark' : 'dimmed')}>
+                                                        {shiftData?.totalAssignedHours.toFixed(1) || '0.0'}h
+                                                      </Text>
+                                                      <Text size="8px" fw={700} c="dimmed">/ {shiftData?.capacityHrs || 0}h</Text>
+                                                    </Group>
+                                                    <Box mt={2} style={{ height: 3, borderRadius: 1.5, backgroundColor: 'var(--mantine-color-gray-1)', overflow: 'hidden' }}>
+                                                      <Box style={{ height: '100%', width: `${Math.min(util, 100)}%`, backgroundColor: isOver ? 'var(--mantine-color-red-5)' : (util > 0 ? 'var(--mantine-color-green-5)' : 'transparent') }} />
+                                                    </Box>
+                                                  </Box>
+                                                  <Box p="xs" style={{ flex: 1, minHeight: '120px' }}>
+                                                    {shiftData?.jobs.map((job, idx) => (
+                                                      <JobCard 
+                                                        key={job.id} 
+                                                        job={job} 
+                                                        index={idx} 
+                                                        weekDates={weekDates} 
+                                                        columnIndex={d.dateIdx} 
+                                                        shiftSettings={shiftSettings} 
+                                                        onUpdateQty={handleUpdateJobQty}
+                                                      />
+                                                    ))}
+                                                    {provided.placeholder}
+                                                  </Box>
+                                                </>
+                                              ) : (
+                                                <Center style={{ height: '100%', padding: '20px' }}>
+                                                  <Text size="10px" fw={800} c="gray.4" style={{ transform: 'rotate(-45deg)', whiteSpace: 'nowrap' }}>SHIFT OFF</Text>
+                                                </Center>
+                                              )}
+                                            </Box>
+                                          )}
+                                        </Droppable>
+                                      );
+                                    })}
+                                  </Box>
+                                ))}
+                              </Box>
+                            )
+                          })}
+                      </Box>
+                    )
+                  })}
+                </Stack>
+                </Box>
+              </ScrollArea>
+            </Paper>
 
-        </Box>
+            <Paper withBorder style={{ width: '280px', display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: '12px' }}>
+              <Box p="md" style={{ borderBottom: '2px solid var(--mantine-color-gray-3)', backgroundColor: 'var(--mantine-color-gray-0)' }}>
+                <Stack gap="xs">
+                  <Group justify="space-between">
+                    <Group gap={8}><IconBox size={20} color="var(--mantine-color-indigo-6)" /><Text fw={800} size="sm">Backlog</Text></Group>
+                    <Badge color="indigo" variant="light">{data.unassigned.length}</Badge>
+                  </Group>
+                  <Select size="xs" data={['All', ...DAYS_OF_WEEK]} value={backlogDay} onChange={(val) => setBacklogDay(val as any)} label="Filter by planned day:" styles={{ label: { fontSize: '10px', fontWeight: 700, color: 'var(--mantine-color-gray-6)' } }} />
+                </Stack>
+              </Box>
+              <ScrollArea style={{ flex: 1 }}>
+                <Droppable droppableId="unassigned">
+                  {(provided, snapshot) => (
+                    <Box 
+                      ref={provided.innerRef} 
+                      {...provided.droppableProps} 
+                      p="md" 
+                      style={{ 
+                        minHeight: '100%', 
+                        backgroundColor: snapshot.isDraggingOver ? 'var(--mantine-color-indigo-0)' : 'white',
+                        transition: 'background-color 0.2s ease'
+                      }}
+                    >
+                      {data.unassigned
+                        .map((job, originalIndex) => ({ job, originalIndex }))
+                        .filter(({ job }) => {
+                          if (backlogDay === 'All') return true;
+                          const jobDateStr = job.id.split('|')[2];
+                          const dayIdx = weekDates.findIndex(d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` === jobDateStr);
+                          return DAYS_OF_WEEK[dayIdx] === backlogDay;
+                        })
+                        .map(({ job, originalIndex }, filteredIndex) => (
+                          <JobCard 
+                            key={job.id} 
+                            job={job} 
+                            index={originalIndex} 
+                            weekDates={weekDates} 
+                            columnIndex={-1} 
+                            shiftSettings={shiftSettings} 
+                            onUpdateQty={handleUpdateJobQty}
+                          />
+                        ))}
+                      {provided.placeholder}
+                    </Box>
+                  )}
+                </Droppable>
+              </ScrollArea>
+            </Paper>
+          </Box>
         )}
       </DragDropContext>
     </Box>
