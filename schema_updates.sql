@@ -6,13 +6,26 @@
 IF OBJECT_ID('dbo.PartInfo', 'U') IS NOT NULL
 DROP TABLE dbo.PartInfo;
 GO
-CREATE TABLE dbo.PartInfo (
-    PartNumber NVARCHAR(50) NOT NULL,
-    ProcessName NVARCHAR(50) NOT NULL,
-    BatchSize SMALLINT,
-    ProcessingTime SMALLINT,
-    CONSTRAINT PK_PartInfo PRIMARY KEY (PartNumber, ProcessName)
-);
+-- CREATE TABLE dbo.PartInfo (
+--     PartNumber NVARCHAR(50) NOT NULL,
+--     ProcessName NVARCHAR(50) NOT NULL,
+--     BatchSize SMALLINT,
+--     ProcessingTime SMALLINT,
+--     CONSTRAINT PK_PartInfo PRIMARY KEY (PartNumber, ProcessName)
+-- );
+-- GO
+
+CREATE TABLE [dbo].[PartInfo](
+	[PartNumber] [nvarchar](50) NOT NULL,
+	[ProcessName] [nvarchar](50) NOT NULL,
+	[BatchSize] [smallint] NULL,
+	[ProcessingTime] [smallint] NULL,
+ CONSTRAINT [PK_PartInfo] PRIMARY KEY CLUSTERED 
+(
+	[PartNumber] ASC,
+	[ProcessName] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
 GO
 
 -- 2. Process
