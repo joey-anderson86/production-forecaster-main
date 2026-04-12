@@ -626,6 +626,19 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
               reasonCode: r.ReasonCode || r.reasonCode || r.Reason || r.reason || ""
             }));
             await invoke("replace_reason_codes", { connectionString, records: mapped });
+          } else if (activeTab === "deliveryData") {
+            const mapped = rawData.map(r => ({
+              department: r.Department || r.department || "",
+              weekIdentifier: r.WeekIdentifier || r.weekIdentifier || "",
+              partNumber: r.PartNumber || r.partNumber || "",
+              dayOfWeek: r.DayOfWeek || r.dayOfWeek || "",
+              target: r.Target !== undefined && r.Target !== "" ? parseInt(r.Target) : null,
+              actual: r.Actual !== undefined && r.Actual !== "" ? parseInt(r.Actual) : null,
+              date: r.Date || r.date || null,
+              shift: r.Shift || r.shift || null,
+              reasonCode: r.ReasonCode || r.reasonCode || null
+            }));
+            await invoke("replace_delivery_data", { connectionString, records: mapped });
           }
 
           notifications.show({
@@ -670,6 +683,9 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
     } else if (activeTab === "reasonCode") {
       headers = "Process,ReasonCode";
       fileName = "reason_codes_template.csv";
+    } else if (activeTab === "deliveryData") {
+      headers = "Department,WeekIdentifier,PartNumber,DayOfWeek,Target,Actual,Date,Shift,ReasonCode";
+      fileName = "delivery_data_backup.csv";
     }
     
     if (!headers) return;
@@ -1056,6 +1072,19 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
           </Table>
         </ScrollArea>
       );
+    } else if (activeTab === "deliveryData") {
+      return (
+        <Center h={400} mt="md">
+          <Stack align="center" gap="md">
+            <IconDatabase size={48} color="var(--mantine-color-indigo-4)" />
+            <Text fw={700} size="lg">Delivery Data Bulk Upload</Text>
+            <Text c="dimmed" size="sm" ta="center" maw={400}>
+              Due to the large volume of delivery data, this tab is reserved strictly for uploading bulk CSV backups. 
+              To view or modify specific records, please use the Production Planner.
+            </Text>
+          </Stack>
+        </Center>
+      );
     }
 
     return null;
@@ -1243,6 +1272,9 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
               <Tabs.Tab value="reasonCode" leftSection={<IconTable size={14} />}>
                 Reason Codes
               </Tabs.Tab>
+              <Tabs.Tab value="deliveryData" leftSection={<IconDatabase size={14} />}>
+                Delivery Data
+              </Tabs.Tab>
             </Tabs.List>
 
             <Tabs.Panel value="process">
@@ -1266,6 +1298,10 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
             </Tabs.Panel>
 
             <Tabs.Panel value="reasonCode">
+              {renderTable()}
+            </Tabs.Panel>
+
+            <Tabs.Panel value="deliveryData">
               {renderTable()}
             </Tabs.Panel>
           </Tabs>

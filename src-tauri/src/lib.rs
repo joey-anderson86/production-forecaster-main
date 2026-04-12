@@ -434,6 +434,85 @@ async fn upsert_scorecard_data(
 }
 
 #[tauri::command]
+async fn replace_delivery_data(
+    connection_string: String,
+    records: Vec<ScorecardRow>,
+) -> Result<(), String> {
+    let mut client = create_client(&connection_string).await?;
+    
+    client
+        .simple_query("BEGIN TRANSACTION")
+        .await
+        .map_err(|e| e.to_string())?;
+
+    client
+        .execute("DELETE FROM dbo.DeliveryData", &[])
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let create_temp_sql = "
+        CREATE TABLE #TempDeliveryData (
+            Department NVARCHAR(50),
+            WeekIdentifier NVARCHAR(50),
+            PartNumber NVARCHAR(50),
+            DayOfWeek NVARCHAR(50),
+            Target SMALLINT,
+            Actual SMALLINT,
+            Date DATE,
+            Shift NVARCHAR(50),
+            ReasonCode NVARCHAR(50)
+        )
+    ";
+    
+    client.simple_query(create_temp_sql).await.map_err(|e| e.to_string())?;
+
+    let chunk_size = 200;
+    for chunk in records.chunks(chunk_size) {
+        let mut sql = String::from("INSERT INTO #TempDeliveryData (Department, WeekIdentifier, PartNumber, DayOfWeek, Target, Actual, Date, Shift, ReasonCode) VALUES ");
+        let mut params: Vec<&dyn tiberius::ToSql> = Vec::new();
+        let mut param_idx = 1;
+        
+        for (i, rec) in chunk.iter().enumerate() {
+            if i > 0 {
+                sql.push_str(", ");
+            }
+            sql.push_str(&format!(
+                "(@p{}, @p{}, @p{}, @p{}, @p{}, @p{}, CAST(@p{} AS DATE), @p{}, @p{})",
+                param_idx, param_idx+1, param_idx+2, param_idx+3, param_idx+4, param_idx+5, param_idx+6, param_idx+7, param_idx+8
+            ));
+            param_idx += 9;
+            
+            params.push(&rec.department);
+            params.push(&rec.week_identifier);
+            params.push(&rec.part_number);
+            params.push(&rec.day_of_week);
+            params.push(&rec.target);
+            params.push(&rec.actual);
+            params.push(&rec.date);
+            params.push(&rec.shift);
+            params.push(&rec.reason_code);
+        }
+        
+        client.execute(&sql, &params).await.map_err(|e| e.to_string())?;
+    }
+
+    let insert_sql = "
+        INSERT INTO dbo.DeliveryData (Department, WeekIdentifier, PartNumber, DayOfWeek, Target, Actual, Date, Shift, ReasonCode)
+        SELECT Department, WeekIdentifier, PartNumber, DayOfWeek, Target, Actual, Date, Shift, ReasonCode
+        FROM #TempDeliveryData
+    ";
+
+    client.execute(insert_sql, &[]).await.map_err(|e| e.to_string())?;
+
+    client
+        .simple_query("COMMIT TRANSACTION")
+        .await
+        .map_err(|e| e.to_string())?;
+    
+    Ok(())
+}
+
+#[tauri::command]
 async fn delete_scorecard_week(
     connection_string: String,
     department: String,
@@ -1732,6 +1811,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_scorecard_data,
             upsert_scorecard_data,
+            replace_delivery_data,
             delete_scorecard_week,
             delete_scorecard_row,
             test_mssql_connection,
