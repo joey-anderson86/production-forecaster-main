@@ -15,7 +15,7 @@ interface ProcessState {
 interface ProcessActions {
   fetchProcesses: (connectionString: string) => Promise<void>;
   addProcess: (connectionString: string, name: string) => Promise<void>;
-  removeProcess: (connectionString: string, name: string) => Promise<void>;
+  removeProcess: (connectionString: string, name: string, machineId?: string) => Promise<void>;
   setProcesses: (processes: string[]) => void;
 }
 
