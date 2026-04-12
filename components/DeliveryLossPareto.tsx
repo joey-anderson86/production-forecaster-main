@@ -47,16 +47,17 @@ const CustomTooltip = ({ active, payload, label, displayUnit }: any) => {
         style={{ 
           backgroundColor: 'light-dark(rgba(255, 255, 255, 0.95), var(--mantine-color-dark-7))',
           borderColor: 'light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-5))',
-          backdropFilter: 'blur(4px)'
+          backdropFilter: 'blur(4px)',
+          color: 'light-dark(var(--mantine-color-black), var(--mantine-color-white))'
         }}
       >
         <Stack gap={4}>
-          <Text fw={700} size="sm" c="light-dark(var(--mantine-color-black), var(--mantine-color-white))">
+          <Text fw={700} size="sm">
             {data.reason}
           </Text>
           <Divider my={4} color="light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-4))" />
           <Group justify="space-between" gap="xl">
-            <Text size="xs" fw={500} c="light-dark(var(--mantine-color-gray-7), var(--mantine-color-gray-4))">
+            <Text size="xs" fw={500} c="dimmed">
               Total Misses:
             </Text>
             <Text size="xs" fw={700} c="blue.7">
@@ -64,7 +65,7 @@ const CustomTooltip = ({ active, payload, label, displayUnit }: any) => {
             </Text>
           </Group>
           <Group justify="space-between" gap="xl">
-            <Text size="xs" fw={500} c="light-dark(var(--mantine-color-gray-7), var(--mantine-color-gray-4))">
+            <Text size="xs" fw={500} c="dimmed">
               Cumulative %:
             </Text>
             <Text size="xs" fw={700} c="orange.7">{data.cumulativePercentage}%</Text>
@@ -75,7 +76,7 @@ const CustomTooltip = ({ active, payload, label, displayUnit }: any) => {
               <Text size="10px" fw={700} c="dimmed" mt={4} tt="uppercase">Part Breakdown ({unitLabel})</Text>
               {partEntries.map(([part, count]) => (
                 <Group key={part} justify="space-between" gap="xs">
-                  <Text size="10px" ff="monospace" c="light-dark(var(--mantine-color-gray-7), var(--mantine-color-gray-4))">
+                  <Text size="10px" ff="monospace">
                     {part}
                   </Text>
                   <Badge size="xs" variant="light" color="gray">

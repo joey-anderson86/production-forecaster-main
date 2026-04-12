@@ -21,7 +21,7 @@ export function ShiftAttainmentChart({ weekData, departmentName, compact = false
   const chartHeight = compact ? 450 : 350;
   const [selectedShift, setSelectedShift] = useState<string | null>(null);
   
-  const { cappedShiftAttainment: attainmentData } = useAttainmentMath(weekData?.parts);
+  const { cappedShiftAttainment: attainmentData, hasData: hookHasData } = useAttainmentMath(weekData?.parts);
 
   // Calculate drill-down data when a shift is selected
   const drillDownData = useMemo(() => {
@@ -53,7 +53,7 @@ export function ShiftAttainmentChart({ weekData, departmentName, compact = false
       .sort((a, b) => b.attainment - a.attainment);
   }, [selectedShift, weekData]);
 
-  const hasData = attainmentData.some(d => d.attainment > 0);
+  const hasData = hookHasData && (selectedShift ? drillDownData.length > 0 : attainmentData.some(d => d.attainment >= 0));
 
   if (!weekData || !hasData) {
     return (
@@ -128,14 +128,27 @@ export function ShiftAttainmentChart({ weekData, departmentName, compact = false
             gridAxis="xy"
             yAxisProps={{ domain: [0, 110] }}
             valueFormatter={(value) => `${value}%`}
+            withBarValueLabel
+            valueLabelProps={{ 
+              position: 'top', 
+              fontSize: 11, 
+              fontWeight: 700,
+              fill: theme.colors.gray[7],
+              formatter: (val: any) => val !== undefined && val !== null ? `${val}%` : ''
+            }}
             tooltipProps={{
               cursor: false,
               content: ({ active, payload }) => {
                 if (active && payload && payload.length) {
                   const label = selectedShift ? payload[0].payload.partNumber : `Shift ${payload[0].payload.shift}`;
                   return (
-                    <Paper p="sm" withBorder shadow="md">
-                      <Text size="xs" fw={700}>{label}</Text>
+                    <Paper p="sm" withBorder shadow="md" style={{ 
+                      backgroundColor: 'light-dark(rgba(255, 255, 255, 0.95), var(--mantine-color-dark-7))',
+                      backdropFilter: 'blur(4px)'
+                    }}>
+                      <Text size="xs" fw={700} c="light-dark(var(--mantine-color-black), var(--mantine-color-white))">
+                        {label}
+                      </Text>
                       <Text size="xs" c="indigo.7" fw={800}>{payload[0].value}% Attainment</Text>
                     </Paper>
                   );
@@ -150,15 +163,11 @@ export function ShiftAttainmentChart({ weekData, departmentName, compact = false
               radius: [4, 4, 0, 0],
               barSize: compact ? 40 : 60,
               style: { cursor: selectedShift ? 'default' : 'pointer' },
-              onClick: (data) => {
-                if (!selectedShift && data && data.shift) {
-                  setSelectedShift(data.shift);
+              onClick: (data: any) => {
+                const shiftValue = data?.payload?.shift;
+                if (!selectedShift && shiftValue) {
+                  setSelectedShift(shiftValue);
                 }
-              },
-              label: { 
-                position: 'top', 
-                formatter: (val: any) => val !== undefined && val !== null ? `${val}%` : '',
-                style: { fontSize: '11px', fontWeight: 700, fill: theme.colors.gray[7] }
               }
             }}
           />
