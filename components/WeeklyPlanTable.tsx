@@ -74,93 +74,7 @@ interface WeeklyPlanTableProps {
   collapseAllSignal?: number;
 }
 
-export function distributeDemand(
-  totalDemand: number, 
-  childRows: PartScorecard[], 
-  weekDates: Date[], 
-  anchorDates: Record<string, string>,
-  getAvailableCapacity: (dayIndex: number, shift: string) => number,
-  processingTimeMin: number
-) {
-  interface ValidSlot {
-    rowId: string;
-    day: DayOfWeek;
-    dayIdx: number;
-    shift: string;
-    capacity: number;
-    baseAssignment: number;
-  }
-
-  const validSlots: ValidSlot[] = [];
-  
-  // Map valid working slots with capacity > 0
-  DAYS_OF_WEEK.forEach((day, idx) => {
-    const date = weekDates[idx];
-    if (!date) return;
-
-    childRows.forEach(part => {
-      const anchorDate = anchorDates[part.shift] || '';
-      if (isWorkingDay(date, anchorDate)) {
-        const capacity = getAvailableCapacity(idx, part.shift);
-        if (capacity > 0) {
-          validSlots.push({ 
-            rowId: part.id, 
-            day, 
-            dayIdx: idx,
-            shift: part.shift,
-            capacity,
-            baseAssignment: 0
-          });
-        }
-      }
-    });
-  });
-
-  const totalWeeklyCapacity = validSlots.reduce((sum, slot) => sum + slot.capacity, 0);
-
-  // If no capacity or no slots, return empty (graceful handle as requested)
-  if (validSlots.length === 0 || totalWeeklyCapacity === 0) {
-    return [];
-  }
-
-  // 1. Proportional Base Load
-  let assignedCount = 0;
-  validSlots.forEach(slot => {
-    const base = Math.floor(totalDemand * (slot.capacity / totalWeeklyCapacity));
-    slot.baseAssignment = base;
-    assignedCount += base;
-  });
-
-  // 2. Remainder Distribution
-  let remainder = totalDemand - assignedCount;
-
-  if (remainder > 0) {
-    // Sort slots descending by remaining unused capacity: Capacity minus the hours consumed by the Base allocation
-    // Hours consumed = (parts * processingTimeMin) / 60
-    const getUnusedCapacity = (slot: ValidSlot) => {
-      const hoursConsumed = (slot.baseAssignment * processingTimeMin) / 60;
-      return slot.capacity - hoursConsumed;
-    };
-
-    const sortedSlots = [...validSlots].sort((a, b) => getUnusedCapacity(b) - getUnusedCapacity(a));
-
-    // Loop through sorted array and add 1 part until remainder is 0
-    let i = 0;
-    while (remainder > 0) {
-      const slot = sortedSlots[i % sortedSlots.length];
-      slot.baseAssignment += 1;
-      remainder -= 1;
-      i++;
-    }
-  }
-
-  return validSlots.map(slot => ({
-    rowId: slot.rowId,
-    day: slot.day,
-    value: slot.baseAssignment
-  }));
-}
-
+// The distributeDemand logic has been moved to Rust for performance and memory optimization.
 /**
  * Parent row component showing aggregate sums for a group of shirts.
  */
@@ -176,6 +90,7 @@ const ParentRow = ({
   onRemovePartGroup,
   displayUnit,
   batchSize,
+  isCalculatingDemand,
 }: { 
   partNumber: string; 
   childRows: PartScorecard[]; 
@@ -188,6 +103,7 @@ const ParentRow = ({
   onRemovePartGroup: (groupKey: string) => void;
   displayUnit: ProductionDisplayUnit;
   batchSize: number;
+  isCalculatingDemand: boolean;
 }) => {
   const theme = useMantineTheme();
   const [weeklyTarget, setWeeklyTarget] = useState<number | ''>('');
@@ -282,6 +198,8 @@ const ParentRow = ({
                 variant="light" 
                 color="indigo" 
                 size="sm"
+                loading={isCalculatingDemand}
+                disabled={isCalculatingDemand}
                 onClick={(e) => {
                    e.stopPropagation();
                    if (typeof weeklyTarget === 'number' && weeklyTarget > 0) {
@@ -477,6 +395,7 @@ export default function WeeklyPlanTable({
   
   const shiftSettings = useScorecardStore(state => state.shiftSettings);
   const [expandedParts, setExpandedParts] = useState<Set<string>>(new Set());
+  const [isCalculatingDemand, setIsCalculatingDemand] = useState(false);
 
   // Group parts by Part Number OR Group ID if part is unassigned
   const groupedParts = useMemo(() => {
@@ -708,25 +627,45 @@ export default function WeeklyPlanTable({
     return totals;
   }, [parts, displayUnit, batchSizeMap]);
 
-  const handleLevelLoad = useCallback((childRows: PartScorecard[], totalDemand: number) => {
-    // Find processing time for this specific part group
-    const partNumber = childRows[0]?.partNumber;
-    const processingTimeMin = partInfo?.find(p => p.partNumber === partNumber)?.processingTime || 0;
+  const handleLevelLoad = useCallback(async (childRows: PartScorecard[], totalDemand: number) => {
+    setIsCalculatingDemand(true);
+    try {
+      const partNumber = childRows[0]?.partNumber;
+      const processingTimeMin = partInfo?.find(p => p.partNumber === partNumber)?.processingTime || 0;
 
-    const distributions = distributeDemand(
-      totalDemand, 
-      childRows, 
-      weekDates, 
-      shiftSettings,
-      (dayIdx, shift) => {
-        const day = DAYS_OF_WEEK[dayIdx];
-        return dailyCapacityMetrics[day]?.shiftBreakdown[shift]?.capacity || 0;
-      },
-      processingTimeMin
-    );
+      const weekDateStrings = weekDates.map(d => d ? formatISODate(d) : null);
+      
+      const shiftCapacities = weekDates.map((_, idx) => {
+        const day = DAYS_OF_WEEK[idx];
+        const dayMetric = dailyCapacityMetrics[day];
+        const capacities: Record<string, number> = {};
+        if (dayMetric) {
+          ['A', 'B', 'C', 'D'].forEach(shift => {
+             capacities[shift] = dayMetric.shiftBreakdown[shift]?.capacity || 0;
+          });
+        }
+        return capacities;
+      });
 
-    if (onBatchUpdateRecords) {
-      onBatchUpdateRecords(distributions.map(d => ({ ...d, field: 'target' })));
+      const { invoke } = await import('@tauri-apps/api/core');
+      const req = {
+        totalDemand,
+        childRows: childRows.map(r => ({ id: r.id, shift: r.shift })),
+        weekDates: weekDateStrings,
+        anchorDates: shiftSettings,
+        shiftCapacities,
+        processingTimeMin
+      };
+
+      const distributions = await invoke<any[]>('calculate_demand_distribution', { req });
+
+      if (onBatchUpdateRecords) {
+        onBatchUpdateRecords(distributions.map(d => ({ ...d, field: 'target' })));
+      }
+    } catch (err) {
+      console.error("Demand distribution failed:", err);
+    } finally {
+      setIsCalculatingDemand(false);
     }
   }, [weekDates, shiftSettings, onBatchUpdateRecords, partInfo, dailyCapacityMetrics]);
 ;
@@ -797,6 +736,7 @@ export default function WeeklyPlanTable({
                 onRemovePartGroup={onRemovePartGroup}
                 displayUnit={displayUnit}
                 batchSize={batchSizeMap.get(childRows[0].partNumber) || 1}
+                isCalculatingDemand={isCalculatingDemand}
               />
               {expandedParts.has(groupKey) && 
                 [...childRows]

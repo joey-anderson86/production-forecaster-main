@@ -44,6 +44,7 @@ export interface ScorecardState {
   isLoading: boolean;
   syncStatus: 'saved' | 'saving' | 'error';
   error: string | null;
+  dirtyRows: Record<string, boolean>;
 }
 
 interface ScorecardActions {
@@ -116,6 +117,7 @@ export const useScorecardStore = create<ScorecardStore>()(
       isLoading: false,
       syncStatus: 'saved',
       error: null,
+      dirtyRows: {},
 
       addDepartment: (departmentName) => set((state) => {
         if (state.departments[departmentName]) return state;
@@ -204,6 +206,10 @@ export const useScorecardStore = create<ScorecardStore>()(
                 }
               }
             }
+          },
+          dirtyRows: {
+            ...state.dirtyRows,
+            [newPart.id]: true
           }
         };
       }),
@@ -270,6 +276,10 @@ export const useScorecardStore = create<ScorecardStore>()(
                 }
               }
             }
+          },
+          dirtyRows: {
+            ...state.dirtyRows,
+            [rowId]: true
           }
         };
       }),
@@ -332,6 +342,10 @@ export const useScorecardStore = create<ScorecardStore>()(
                  }
                }
              }
+           },
+           dirtyRows: {
+             ...state.dirtyRows,
+             [rowId]: true
            }
          };
       }),
@@ -484,23 +498,10 @@ export const useScorecardStore = create<ScorecardStore>()(
       },
 
       syncToDb: async (connectionString: string, departmentName?: string, weekId?: string) => {
-        const { departments } = get();
+        const { departments, dirtyRows } = get();
         const { invoke } = await import('@tauri-apps/api/core');
         const records: any[] = [];
-        
-        // If a specific week is targeted, clear its data in DB first to handle any deletions
-        if (departmentName && weekId) {
-          try {
-            await invoke('delete_scorecard_week', { 
-              connectionString, 
-              department: departmentName, 
-              weekIdentifier: weekId 
-            });
-          } catch (err) {
-            console.error("Failed to clear week data before sync:", err);
-            // We continue anyway—the upsert might still work for edits/adds
-          }
-        }
+        const syncedRowIds = new Set<string>();
         
         Object.values(departments).forEach(dept => {
           // If we are scoped, only collect records for that department
@@ -511,26 +512,37 @@ export const useScorecardStore = create<ScorecardStore>()(
             if (weekId && week.weekId !== weekId) return;
 
             week.parts.forEach(part => {
-              part.dailyRecords.forEach(record => {
-                records.push({
-                  department: dept.departmentName,
-                  weekIdentifier: week.weekId,
-                  partNumber: part.partNumber,
-                  shift: part.shift,
-                  dayOfWeek: record.dayOfWeek,
-                  target: record.target,
-                  actual: record.actual,
-                  date: record.date ? formatSqlDateFromIso(record.date) : null, // Convert to YYYYMMDD for SQL Server without Date constructor
-                  reasonCode: record.reasonCode
+              if (dirtyRows[part.id]) {
+                syncedRowIds.add(part.id);
+                part.dailyRecords.forEach(record => {
+                  records.push({
+                    department: dept.departmentName,
+                    weekIdentifier: week.weekId,
+                    partNumber: part.partNumber,
+                    shift: part.shift,
+                    dayOfWeek: record.dayOfWeek,
+                    target: record.target,
+                    actual: record.actual,
+                    date: record.date ? formatSqlDateFromIso(record.date) : null,
+                    reasonCode: record.reasonCode
+                  });
                 });
-              });
+              }
             });
           });
         });
         
+        if (records.length === 0) return; // Nothing to sync
+
         try {
           const { invoke } = await import('@tauri-apps/api/core');
           await invoke('upsert_scorecard_data', { connectionString, records });
+          
+          set((state) => {
+            const nextDirtyRows = { ...state.dirtyRows };
+            syncedRowIds.forEach(id => delete nextDirtyRows[id]);
+            return { dirtyRows: nextDirtyRows };
+          });
         } catch (err: any) {
           set({ error: err.toString() });
           throw err;
@@ -572,7 +584,11 @@ export const useScorecardStore = create<ScorecardStore>()(
             records: [dbRecord] 
           });
           
-          set({ syncStatus: 'saved' });
+          set((state) => {
+            const nextDirtyRows = { ...state.dirtyRows };
+            delete nextDirtyRows[part.id];
+            return { syncStatus: 'saved', dirtyRows: nextDirtyRows };
+          });
         } catch (err: any) {
           console.error("Auto-save failed:", err);
           set({ syncStatus: 'error', error: err.toString() });
@@ -611,7 +627,11 @@ export const useScorecardStore = create<ScorecardStore>()(
             records: records 
           });
           
-          set({ syncStatus: 'saved' });
+          set((state) => {
+            const nextDirtyRows = { ...state.dirtyRows };
+            delete nextDirtyRows[part.id];
+            return { syncStatus: 'saved', dirtyRows: nextDirtyRows };
+          });
         } catch (err: any) {
           console.error("Auto-save row failed:", err);
           set({ syncStatus: 'error', error: err.toString() });

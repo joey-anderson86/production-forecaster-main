@@ -59,12 +59,12 @@ export const useProcessStore = create<ProcessStore>((set, get) => ({
     }
   },
 
-  removeProcess: async (connectionString, name) => {
+  removeProcess: async (connectionString, name, machineId) => {
     if (!connectionString || !name) return;
     try {
       await invoke('delete_processes', { 
         connectionString, 
-        process_names: [name] 
+        records: [{ processName: name, machineId: machineId || "" }] 
       });
       // Refresh local state
       set({ processes: get().processes.filter(p => p !== name) });

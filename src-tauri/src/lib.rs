@@ -113,6 +113,40 @@ pub struct DailyRateRow {
     pub qty: i16,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RollingGapRow {
+    pub part_number: String,
+    pub shift: String,
+    pub rolling_gap: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DistributeDemandRequest {
+    pub total_demand: i32,
+    pub child_rows: Vec<ChildRowDesc>,
+    pub week_dates: Vec<Option<String>>, // YYYY-MM-DD
+    pub anchor_dates: std::collections::HashMap<String, String>,
+    pub shift_capacities: Vec<std::collections::HashMap<String, f64>>,
+    pub processing_time_min: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChildRowDesc {
+    pub id: String,
+    pub shift: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DistributeDemandResult {
+    pub row_id: String,
+    pub day: String,
+    pub value: i32,
+}
+
 // State for managing the MSSQL connection status and settings
 pub struct DbState {
     pub connection_string: Mutex<Option<String>>,
@@ -167,25 +201,235 @@ async fn get_scorecard_data(connection_string: String) -> Result<Vec<ScorecardRo
 }
 
 #[tauri::command]
+async fn get_rolling_gaps(
+    connection_string: String,
+    department: String,
+) -> Result<Vec<RollingGapRow>, String> {
+    let mut client = create_client(&connection_string).await?;
+    let query = "
+        WITH RankedGaps AS (
+            SELECT 
+                PartNumber,
+                Shift,
+                SUM(CAST(ISNULL(Actual, 0) AS INT) - CAST(ISNULL(Target, 0) AS INT)) OVER (PARTITION BY PartNumber, Shift ORDER BY Date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) as RollingGap,
+                ROW_NUMBER() OVER (PARTITION BY PartNumber, Shift ORDER BY Date DESC) as rn
+            FROM dbo.DeliveryData
+            WHERE Department = @p1 AND Date <= CAST(GETDATE() AS DATE)
+        )
+        SELECT PartNumber, Shift, RollingGap
+        FROM RankedGaps
+        WHERE rn = 1
+    ";
+    let stream = client.query(query, &[&department]).await.map_err(|e| e.to_string())?;
+    let rows = stream.into_first_result().await.map_err(|e| e.to_string())?;
+
+    let result = rows.into_iter().map(|row| RollingGapRow {
+        part_number: row.get::<&str, _>("PartNumber").unwrap_or_default().trim().to_string(),
+        shift: row.get::<&str, _>("Shift").unwrap_or_default().trim().to_string(),
+        rolling_gap: row.get::<i32, _>("RollingGap").unwrap_or_default(),
+    }).collect();
+
+    Ok(result)
+}
+
+fn is_working_day(date_str: &str, anchor_date_str: &str) -> bool {
+    if anchor_date_str.is_empty() {
+        return true;
+    }
+    use chrono::NaiveDate;
+    
+    let date = NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok();
+    let anchor_date = NaiveDate::parse_from_str(anchor_date_str, "%Y-%m-%d").ok();
+
+    if let (Some(d1), Some(d2)) = (date, anchor_date) {
+        let diff_days = (d1 - d2).num_days();
+        let cycle_day = ((diff_days % 14) + 14) % 14; 
+        
+        let working_pattern = [
+            true, true,          // Days 0, 1
+            false, false,        // Days 2, 3
+            true, true, true,    // Days 4, 5, 6
+            false, false,        // Days 7, 8
+            true, true,          // Days 9, 10
+            false, false, false  // Days 11, 12, 13
+        ];
+        
+        working_pattern[cycle_day as usize]
+    } else {
+        true
+    }
+}
+
+#[tauri::command]
+async fn calculate_demand_distribution(req: DistributeDemandRequest) -> Result<Vec<DistributeDemandResult>, String> {
+    #[derive(Debug)]
+    struct ValidSlot {
+        row_id: String,
+        day: String,
+        day_idx: usize,
+        shift: String,
+        capacity: f64,
+        base_assignment: i32,
+    }
+
+    let days_of_week = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    let mut valid_slots: Vec<ValidSlot> = Vec::new();
+
+    for (day_idx, day_name) in days_of_week.iter().enumerate() {
+        if let Some(Some(date_str)) = req.week_dates.get(day_idx) {
+            for part in &req.child_rows {
+                let anchor_date = req.anchor_dates.get(&part.shift).map(|s| s.as_str()).unwrap_or("");
+                if is_working_day(date_str, anchor_date) {
+                    if let Some(capacities) = req.shift_capacities.get(day_idx) {
+                        let capacity = capacities.get(&part.shift).copied().unwrap_or(0.0);
+                        if capacity > 0.0 {
+                            valid_slots.push(ValidSlot {
+                                row_id: part.id.clone(),
+                                day: day_name.to_string(),
+                                day_idx,
+                                shift: part.shift.clone(),
+                                capacity,
+                                base_assignment: 0,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let total_weekly_capacity: f64 = valid_slots.iter().map(|s| s.capacity).sum();
+
+    if valid_slots.is_empty() || total_weekly_capacity == 0.0 {
+        return Ok(Vec::new());
+    }
+
+    let mut assigned_count = 0;
+    for slot in &mut valid_slots {
+        let base = (req.total_demand as f64 * (slot.capacity / total_weekly_capacity)).floor() as i32;
+        slot.base_assignment = base;
+        assigned_count += base;
+    }
+
+    let mut remainder = req.total_demand - assigned_count;
+
+    if remainder > 0 {
+        valid_slots.sort_by(|a, b| {
+            let unused_a = a.capacity - ((a.base_assignment as f64 * req.processing_time_min) / 60.0);
+            let unused_b = b.capacity - ((b.base_assignment as f64 * req.processing_time_min) / 60.0);
+            unused_b.partial_cmp(&unused_a).unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        let mut i = 0;
+        let len = valid_slots.len();
+        while remainder > 0 {
+            valid_slots[i % len].base_assignment += 1;
+            remainder -= 1;
+            i += 1;
+        }
+    }
+
+    let result = valid_slots.into_iter().map(|slot| DistributeDemandResult {
+        row_id: slot.row_id,
+        day: slot.day,
+        value: slot.base_assignment,
+    }).collect();
+
+    Ok(result)
+}
+
+#[tauri::command]
 async fn upsert_scorecard_data(
     connection_string: String,
     records: Vec<ScorecardRow>,
 ) -> Result<(), String> {
-    let mut client = create_client(&connection_string).await?;
-    for rec in records {
-        client.execute(
-            "MERGE dbo.DeliveryData AS target
-             USING (SELECT @p1 as Department, @p2 as WeekIdentifier, @p3 as PartNumber, @p4 as DayOfWeek, 
-                           @p5 as Target, @p6 as Actual, CAST(@p7 as DATE) as Date, @p8 as Shift, @p9 as ReasonCode) AS source
-             ON (target.Department = source.Department AND target.PartNumber = source.PartNumber AND target.Date = source.Date AND (target.Shift = source.Shift OR (target.Shift IS NULL AND source.Shift IS NULL)))
-             WHEN MATCHED THEN
-                UPDATE SET Target = source.Target, Actual = source.Actual, WeekIdentifier = source.WeekIdentifier, DayOfWeek = source.DayOfWeek, ReasonCode = source.ReasonCode
-             WHEN NOT MATCHED THEN
-                INSERT (Department, WeekIdentifier, PartNumber, DayOfWeek, Target, Actual, Date, Shift, ReasonCode)
-                VALUES (source.Department, source.WeekIdentifier, source.PartNumber, source.DayOfWeek, source.Target, source.Actual, source.Date, source.Shift, source.ReasonCode);",
-            &[&rec.department, &rec.week_identifier, &rec.part_number, &rec.day_of_week, &rec.target, &rec.actual, &rec.date, &rec.shift, &rec.reason_code],
-        ).await.map_err(|e| e.to_string())?;
+    if records.is_empty() {
+        return Ok(());
     }
+
+    let mut client = create_client(&connection_string).await?;
+    
+    // Start transaction
+    client
+        .simple_query("BEGIN TRANSACTION")
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Create a temporary table
+    let create_temp_sql = "
+        CREATE TABLE #TempDeliveryData (
+            Department NVARCHAR(50),
+            WeekIdentifier NVARCHAR(50),
+            PartNumber NVARCHAR(50),
+            DayOfWeek NVARCHAR(50),
+            Target SMALLINT,
+            Actual SMALLINT,
+            Date DATE,
+            Shift NVARCHAR(50),
+            ReasonCode NVARCHAR(50)
+        )
+    ";
+    
+    client.simple_query(create_temp_sql).await.map_err(|e| e.to_string())?;
+
+    // Insert into temp table in batches to respect 2000 param limit
+    let chunk_size = 200; // 9 params * 200 = 1800 params < 2000
+    for chunk in records.chunks(chunk_size) {
+        let mut sql = String::from("INSERT INTO #TempDeliveryData (Department, WeekIdentifier, PartNumber, DayOfWeek, Target, Actual, Date, Shift, ReasonCode) VALUES ");
+        let mut params: Vec<&dyn tiberius::ToSql> = Vec::new();
+        let mut param_idx = 1;
+        
+        for (i, rec) in chunk.iter().enumerate() {
+            if i > 0 {
+                sql.push_str(", ");
+            }
+            sql.push_str(&format!(
+                "(@p{}, @p{}, @p{}, @p{}, @p{}, @p{}, CAST(@p{} AS DATE), @p{}, @p{})",
+                param_idx, param_idx+1, param_idx+2, param_idx+3, param_idx+4, param_idx+5, param_idx+6, param_idx+7, param_idx+8
+            ));
+            param_idx += 9;
+            
+            params.push(&rec.department);
+            params.push(&rec.week_identifier);
+            params.push(&rec.part_number);
+            params.push(&rec.day_of_week);
+            params.push(&rec.target);
+            params.push(&rec.actual);
+            params.push(&rec.date);
+            params.push(&rec.shift);
+            params.push(&rec.reason_code);
+        }
+        
+        client.execute(&sql, &params).await.map_err(|e| e.to_string())?;
+    }
+
+    // Perform bulk MERGE
+    let merge_sql = "
+        MERGE dbo.DeliveryData AS target
+        USING #TempDeliveryData AS source
+        ON (target.Department = source.Department 
+            AND target.PartNumber = source.PartNumber 
+            AND target.Date = source.Date 
+            AND (target.Shift = source.Shift OR (target.Shift IS NULL AND source.Shift IS NULL)))
+        WHEN MATCHED THEN
+            UPDATE SET 
+                Target = source.Target, 
+                Actual = source.Actual, 
+                WeekIdentifier = source.WeekIdentifier, 
+                DayOfWeek = source.DayOfWeek, 
+                ReasonCode = source.ReasonCode
+        WHEN NOT MATCHED THEN
+            INSERT (Department, WeekIdentifier, PartNumber, DayOfWeek, Target, Actual, Date, Shift, ReasonCode)
+            VALUES (source.Department, source.WeekIdentifier, source.PartNumber, source.DayOfWeek, source.Target, source.Actual, source.Date, source.Shift, source.ReasonCode);
+    ";
+
+    client.execute(merge_sql, &[]).await.map_err(|e| e.to_string())?;
+
+    client
+        .simple_query("COMMIT TRANSACTION")
+        .await
+        .map_err(|e| e.to_string())?;
+    
     Ok(())
 }
 
@@ -281,7 +525,7 @@ async fn get_locator_mapping_preview(
     let mut client = create_client(&connection_string).await?;
     let stream = client
         .query(
-            "SELECT TOP 100 WIPLocator, Process, DaysFromShipment FROM dbo.LocatorMapping",
+            "SELECT TOP 100 WIPLocator, ProcessName, DaysFromShipment FROM dbo.LocatorMapping",
             &[],
         )
         .await
@@ -297,7 +541,7 @@ async fn get_locator_mapping_preview(
             wip_locator: row
                 .get::<&str, _>("WIPLocator")
                 .map(|s| s.trim().to_string()),
-            process: row.get::<&str, _>("Process").map(|s| s.trim().to_string()),
+            process: row.get::<&str, _>("ProcessName").map(|s| s.trim().to_string()),
             days_from_shipment: get_i16_robust(&row, "DaysFromShipment"),
         })
         .collect();
@@ -310,7 +554,7 @@ async fn get_part_info_preview(connection_string: String) -> Result<Vec<PartInfo
     let mut client = create_client(&connection_string).await?;
     let stream = client
         .query(
-            "SELECT TOP 1000 PartNumber, Process, BatchSize, ProcessingTime FROM dbo.PartInfo",
+            "SELECT TOP 1000 PartNumber, ProcessName, BatchSize, ProcessingTime FROM dbo.PartInfo",
             &[],
         )
         .await
@@ -326,7 +570,7 @@ async fn get_part_info_preview(connection_string: String) -> Result<Vec<PartInfo
             part_number: row
                 .get::<&str, _>("PartNumber")
                 .map(|s| s.trim().to_string()),
-            process: row.get::<&str, _>("Process").map(|s| s.trim().to_string()),
+            process: row.get::<&str, _>("ProcessName").map(|s| s.trim().to_string()),
             batch_size: get_i16_robust(&row, "BatchSize"),
             processing_time: get_i16_robust(&row, "ProcessingTime"),
         })
@@ -339,7 +583,7 @@ async fn get_part_info_preview(connection_string: String) -> Result<Vec<PartInfo
 async fn get_process_info_preview(connection_string: String) -> Result<Vec<ProcessInfo>, String> {
     let mut client = create_client(&connection_string).await?;
     // Formatted date to string for simple transfer
-    let stream = client.query("SELECT TOP 1000 Process, CONVERT(VARCHAR, Date, 23) as Date, HoursAvailable, MachineID, Shift, WeekIdentifier FROM dbo.ProcessInfo", &[]).await.map_err(|e| e.to_string())?;
+    let stream = client.query("SELECT TOP 1000 ProcessName, CONVERT(VARCHAR, Date, 23) as Date, HoursAvailable, MachineID, Shift, WeekIdentifier FROM dbo.ProcessInfo", &[]).await.map_err(|e| e.to_string())?;
     let rows = stream
         .into_first_result()
         .await
@@ -348,7 +592,7 @@ async fn get_process_info_preview(connection_string: String) -> Result<Vec<Proce
     let result = rows
         .into_iter()
         .map(|row| ProcessInfo {
-            process: row.get::<&str, _>("Process").map(|s| s.trim().to_string()),
+            process: row.get::<&str, _>("ProcessName").map(|s| s.trim().to_string()),
             date: row.get::<&str, _>("Date").map(|s| s.trim().to_string()),
             hours_available: get_i16_robust(&row, "HoursAvailable"),
             machine_id: row
@@ -372,9 +616,9 @@ async fn get_process_info(
 ) -> Result<Vec<ProcessInfo>, String> {
     let mut client = create_client(&connection_string).await?;
     let stream = client.query(
-        "SELECT Process, CONVERT(VARCHAR, Date, 23) as Date, HoursAvailable, MachineID, Shift, WeekIdentifier 
+        "SELECT ProcessName, CONVERT(VARCHAR, Date, 23) as Date, HoursAvailable, MachineID, Shift, WeekIdentifier 
          FROM dbo.ProcessInfo 
-         WHERE LTRIM(RTRIM(Process)) = LTRIM(RTRIM(@p1)) 
+         WHERE ProcessName = @p1 
            AND WeekIdentifier = @p2",
         &[&process, &week_identifier],
     ).await.map_err(|e| e.to_string())?;
@@ -387,7 +631,7 @@ async fn get_process_info(
     let result = rows
         .into_iter()
         .map(|row| ProcessInfo {
-            process: row.get::<&str, _>("Process").map(|s| s.trim().to_string()),
+            process: row.get::<&str, _>("ProcessName").map(|s| s.trim().to_string()),
             date: row.get::<&str, _>("Date").map(|s| s.trim().to_string()),
             hours_available: get_i16_robust(&row, "HoursAvailable"),
             machine_id: row
@@ -437,7 +681,7 @@ async fn get_pipeline_data_preview(connection_string: String) -> Result<Vec<Pipe
 #[tauri::command]
 async fn get_plan_data_preview(connection_string: String) -> Result<Vec<PlanRow>, String> {
     let mut client = create_client(&connection_string).await?;
-    let stream = client.query("SELECT TOP 500 CONVERT(VARCHAR, Date, 23) as Date, PartNumber, '' as PartName, Department as Process, Target as Qty, Actual, ReasonCode, Shift, WeekIdentifier, DayOfWeek FROM dbo.DeliveryData", &[]).await.map_err(|e| e.to_string())?;
+    let stream = client.query("SELECT TOP 500 CONVERT(VARCHAR, Date, 23) as Date, PartNumber, '' as PartName, Department as ProcessName, Target as Qty, Actual, ReasonCode, Shift, WeekIdentifier, DayOfWeek FROM dbo.DeliveryData", &[]).await.map_err(|e| e.to_string())?;
     let rows = stream
         .into_first_result()
         .await
@@ -451,7 +695,7 @@ async fn get_plan_data_preview(connection_string: String) -> Result<Vec<PlanRow>
                 .get::<&str, _>("PartNumber")
                 .map(|s| s.trim().to_string()),
             part_name: Some("".to_string()),
-            process: row.get::<&str, _>("Process").map(|s| s.trim().to_string()),
+            process: row.get::<&str, _>("ProcessName").map(|s| s.trim().to_string()),
             qty: get_i16_robust(&row, "Qty"),
             actual: get_i16_robust(&row, "Actual"),
             shift: row.get::<&str, _>("Shift").map(|s| s.trim().to_string()),
@@ -572,11 +816,11 @@ async fn get_plan_data_for_shift(
     let mut client = create_client(&connection_string).await?;
     let stream = client
         .query(
-            "SELECT PartNumber, '' as PartName, Department as Process, Target as Qty, Actual, ReasonCode, CONVERT(VARCHAR, Date, 23) as Date, Shift, WeekIdentifier, DayOfWeek 
+            "SELECT PartNumber, '' as PartName, Department as ProcessName, Target as Qty, Actual, ReasonCode, CONVERT(VARCHAR, Date, 23) as Date, Shift, WeekIdentifier, DayOfWeek 
          FROM dbo.DeliveryData 
          WHERE Date = CAST(@p1 AS DATE) 
-           AND LTRIM(RTRIM(Department)) = LTRIM(RTRIM(@p2)) 
-           AND (LTRIM(RTRIM(Shift)) = LTRIM(RTRIM(@p3)) OR Shift IS NULL)",
+           AND Department = @p2 
+           AND (Shift = @p3 OR Shift IS NULL)",
             &[&date, &process, &shift],
         )
         .await
@@ -594,7 +838,7 @@ async fn get_plan_data_for_shift(
                 .get::<&str, _>("PartNumber")
                 .map(|s| s.trim().to_string()),
             part_name: Some("".to_string()),
-            process: row.get::<&str, _>("Process").map(|s| s.trim().to_string()),
+            process: row.get::<&str, _>("ProcessName").map(|s| s.trim().to_string()),
             qty: get_i16_robust(&row, "Qty"),
             actual: get_i16_robust(&row, "Actual"),
             shift: row.get::<&str, _>("Shift").map(|s| s.trim().to_string()),
@@ -617,7 +861,7 @@ async fn get_plan_data_for_shift(
 async fn get_all_part_numbers(connection_string: String) -> Result<Vec<String>, String> {
     let mut client = create_client(&connection_string).await?;
     let stream = client.query(
-        "SELECT DISTINCT LTRIM(RTRIM(PartNumber)) as PartNumber FROM dbo.PartInfo WHERE PartNumber IS NOT NULL ORDER BY PartNumber",
+        "SELECT DISTINCT PartNumber FROM dbo.PartInfo WHERE PartNumber IS NOT NULL ORDER BY PartNumber",
         &[],
     ).await.map_err(|e| e.to_string())?;
     let rows = stream
@@ -643,7 +887,7 @@ async fn get_part_numbers_by_process(
 ) -> Result<Vec<String>, String> {
     let mut client = create_client(&connection_string).await?;
     let stream = client.query(
-        "SELECT DISTINCT LTRIM(RTRIM(PartNumber)) as PartNumber FROM dbo.PartInfo WHERE LTRIM(RTRIM(Process)) = LTRIM(RTRIM(@p1)) AND PartNumber IS NOT NULL ORDER BY PartNumber",
+        "SELECT DISTINCT PartNumber FROM dbo.PartInfo WHERE ProcessName = @p1 AND PartNumber IS NOT NULL ORDER BY PartNumber",
         &[&process],
     ).await.map_err(|e| e.to_string())?;
     let rows = stream
@@ -669,7 +913,7 @@ async fn get_reason_codes_by_process(
 ) -> Result<Vec<String>, String> {
     let mut client = create_client(&connection_string).await?;
     let stream = client.query(
-        "SELECT DISTINCT LTRIM(RTRIM(ReasonCode)) as ReasonCode FROM dbo.ReasonCode WHERE LTRIM(RTRIM(Process)) = LTRIM(RTRIM(@p1)) AND ReasonCode IS NOT NULL ORDER BY ReasonCode",
+        "SELECT DISTINCT ReasonCode FROM dbo.ReasonCode WHERE ProcessName = @p1 AND ReasonCode IS NOT NULL ORDER BY ReasonCode",
         &[&process],
     ).await.map_err(|e| e.to_string())?;
     let rows = stream
@@ -889,13 +1133,13 @@ async fn upsert_locator_mapping(
         client
             .execute(
                 "MERGE dbo.LocatorMapping AS target
-             USING (SELECT @p1 as WIPLocator, @p2 as Process, @p3 as DaysFromShipment) AS source
+             USING (SELECT @p1 as WIPLocator, @p2 as ProcessName, @p3 as DaysFromShipment) AS source
              ON (target.WIPLocator = source.WIPLocator)
              WHEN MATCHED THEN
-                UPDATE SET Process = source.Process, DaysFromShipment = source.DaysFromShipment
+                UPDATE SET ProcessName = source.ProcessName, DaysFromShipment = source.DaysFromShipment
              WHEN NOT MATCHED THEN
-                INSERT (WIPLocator, Process, DaysFromShipment)
-                VALUES (source.WIPLocator, source.Process, source.DaysFromShipment);",
+                INSERT (WIPLocator, ProcessName, DaysFromShipment)
+                VALUES (source.WIPLocator, source.ProcessName, source.DaysFromShipment);",
                 &[&rec.wip_locator, &rec.process, &rec.days_from_shipment],
             )
             .await
@@ -910,13 +1154,13 @@ async fn upsert_part_info(connection_string: String, records: Vec<PartInfo>) -> 
     for rec in records {
         client.execute(
             "MERGE dbo.PartInfo AS target
-             USING (SELECT @p1 as PartNumber, @p2 as Process, @p3 as BatchSize, @p4 as ProcessingTime) AS source
-             ON (target.PartNumber = source.PartNumber AND target.Process = source.Process)
+             USING (SELECT @p1 as PartNumber, @p2 as ProcessName, @p3 as BatchSize, @p4 as ProcessingTime) AS source
+             ON (target.PartNumber = source.PartNumber AND target.ProcessName = source.ProcessName)
              WHEN MATCHED THEN
                 UPDATE SET BatchSize = source.BatchSize, ProcessingTime = source.ProcessingTime
              WHEN NOT MATCHED THEN
-                INSERT (PartNumber, Process, BatchSize, ProcessingTime)
-                VALUES (source.PartNumber, source.Process, source.BatchSize, source.ProcessingTime);",
+                INSERT (PartNumber, ProcessName, BatchSize, ProcessingTime)
+                VALUES (source.PartNumber, source.ProcessName, source.BatchSize, source.ProcessingTime);",
             &[&rec.part_number, &rec.process, &rec.batch_size, &rec.processing_time],
         ).await.map_err(|e| e.to_string())?;
     }
@@ -930,16 +1174,18 @@ async fn upsert_process_info(
 ) -> Result<(), String> {
     let mut client = create_client(&connection_string).await?;
     for rec in records {
+        let mid = rec.machine_id.clone().unwrap_or_default();
+        let week = rec.week_identifier.clone().unwrap_or_default();
         client.execute(
             "MERGE dbo.ProcessInfo AS target
-             USING (SELECT @p1 as Process, CAST(@p2 as DATE) as Date, @p3 as HoursAvailable, @p4 as MachineID, @p5 as Shift, @p6 as WeekIdentifier) AS source
-             ON (ISNULL(target.Process, '') = ISNULL(source.Process, '') AND target.Date = source.Date AND ISNULL(target.MachineID, '') = ISNULL(source.MachineID, '') AND ISNULL(target.Shift, '') = ISNULL(source.Shift, '') AND ISNULL(target.WeekIdentifier, '') = ISNULL(source.WeekIdentifier, ''))
+             USING (SELECT @p1 as ProcessName, CAST(@p2 as DATE) as Date, @p3 as HoursAvailable, @p4 as MachineID, @p5 as Shift, @p6 as WeekIdentifier) AS source
+             ON (target.ProcessName = source.ProcessName AND target.Date = source.Date AND target.MachineID = source.MachineID AND target.Shift = source.Shift AND target.WeekIdentifier = source.WeekIdentifier)
              WHEN MATCHED THEN
                 UPDATE SET HoursAvailable = source.HoursAvailable
              WHEN NOT MATCHED THEN
-                INSERT (Process, Date, HoursAvailable, MachineID, Shift, WeekIdentifier)
-                VALUES (source.Process, source.Date, source.HoursAvailable, source.MachineID, source.Shift, source.WeekIdentifier);",
-            &[&rec.process, &rec.date, &rec.hours_available, &rec.machine_id, &rec.shift, &rec.week_identifier],
+                INSERT (ProcessName, Date, HoursAvailable, MachineID, Shift, WeekIdentifier)
+                VALUES (source.ProcessName, source.Date, source.HoursAvailable, source.MachineID, source.Shift, source.WeekIdentifier);",
+            &[&rec.process, &rec.date, &rec.hours_available, &mid, &rec.shift, &week],
         ).await.map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -978,7 +1224,7 @@ async fn delete_part_infos(
     for id in identifiers {
         client
             .execute(
-                "DELETE FROM dbo.PartInfo WHERE PartNumber = @p1 AND Process = @p2",
+                "DELETE FROM dbo.PartInfo WHERE PartNumber = @p1 AND ProcessName = @p2",
                 &[&id.part_number, &id.process],
             )
             .await
@@ -1005,7 +1251,7 @@ async fn delete_process_infos(
         client
             .execute(
                 "DELETE FROM dbo.ProcessInfo 
-             WHERE ISNULL(Process, '') = ISNULL(@p1, '') 
+             WHERE ISNULL(ProcessName, '') = ISNULL(@p1, '') 
                AND Date = CAST(@p2 as DATE) 
                AND ISNULL(MachineID, '') = ISNULL(@p3, '')
                AND ISNULL(Shift, '') = ISNULL(@p4, '')",
@@ -1038,7 +1284,7 @@ async fn replace_locator_mappings(
             *locator = locator.to_uppercase();
         }
         client.execute(
-            "INSERT INTO dbo.LocatorMapping (WIPLocator, Process, DaysFromShipment) VALUES (@p1, @p2, @p3)",
+            "INSERT INTO dbo.LocatorMapping (WIPLocator, ProcessName, DaysFromShipment) VALUES (@p1, @p2, @p3)",
             &[&rec.wip_locator, &rec.process, &rec.days_from_shipment],
         ).await.map_err(|e| e.to_string())?;
     }
@@ -1067,7 +1313,7 @@ async fn replace_part_infos(
         .map_err(|e| e.to_string())?;
     for rec in records {
         client.execute(
-            "INSERT INTO dbo.PartInfo (PartNumber, Process, BatchSize, ProcessingTime) VALUES (@p1, @p2, @p3, @p4)",
+            "INSERT INTO dbo.PartInfo (PartNumber, ProcessName, BatchSize, ProcessingTime) VALUES (@p1, @p2, @p3, @p4)",
             &[&rec.part_number, &rec.process, &rec.batch_size, &rec.processing_time],
         ).await.map_err(|e| e.to_string())?;
     }
@@ -1095,9 +1341,11 @@ async fn replace_process_infos(
         .await
         .map_err(|e| e.to_string())?;
     for rec in records {
+        let mid = rec.machine_id.unwrap_or_default();
         client.execute(
-            "INSERT INTO dbo.ProcessInfo (Process, Date, HoursAvailable, MachineID, Shift) VALUES (@p1, CAST(@p2 as DATE), @p3, @p4, @p5)",
-            &[&rec.process, &rec.date, &rec.hours_available, &rec.machine_id, &rec.shift],
+            "INSERT INTO dbo.ProcessInfo (ProcessName, Date, HoursAvailable, MachineID, Shift, WeekIdentifier) 
+             VALUES (@p1, CAST(@p2 as DATE), @p3, @p4, @p5, @p6)",
+            &[&rec.process, &rec.date, &rec.hours_available, &mid, &rec.shift, &rec.week_identifier],
         ).await.map_err(|e| e.to_string())?;
     }
 
@@ -1208,7 +1456,7 @@ async fn replace_daily_rates(
 async fn get_processes_preview(connection_string: String) -> Result<Vec<Process>, String> {
     let mut client = create_client(&connection_string).await?;
     let stream = client
-        .query("SELECT LTRIM(RTRIM(Process)) as Process, MachineID FROM dbo.Process", &[])
+        .query("SELECT ProcessName, MachineID FROM dbo.Process", &[])
         .await
         .map_err(|e| e.to_string())?;
     let rows = stream
@@ -1220,7 +1468,7 @@ async fn get_processes_preview(connection_string: String) -> Result<Vec<Process>
         .into_iter()
         .map(|row| Process {
             process_name: row
-                .get::<&str, _>("Process")
+                .get::<&str, _>("ProcessName")
                 .unwrap_or_default()
                 .trim()
                 .to_string(),
@@ -1235,16 +1483,17 @@ async fn get_processes_preview(connection_string: String) -> Result<Vec<Process>
 async fn upsert_process(connection_string: String, records: Vec<Process>) -> Result<(), String> {
     let mut client = create_client(&connection_string).await?;
     for rec in records {
+        let machine_id = rec.machine_id.unwrap_or_default();
         client
             .execute(
                 "MERGE dbo.Process AS target
-             USING (SELECT @p1 as Process, @p2 as MachineID) AS source
-             ON (LTRIM(RTRIM(target.Process)) = LTRIM(RTRIM(source.Process)))
+             USING (SELECT @p1 as ProcessName, @p2 as MachineID) AS source
+             ON (target.ProcessName = source.ProcessName AND target.MachineID = source.MachineID)
              WHEN MATCHED THEN
                 UPDATE SET MachineID = source.MachineID
              WHEN NOT MATCHED THEN
-                INSERT (Process, MachineID) VALUES (source.Process, source.MachineID);",
-                &[&rec.process_name, &rec.machine_id],
+                INSERT (ProcessName, MachineID) VALUES (source.ProcessName, source.MachineID);",
+                &[&rec.process_name, &machine_id],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -1255,14 +1504,15 @@ async fn upsert_process(connection_string: String, records: Vec<Process>) -> Res
 #[tauri::command]
 async fn delete_processes(
     connection_string: String,
-    process_names: Vec<String>,
+    records: Vec<Process>,
 ) -> Result<(), String> {
     let mut client = create_client(&connection_string).await?;
-    for name in process_names {
+    for rec in records {
+        let machine_id = rec.machine_id.unwrap_or_default();
         client
             .execute(
-                "DELETE FROM dbo.Process WHERE LTRIM(RTRIM(Process)) = LTRIM(RTRIM(@p1))",
-                &[&name],
+                "DELETE FROM dbo.Process WHERE ProcessName = @p1 AND MachineID = @p2",
+                &[&rec.process_name, &machine_id],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -1283,10 +1533,11 @@ async fn replace_processes(connection_string: String, records: Vec<Process>) -> 
         .await
         .map_err(|e| e.to_string())?;
     for rec in records {
+        let machine_id = rec.machine_id.unwrap_or_default();
         client
             .execute(
-                "INSERT INTO dbo.Process (Process, MachineID) VALUES (@p1, @p2)",
-                &[&rec.process_name, &rec.machine_id],
+                "INSERT INTO dbo.Process (ProcessName, MachineID) VALUES (@p1, @p2)",
+                &[&rec.process_name, &machine_id],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -1306,7 +1557,7 @@ async fn get_reason_codes_preview(
     let mut client = create_client(&connection_string).await?;
     let stream = client
         .query(
-            "SELECT TOP 1000 Process, ReasonCode FROM dbo.ReasonCode",
+            "SELECT TOP 1000 ProcessName, ReasonCode FROM dbo.ReasonCode",
             &[],
         )
         .await
@@ -1319,7 +1570,7 @@ async fn get_reason_codes_preview(
     let result = rows
         .into_iter()
         .map(|row| ReasonCodeData {
-            process: row.get::<&str, _>("Process").map(|s| s.trim().to_string()),
+            process: row.get::<&str, _>("ProcessName").map(|s| s.trim().to_string()),
             reason_code: row
                 .get::<&str, _>("ReasonCode")
                 .map(|s| s.trim().to_string()),
@@ -1338,10 +1589,10 @@ async fn upsert_reason_codes(
     for rec in records {
         client.execute(
             "MERGE dbo.ReasonCode AS target
-             USING (SELECT @p1 as Process, @p2 as ReasonCode) AS source
-             ON (LTRIM(RTRIM(target.Process)) = LTRIM(RTRIM(source.Process)) AND LTRIM(RTRIM(target.ReasonCode)) = LTRIM(RTRIM(source.ReasonCode)))
+             USING (SELECT @p1 as ProcessName, @p2 as ReasonCode) AS source
+             ON (target.ProcessName = source.ProcessName AND target.ReasonCode = source.ReasonCode)
              WHEN NOT MATCHED THEN
-                INSERT (Process, ReasonCode) VALUES (source.Process, source.ReasonCode);",
+                INSERT (ProcessName, ReasonCode) VALUES (source.ProcessName, source.ReasonCode);",
             &[&rec.process, &rec.reason_code]
         ).await.map_err(|e| e.to_string())?;
     }
@@ -1356,7 +1607,7 @@ async fn delete_reason_codes(
     let mut client = create_client(&connection_string).await?;
     for rec in records {
         client.execute(
-            "DELETE FROM dbo.ReasonCode WHERE LTRIM(RTRIM(Process)) = LTRIM(RTRIM(@p1)) AND LTRIM(RTRIM(ReasonCode)) = LTRIM(RTRIM(@p2))",
+            "DELETE FROM dbo.ReasonCode WHERE ProcessName = @p1 AND ReasonCode = @p2",
             &[&rec.process, &rec.reason_code]
         ).await.map_err(|e| e.to_string())?;
     }
@@ -1382,7 +1633,7 @@ async fn replace_reason_codes(
     for rec in records {
         client
             .execute(
-                "INSERT INTO dbo.ReasonCode (Process, ReasonCode) VALUES (@p1, @p2)",
+                "INSERT INTO dbo.ReasonCode (ProcessName, ReasonCode) VALUES (@p1, @p2)",
                 &[&rec.process, &rec.reason_code],
             )
             .await
@@ -1406,7 +1657,7 @@ async fn get_machines_by_process(
         .query(
             "SELECT DISTINCT MachineID 
          FROM dbo.Process 
-         WHERE LTRIM(RTRIM(Process)) = LTRIM(RTRIM(@p1)) 
+         WHERE ProcessName = @p1 
            AND MachineID IS NOT NULL 
          ORDER BY MachineID",
             &[&process],
@@ -1430,7 +1681,7 @@ async fn get_machines_by_process(
 async fn get_processes(connection_string: String) -> Result<Vec<String>, String> {
     let mut client = create_client(&connection_string).await?;
     let stream = client
-        .query("SELECT DISTINCT LTRIM(RTRIM([Process])) as [Process] FROM dbo.Process WHERE [Process] IS NOT NULL ORDER BY [Process]", &[])
+        .query("SELECT DISTINCT ProcessName FROM dbo.Process WHERE ProcessName IS NOT NULL ORDER BY ProcessName", &[])
         .await
         .map_err(|e| e.to_string())?;
     let rows = stream
@@ -1440,7 +1691,7 @@ async fn get_processes(connection_string: String) -> Result<Vec<String>, String>
 
     let result = rows
         .into_iter()
-        .filter_map(|row| row.get::<&str, _>("Process").map(|s| s.trim().to_string()))
+        .filter_map(|row| row.get::<&str, _>("ProcessName").map(|s| s.trim().to_string()))
         .collect();
 
     Ok(result)
@@ -1524,7 +1775,9 @@ pub fn run() {
             replace_reason_codes,
             get_processes,
             get_active_weeks,
-            get_machines_by_process
+            get_machines_by_process,
+            get_rolling_gaps,
+            calculate_demand_distribution
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

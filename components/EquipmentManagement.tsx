@@ -660,7 +660,7 @@ export function EquipmentManagement() {
         
         try {
           const dates = getWeekDates(selectedWeek);
-          const identifiers = [];
+          const identifiers: any[] = [];
           dates.forEach(date => {
             (['A', 'B', 'C', 'D'] as const).forEach(shift => {
               identifiers.push({

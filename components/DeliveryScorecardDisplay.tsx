@@ -58,6 +58,30 @@ export default function DeliveryScorecardDisplay() {
 
   const isWidescreen = layoutMode === 'widescreen';
 
+  const [rollingGaps, setRollingGaps] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    async function loadRollingGaps() {
+      if (!connectionString || !activeTab) return;
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const gaps = await invoke<any[]>('get_rolling_gaps', {
+          connectionString,
+          department: activeTab
+        });
+        
+        const gapMap: Record<string, number> = {};
+        gaps.forEach((g: any) => {
+          gapMap[`${g.partNumber}-${g.shift}`] = g.rollingGap;
+        });
+        setRollingGaps(gapMap);
+      } catch (err) {
+        console.error("Failed to fetch rolling gaps", err);
+      }
+    }
+    loadRollingGaps();
+  }, [connectionString, activeTab, store.syncStatus]);
+
   // ── Dynamic height measurement for widescreen table constraint ──
   const leftColumnRef = useRef<HTMLDivElement>(null);
   const [availableHeight, setAvailableHeight] = useState<number | null>(null);
@@ -229,18 +253,9 @@ export default function DeliveryScorecardDisplay() {
 
      activeWeek.parts.forEach(part => {
         // Calculate child rolling gap
-        let childRollingGap = 0;
+        let childRollingGap = rollingGaps[`${part.partNumber}-${part.shift}`] || 0;
         const batchSize = batchSizeMap.get(part.partNumber) || 1;
         const multiplier = displayUnit === 'pieces' ? batchSize : 1;
-
-        part.dailyRecords.forEach(record => {
-           if (record.date) {
-              const dateNumeric = parseInt(record.date.replace(/-/g, ''));
-              if (dateNumeric <= todayNumeric) {
-                 childRollingGap += ((record.actual ?? 0) - (record.target ?? 0));
-              }
-           }
-        });
 
         if (!groups[part.partNumber]) {
            groups[part.partNumber] = {
