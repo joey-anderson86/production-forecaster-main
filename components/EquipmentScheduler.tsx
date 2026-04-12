@@ -145,7 +145,6 @@ const JobCard = ({
                 mb={8}
                 withBorder
                 style={{
-                  ...provided.draggableProps.style,
                   backgroundColor: snapshot.isDragging ? 'var(--mantine-color-indigo-0)' : 'white',
                   opacity: snapshot.isDragging ? 0.9 : 1,
                   cursor: 'grab',
@@ -158,6 +157,7 @@ const JobCard = ({
                     : `var(--mantine-color-${shiftColor.replace('.', '-')})`,
                   outline: isWarning ? '2px dashed var(--mantine-color-red-4)' : undefined,
                   outlineOffset: isWarning ? '-2px' : undefined,
+                  ...provided.draggableProps.style,
                   zIndex: snapshot.isDragging ? 9999 : 1,
                   // Maintain width when dragging in Portal
                   width: snapshot.isDragging ? '240px' : 'auto',
