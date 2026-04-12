@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { ColorSchemeScript, MantineProvider, mantineHtmlProps, createTheme, virtualColor } from '@mantine/core';
+import { ColorSchemeScript, MantineProvider, mantineHtmlProps, createTheme, Tooltip } from '@mantine/core';
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
 import '@mantine/dates/styles.css';
@@ -16,18 +16,13 @@ export const metadata: Metadata = {
 };
 
 const theme = createTheme({
-  colors: {
-    tooltipBg: virtualColor({
-      name: 'tooltipBg',
-      light: 'gray.1',
-      dark: 'dark.4',
-    }),
-  },
   components: {
     Tooltip: {
-      defaultProps: {
-        color: 'tooltipBg',
-        autoContrast: true,
+      styles: {
+        tooltip: {
+          backgroundColor: 'light-dark(var(--mantine-color-gray-9), var(--mantine-color-dark-4))',
+          color: 'var(--mantine-color-white)',
+        },
       },
     },
   },

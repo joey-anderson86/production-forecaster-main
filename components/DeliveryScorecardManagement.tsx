@@ -186,7 +186,7 @@ export default function DeliveryScorecardManagement() {
         const sourceWeek = store.departments[activeTab].weeks[copySourceWeekId];
         if (!sourceWeek) throw new Error("Source week not found");
 
-        const { dbRecordsToUpsert } = generateSmartCopy(
+        const { dbRecordsToUpsert } = await generateSmartCopy(
           sourceWeek,
           newWeekId.trim(),
           store.shiftSettings,

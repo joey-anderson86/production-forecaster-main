@@ -117,7 +117,7 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
   const [deletedPartInfos, setDeletedPartInfos] = useState<{partNumber: string, process: string}[]>([]);
   const [deletedProcessInfos, setDeletedProcessInfos] = useState<{process: string, date: string, machineId: string, shift: string}[]>([]);
   const [deletedDailyRates, setDeletedDailyRates] = useState<DailyRate[]>([]);
-  const [deletedProcesses, setDeletedProcesses] = useState<string[]>([]);
+  const [deletedProcesses, setDeletedProcesses] = useState<Process[]>([]);
   const [deletedReasonCodes, setDeletedReasonCodes] = useState<ReasonCodeData[]>([]);
 
   const [isLoadingData, setIsLoadingData] = useState(false);
@@ -352,7 +352,7 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
       } else if (activeTab === "process") {
          // Handle deletions
          if (deletedProcesses.length > 0) {
-           await invoke("delete_processes", { connectionString, processNames: deletedProcesses });
+           await invoke("delete_processes", { connectionString, records: deletedProcesses });
          }
          // Handle upserts
           await invoke("upsert_process", { connectionString, records: processes });
@@ -526,10 +526,16 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
     } else if (activeTab === "process") {
       const record = processes[index];
       const initial = JSON.parse(initialProcesses) as Process[];
-      const wasInDb = initial.some(r => normalize(r.processName) === normalize(record.processName));
+      const wasInDb = initial.some(r => 
+        normalize(r.processName) === normalize(record.processName) &&
+        normalize(r.machineId) === normalize(record.machineId)
+      );
       
       if (wasInDb && record.processName) {
-        setDeletedProcesses(prev => [...prev, record.processName]);
+        setDeletedProcesses(prev => [...prev, { 
+          processName: record.processName, 
+          machineId: record.machineId || "" 
+        }]);
       }
       setProcesses(prev => prev.filter((_, i) => i !== index));
     } else if (activeTab === "reasonCode") {
