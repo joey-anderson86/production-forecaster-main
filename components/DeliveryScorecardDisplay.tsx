@@ -19,7 +19,7 @@ import { ShiftProductionEntryModal } from './ShiftProductionEntryModal';
 import { DeliveryLossPareto } from './DeliveryLossPareto';
 import { ShiftAttainmentChart } from './ShiftAttainmentChart';
 import { notifications } from '@mantine/notifications';
-import { DAYS_OF_WEEK, getTodayNumeric, getWeekDates, isWorkingDay, parseISOLocal } from '@/lib/dateUtils';
+import { DAYS_OF_WEEK, getTodayNumeric, getWeekDates, isWorkingDay, parseISOLocal, generateWeekLabel } from '@/lib/dateUtils';
 import { useProcessStore } from '@/lib/processStore';
 import { useProductionDisplayUnit } from '@/hooks/useProductionDisplayUnit';
 import { useAttainmentMath } from '@/lib/hooks/useAttainmentMath';
@@ -203,19 +203,11 @@ export default function DeliveryScorecardDisplay() {
     ? Object.values(activeDepartment.weeks).map(w => ({ value: w.weekId, label: w.weekLabel })) 
     : [];
 
-  // Default to first week if available and no week is selected
-  React.useEffect(() => {
-    if (activeDepartment) {
-      const weekIds = Object.keys(activeDepartment.weeks);
-      if (weekIds.length > 0 && (!selectedWeekId || !weekIds.includes(selectedWeekId))) {
-        setSelectedWeekId(weekIds[0]);
-      } else if (weekIds.length === 0) {
-        setSelectedWeekId(null);
-      }
-    } else {
-      setSelectedWeekId(null);
-    }
-  }, [activeDepartment, selectedWeekId]);
+  if (selectedWeekId && !weekOptions.find(w => w.value === selectedWeekId)) {
+    weekOptions.push({ value: selectedWeekId, label: generateWeekLabel(selectedWeekId) });
+  }
+
+  // Removed localized useEffect that was clearing global week selection
 
   const activeWeek = activeDepartment && selectedWeekId ? activeDepartment.weeks[selectedWeekId] : null;
 
@@ -548,7 +540,7 @@ export default function DeliveryScorecardDisplay() {
                     }),
                   }}
                 >
-              {activeWeek && groupedParts.length > 0 ? (
+              {selectedWeekId ? (
                 <Table 
                   verticalSpacing="sm" 
                   striped 
@@ -638,10 +630,22 @@ export default function DeliveryScorecardDisplay() {
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
-                    {groupedParts.map(group => {
-                      const isExpanded = expandedParts.has(group.partNumber);
-                      
-                      return (
+                    {(!activeWeek || groupedParts.length === 0) ? (
+                      <Table.Tr>
+                        <Table.Td colSpan={14} py="xl">
+                          <Center>
+                            <Stack align="center" gap="xs">
+                               <IconDatabaseX size={32} color="var(--mantine-color-gray-4)" />
+                               <Text c="dimmed" size="sm">No data available for {generateWeekLabel(selectedWeekId)}.</Text>
+                            </Stack>
+                          </Center>
+                        </Table.Td>
+                      </Table.Tr>
+                    ) : (
+                      groupedParts.map(group => {
+                        const isExpanded = expandedParts.has(group.partNumber);
+                        
+                        return (
                         <React.Fragment key={group.partNumber}>
                           {/* Parent Row */}
                           <Table.Tr 
@@ -860,7 +864,7 @@ export default function DeliveryScorecardDisplay() {
                           })}
                         </React.Fragment>
                       );
-                    })}
+                    }))}
                   </Table.Tbody>
                   <Table.Tfoot 
                     className="shadow-[0_-2px_4px_rgba(0,0,0,0.05)]"
@@ -926,28 +930,11 @@ export default function DeliveryScorecardDisplay() {
                       <IconDatabaseX size={48} stroke={1.5} color="var(--mantine-color-indigo-4)" />
                     </Box>
                     <Stack gap={4} align="center">
-                      <Text fw={700} size="lg">No Delivery Dashboard data found</Text>
+                      <Text fw={700} size="lg">No Week Selected</Text>
                       <Text c="dimmed" size="sm" ta="center" maw={400}>
-                        {selectedWeekId 
-                          ? `We couldn't find any production data for ${activeTab} during the selected week.`
-                          : 'Please select a week to view performance metrics.'}
+                        Please select a week to view performance metrics.
                       </Text>
                     </Stack>
-                    <Button 
-                      variant="light" 
-                      color="indigo" 
-                      size="md" 
-                      leftSection={<IconArrowRight size={18} />}
-                      onClick={() => {
-                        notifications.show({
-                          title: 'Action Required',
-                          message: 'Please switch to the "Production Planner" tab to initialize this week.',
-                          color: 'blue'
-                        });
-                      }}
-                    >
-                      How to Initialize
-                    </Button>
                   </Stack>
                 </Center>
               )}

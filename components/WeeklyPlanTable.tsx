@@ -9,7 +9,7 @@ import {
   IconTrash, IconAlertCircle, IconCalculator, 
   IconChevronRight, IconChevronDown, IconWand
 } from '@tabler/icons-react';
-import { DayOfWeek, DAYS_OF_WEEK, getWeekDates, isWorkingDay, formatISODate } from '@/lib/dateUtils';
+import { DayOfWeek, DAYS_OF_WEEK, getWeekDates, isWorkingDay, formatISODate, generateWeekLabel } from '@/lib/dateUtils';
 import { PartScorecard, useScorecardStore } from '@/lib/scorecardStore';
 import { ProductionDisplayUnit } from '@/hooks/useProductionDisplayUnit';
 
@@ -765,7 +765,7 @@ export default function WeeklyPlanTable({
               <Table.Td colSpan={11} py="xl">
                 <Stack align="center" gap="xs">
                   <IconAlertCircle size={32} color="var(--mantine-color-gray-4)" />
-                  <Text c="dimmed" size="sm">No parts scheduled for this week. Start by adding a row below.</Text>
+                  <Text c="dimmed" size="sm">No data available for {weekId ? generateWeekLabel(weekId) : 'this week'}.</Text>
                 </Stack>
               </Table.Td>
             </Table.Tr>

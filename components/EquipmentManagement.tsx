@@ -810,7 +810,10 @@ export function EquipmentManagement() {
           <Group>
             <Select
               placeholder="Select Week"
-              data={activeWeeks.map((w) => ({ value: w, label: generateWeekLabel(w) }))}
+              data={[
+                ...activeWeeks.map((w) => ({ value: w, label: generateWeekLabel(w) })),
+                ...(selectedWeek && !activeWeeks.includes(selectedWeek) ? [{ value: selectedWeek, label: generateWeekLabel(selectedWeek) }] : [])
+              ]}
               value={selectedWeek}
               onChange={setSelectedWeek}
               size="sm"
@@ -848,7 +851,7 @@ export function EquipmentManagement() {
           </Box>
         )}
 
-        {schedules.length > 0 ? (
+        {selectedWeek ? (
           <Table verticalSpacing="xs" highlightOnHover withTableBorder>
             <Table.Thead 
               style={{ 
@@ -884,18 +887,31 @@ export function EquipmentManagement() {
             </Table.Thead>
 
             <Table.Tbody>
-              {schedules.map((m) => (
-                <MachineRow
-                  key={m.id}
-                  schedule={m}
-                  isExpanded={expandedMachines.has(m.id)}
-                  onToggle={() => toggleMachine(m.id)}
-                  onUpdateShiftHour={(shift, day, val) => handleUpdateShiftHour(m.id, shift, day, val)}
-                  onDelete={handleDeleteEquipment}
-                  weekDates={weekDates}
-                  shiftSettings={shiftSettings}
-                />
-              ))}
+              {schedules.length === 0 ? (
+                <Table.Tr>
+                  <Table.Td colSpan={10} py="xl">
+                    <Center>
+                      <Stack align="center" gap="xs">
+                        <IconDatabaseX size={32} color="var(--mantine-color-gray-4)" />
+                        <Text c="dimmed" size="sm">No data available for {generateWeekLabel(selectedWeek)}.</Text>
+                      </Stack>
+                    </Center>
+                  </Table.Td>
+                </Table.Tr>
+              ) : (
+                schedules.map((m) => (
+                  <MachineRow
+                    key={m.id}
+                    schedule={m}
+                    isExpanded={expandedMachines.has(m.id)}
+                    onToggle={() => toggleMachine(m.id)}
+                    onUpdateShiftHour={(shift, day, val) => handleUpdateShiftHour(m.id, shift, day, val)}
+                    onDelete={handleDeleteEquipment}
+                    weekDates={weekDates}
+                    shiftSettings={shiftSettings}
+                  />
+                ))
+              )}
             </Table.Tbody>
 
             <Table.Tfoot 
@@ -976,23 +992,11 @@ export function EquipmentManagement() {
                 <IconCalendarOff size={48} stroke={1.5} color="var(--mantine-color-blue-4)" />
               </Box>
               <Stack gap={4} align="center">
-                <Text fw={700} size="lg">No Equipment Management data found</Text>
+                <Text fw={700} size="lg">No Week Selected</Text>
                 <Text c="dimmed" size="sm" ta="center" maw={400}>
-                  {selectedWeek 
-                    ? `No machine capacity definitions were found for ${generateWeekLabel(selectedWeek)} in the ${activeTab} process.`
-                    : 'Please select a week to manage equipment capacity.'}
+                  Please select a week to manage equipment capacity.
                 </Text>
               </Stack>
-              <Button 
-                variant="light" 
-                color="blue" 
-                size="md" 
-                leftSection={<IconPlus size={18} />}
-                onClick={() => setIsModalOpen(true)}
-                disabled={!activeTab || !selectedWeek}
-              >
-                Create Schedule for {selectedWeek ? generateWeekLabel(selectedWeek) : 'Week'}
-              </Button>
             </Stack>
           </Center>
         )}

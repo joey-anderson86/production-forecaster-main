@@ -153,19 +153,7 @@ export default function DeliveryScorecardManagement() {
 
   const activeDepartment = activeTab ? store.departments[activeTab] : null;
 
-  // Handle auto-selecting the first week if a new department is selected
-  useEffect(() => {
-    if (activeDepartment) {
-      const weekIds = Object.keys(activeDepartment.weeks);
-      if (weekIds.length > 0 && !weekIds.includes(selectedWeekId || '')) {
-        setSelectedWeekId(weekIds[0]);
-      } else if (weekIds.length === 0) {
-        setSelectedWeekId(null);
-      }
-    } else {
-      setSelectedWeekId(null);
-    }
-  }, [activeDepartment, selectedWeekId]);
+  // Removed localized useEffect that was clearing global week selection
 
   const handleAddWeek = () => {
     if (!activeTab) return;
@@ -482,6 +470,10 @@ export default function DeliveryScorecardManagement() {
     ? Object.values(activeDepartment.weeks).map(w => ({ value: w.weekId, label: w.weekLabel })) 
     : [];
 
+  if (selectedWeekId && !weekOptions.find(w => w.value === selectedWeekId)) {
+    weekOptions.push({ value: selectedWeekId, label: generateWeekLabel(selectedWeekId) });
+  }
+
   const activeWeek = activeDepartment && selectedWeekId ? activeDepartment.weeks[selectedWeekId] : null;
 
   return (
@@ -569,13 +561,13 @@ export default function DeliveryScorecardManagement() {
           </Group>
 
 
-          {activeWeek && activeWeek.parts.length > 0 ? (
+          {selectedWeekId && activeTab ? (
             <Box>
               <Box className="border border-gray-200 rounded-md overflow-hidden mb-md mt-sm">
                 <WeeklyPlanTable 
                   department={activeTab!}
                   weekId={selectedWeekId!}
-                  parts={activeWeek.parts}
+                  parts={activeWeek?.parts || []}
                   availableParts={availableParts}
                   isLoadingParts={isLoadingParts}
                   processInfo={processInfo}
@@ -678,23 +670,11 @@ export default function DeliveryScorecardManagement() {
                   <IconCalendarOff size={48} stroke={1.5} color="var(--mantine-color-indigo-4)" />
                 </Box>
                 <Stack gap={4} align="center">
-                  <Text fw={700} size="lg">No Production Planner data found</Text>
+                  <Text fw={700} size="lg">No Week Selected</Text>
                   <Text c="dimmed" size="sm" ta="center" maw={400}>
-                    {selectedWeekId 
-                      ? `There is no schedule data for ${generateWeekLabel(selectedWeekId)} in the ${activeTab} department.`
-                      : 'Please select a week to view or initialize the production schedule.'}
+                    Please select a week to view or initialize the production schedule.
                   </Text>
                 </Stack>
-                <Button 
-                  variant="light" 
-                  color="indigo" 
-                  size="md" 
-                  leftSection={<IconPlus size={18} />}
-                  onClick={handleAddWeek}
-                  disabled={!activeTab || !selectedWeekId}
-                >
-                  Initialize Week
-                </Button>
               </Stack>
             </Center>
           )}
