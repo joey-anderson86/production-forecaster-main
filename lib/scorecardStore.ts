@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { getISODateForDay, isWorkingDay, formatSqlDate, formatSqlDateFromIso, parseISOLocal } from './dateUtils';
+import { getISODateForDay, isWorkingDay, formatSqlDate, formatSqlDateFromIso, parseISOLocal, generateWeekLabel } from './dateUtils';
+import { SQLDeliveryData } from './types';
 
 export type DayOfWeek = 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat' | 'Sun';
 
@@ -176,9 +177,14 @@ export const useScorecardStore = create<ScorecardStore>()(
 
       addPartNumber: (departmentName, weekId, partNumber = '', shift = '', groupId?: string) => set((state) => {
         const dept = state.departments[departmentName];
-        if (!dept || !dept.weeks[weekId]) return state;
+        if (!dept) return state;
 
-        const week = dept.weeks[weekId];
+        // Ensure week exists (initializes if missing)
+        const week = dept.weeks[weekId] || { 
+          weekId, 
+          weekLabel: generateWeekLabel(weekId), 
+          parts: [] 
+        };
         
         // Only prevent duplicates if values are provided
         if (partNumber && shift && week.parts.some(p => p.partNumber === partNumber && p.shift === shift)) {
@@ -434,14 +440,14 @@ export const useScorecardStore = create<ScorecardStore>()(
         set({ isLoading: true, error: null });
         try {
           const { invoke } = await import('@tauri-apps/api/core');
-          const rawData = await invoke<any[]>('get_scorecard_data', { connectionString });
+          const rawData = await invoke<SQLDeliveryData[]>('get_scorecard_data', { connectionString });
           
           const newDepartments: Record<string, DepartmentScorecard> = {};
           
           rawData.forEach(row => {
-            const dept = row.department;
-            const weekId = row.weekIdentifier;
-            const pNum = row.partNumber;
+            const dept = row.Department;
+            const weekId = row.WeekIdentifier;
+            const pNum = row.PartNumber;
             
             if (!newDepartments[dept]) {
               newDepartments[dept] = { departmentName: dept, weeks: {} };
@@ -461,7 +467,7 @@ export const useScorecardStore = create<ScorecardStore>()(
             }
             
             const week = newDepartments[dept].weeks[weekId];
-            const shift = row.shift || 'A'; // Default to 'A' if null
+            const shift = row.Shift || 'A'; // Default to 'A' if null
             let part = week.parts.find(p => p.partNumber === pNum && p.shift === shift);
             
             if (!part) {
@@ -482,12 +488,12 @@ export const useScorecardStore = create<ScorecardStore>()(
               week.parts.push(part);
             }
             
-            const record = part.dailyRecords.find(d => d.dayOfWeek === row.dayOfWeek);
+            const record = part.dailyRecords.find(d => d.dayOfWeek === row.DayOfWeek);
             if (record) {
-              record.actual = row.actual;
-              record.target = row.target;
-              record.date = row.date;
-              record.reasonCode = row.reasonCode;
+              record.actual = row.Actual;
+              record.target = row.Target;
+              record.date = row.Date;
+              record.reasonCode = row.ReasonCode;
             }
           });
           
@@ -516,15 +522,15 @@ export const useScorecardStore = create<ScorecardStore>()(
                 syncedRowIds.add(part.id);
                 part.dailyRecords.forEach(record => {
                   records.push({
-                    department: dept.departmentName,
-                    weekIdentifier: week.weekId,
-                    partNumber: part.partNumber,
-                    shift: part.shift,
-                    dayOfWeek: record.dayOfWeek,
-                    target: record.target,
-                    actual: record.actual,
-                    date: record.date ? formatSqlDateFromIso(record.date) : null,
-                    reasonCode: record.reasonCode
+                    Department: dept.departmentName,
+                    WeekIdentifier: week.weekId,
+                    PartNumber: part.partNumber,
+                    Shift: part.shift,
+                    DayOfWeek: record.dayOfWeek,
+                    Target: record.target,
+                    Actual: record.actual,
+                    Date: record.date ? formatSqlDateFromIso(record.date) : null,
+                    ReasonCode: record.reasonCode
                   });
                 });
               }
@@ -568,15 +574,15 @@ export const useScorecardStore = create<ScorecardStore>()(
           
           // Construct the DB record. Note the field mapping to ScorecardRow in Rust
           const dbRecord = {
-            department: departmentName,
-            weekIdentifier: weekId,
-            partNumber: part.partNumber || "",
-            dayOfWeek: record.dayOfWeek,
-            target: record.target,
-            actual: record.actual,
-            date: record.date ? formatSqlDateFromIso(record.date) : null,
-            shift: part.shift || "",
-            reasonCode: record.reasonCode
+            Department: departmentName,
+            WeekIdentifier: weekId,
+            PartNumber: part.partNumber || "",
+            DayOfWeek: record.dayOfWeek,
+            Target: record.target,
+            Actual: record.actual,
+            Date: record.date ? formatSqlDateFromIso(record.date) : null,
+            Shift: part.shift || "",
+            ReasonCode: record.reasonCode
           };
 
           await invoke('upsert_scorecard_data', { 
@@ -611,15 +617,15 @@ export const useScorecardStore = create<ScorecardStore>()(
           const { invoke } = await import('@tauri-apps/api/core');
           
           const records = part.dailyRecords.map(record => ({
-            department: departmentName,
-            weekIdentifier: weekId,
-            partNumber: part.partNumber,
-            dayOfWeek: record.dayOfWeek,
-            target: record.target,
-            actual: record.actual,
-            date: record.date ? formatSqlDateFromIso(record.date) : null,
-            shift: part.shift,
-            reasonCode: record.reasonCode
+            Department: departmentName,
+            WeekIdentifier: weekId,
+            PartNumber: part.partNumber,
+            DayOfWeek: record.dayOfWeek,
+            Target: record.target,
+            Actual: record.actual,
+            Date: record.date ? formatSqlDateFromIso(record.date) : null,
+            Shift: part.shift,
+            ReasonCode: record.reasonCode
           }));
 
           await invoke('upsert_scorecard_data', { 
@@ -645,10 +651,10 @@ export const useScorecardStore = create<ScorecardStore>()(
           const { invoke } = await import('@tauri-apps/api/core');
           await invoke('delete_scorecard_row', { 
             connectionString, 
-            department: departmentName, 
-            weekIdentifier: weekId, 
-            partNumber: partNumber, 
-            shift: shift 
+            Department: departmentName, 
+            WeekIdentifier: weekId, 
+            PartNumber: partNumber, 
+            Shift: shift 
           });
           set({ syncStatus: 'saved' });
         } catch (err: any) {

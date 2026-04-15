@@ -62,12 +62,12 @@ import { useAvailableMachines } from '@/hooks/useAvailableMachines';
 
 /** Raw database row from dbo.ProcessInfo */
 export interface ProcessInfoRow {
-  process: string;
-  date: string; // YYYY-MM-DD
-  hoursAvailable: number;
-  machineId: string;
-  shift: 'A' | 'B' | 'C' | 'D';
-  weekIdentifier: string;
+  ProcessName: string;
+  Date: string; // YYYY-MM-DD
+  HoursAvailable: number;
+  MachineID: string;
+  Shift: 'A' | 'B' | 'C' | 'D';
+  WeekIdentifier: string;
 }
 
 export interface ShiftAllocation {
@@ -92,11 +92,11 @@ export function transformProcessData(rows: ProcessInfoRow[]): MachineSchedule[] 
   const machineMap = new Map<string, MachineSchedule>();
 
   rows.forEach((row) => {
-    if (!machineMap.has(row.machineId)) {
-      machineMap.set(row.machineId, {
-        id: row.machineId, // Using machineId as unique ID for this view
-        machineId: row.machineId,
-        process: row.process,
+    if (!machineMap.has(row.MachineID)) {
+      machineMap.set(row.MachineID, {
+        id: row.MachineID, // Using machineId as unique ID for this view
+        machineId: row.MachineID,
+        process: row.ProcessName,
         baseAvailableHours: 24, // Default baseline, can be customized
         shifts: (['A', 'B', 'C', 'D'] as const).map((s) => ({
           shift: s,
@@ -105,13 +105,13 @@ export function transformProcessData(rows: ProcessInfoRow[]): MachineSchedule[] 
       });
     }
 
-    const machine = machineMap.get(row.machineId)!;
-    const shiftAlloc = machine.shifts.find((s) => s.shift === row.shift);
+    const machine = machineMap.get(row.MachineID)!;
+    const shiftAlloc = machine.shifts.find((s) => s.shift === row.Shift);
 
     if (shiftAlloc) {
-      const dateObj = parseISOLocal(row.date);
+      const dateObj = parseISOLocal(row.Date);
       const dayLabel = getDayOfWeekLabel(dateObj);
-      shiftAlloc.dailyHours[dayLabel] = row.hoursAvailable;
+      shiftAlloc.dailyHours[dayLabel] = row.HoursAvailable;
     }
   });
 
@@ -591,13 +591,13 @@ export function EquipmentManagement() {
         const date = weekDates[dayIdx];
         if (!date) return;
 
-        const record: ProcessInfoRow = {
-          process: activeTab,
-          date: formatSqlDate(date),
-          hoursAvailable: value || 0,
-          machineId,
-          shift,
-          weekIdentifier: selectedWeek,
+        const record = {
+          ProcessName: activeTab,
+          Date: formatSqlDate(date),
+          HoursAvailable: value || 0,
+          MachineID: machineId,
+          Shift: shift,
+          WeekIdentifier: selectedWeek,
         };
 
         await invoke('upsert_process_info', {
@@ -624,12 +624,12 @@ export function EquipmentManagement() {
       dates.forEach((date) => {
         (['A', 'B', 'C', 'D'] as const).forEach((shift) => {
           newRows.push({
-            process: activeTab!,
-            date: formatSqlDate(date),
-            hoursAvailable: 0,
-            machineId,
-            shift,
-            weekIdentifier: selectedWeek!,
+            ProcessName: activeTab!,
+            Date: formatSqlDate(date),
+            HoursAvailable: 0,
+            MachineID: machineId,
+            Shift: shift,
+            WeekIdentifier: selectedWeek!,
           });
         });
       });

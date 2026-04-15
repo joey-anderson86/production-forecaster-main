@@ -30,13 +30,14 @@ import { invoke } from '@tauri-apps/api/core';
 import { load } from '@tauri-apps/plugin-store';
 import { notifications } from '@mantine/notifications';
 import { getCurrentWeekId } from '@/lib/dateUtils';
+import { PipelineRow, DailyRateRow, RawPipelineRow, SQLDailyRate, SQLLocatorMapping } from '@/lib/types';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-type PipelineData = Record<string, any>[];
-type DailyRateData = Record<string, any>[];
+type PipelineData = PipelineRow[];
+type DailyRateData = DailyRateRow[];
 
 export default function ProductionForecaster() {
   const [pipelineData, setPipelineData] = useState<PipelineData>([]);
@@ -131,10 +132,10 @@ export default function ProductionForecaster() {
       }
 
       // 1. Fetch Pipeline Data
-      const dbPipeline = await invoke<any[]>("get_pipeline_data_preview", { connectionString });
+      const dbPipeline = await invoke<RawPipelineRow[]>("get_pipeline_data_preview", { connectionString });
 
       // 2. Fetch Daily Rates
-      const dbRates = await invoke<any[]>("get_daily_rate_preview", { connectionString });
+      const dbRates = await invoke<SQLDailyRate[]>("get_daily_rate_preview", { connectionString });
 
       // Filter for current week/year
       const currentWeekId = getCurrentWeekId(); // "2026-w13"
@@ -143,10 +144,10 @@ export default function ProductionForecaster() {
       const targetWeek = parseInt(currWeekStr);
 
       const mappedRates = dbRates
-        .filter(r => r.year === targetYear && r.week === targetWeek)
+        .filter(r => r.Year === targetYear && r.Week === targetWeek)
         .map(r => ({
-          "Part Number": r.partNumber,
-          "Daily Rate": r.qty
+          "Part Number": r.PartNumber,
+          "Daily Rate": r.Qty
         }));
 
       // If none found for current week, maybe just take all and let it unique-ify?
@@ -154,49 +155,49 @@ export default function ProductionForecaster() {
       // But the forecaster needs one rate. 
       // Let's provide a fallback: if current week missing, find most recent available for each part
       const ratesToUse = mappedRates.length > 0 ? mappedRates :
-        Array.from(new Set(dbRates.map(r => r.partNumber))).map(part => {
-          const partRows = dbRates.filter(r => r.partNumber === part);
+        Array.from(new Set(dbRates.map(r => r.PartNumber))).map(part => {
+          const partRows = dbRates.filter(r => r.PartNumber === part);
           // Sort by year desc, week desc
-          partRows.sort((a, b) => b.year !== a.year ? b.year - a.year : b.week - a.week);
+          partRows.sort((a, b) => b.Year !== a.Year ? b.Year - a.Year : b.Week - a.Week);
           return {
             "Part Number": part,
-            "Daily Rate": partRows[0].qty
+            "Daily Rate": partRows[0].Qty
           };
         });
 
       // 3. Fetch Locator Mapping
-      const dbMappingRows = await invoke<any[]>("get_locator_mapping_preview", { connectionString });
+      const dbMappingRows = await invoke<SQLLocatorMapping[]>("get_locator_mapping_preview", { connectionString });
 
       // Transform data for the forecaster
       if (dbPipeline.length > 0) {
         // Find unique locators
-        const uniqueLocators = Array.from(new Set(dbPipeline.map(r => r.wipLocator).filter(Boolean))) as string[];
+        const uniqueLocators = Array.from(new Set(dbPipeline.map(r => r.WIPLocator).filter(Boolean))) as string[];
         setLocators(uniqueLocators);
 
-        // Convert long format to wide format for the existing processor
+        // Transform data for the forecaster
         // Map partNumber + customer + city + date to a wide row
         const wideMap = new Map<string, any>();
         dbPipeline.forEach(row => {
-          const key = `${row.partNumber}|${row.customer}|${row.customerCity}|${row.date}`;
+          const key = `${row.PartNumber}|${row.Customer}|${row.CustomerCity}|${row.Date}`;
           if (!wideMap.has(key)) {
             wideMap.set(key, {
-              PartNumber: row.partNumber,
-              Customer: row.customer,
-              "Customer City": row.customerCity,
-              Date: row.date,
+              PartNumber: row.PartNumber,
+              Customer: row.Customer,
+              "Customer City": row.CustomerCity,
+              Date: row.Date,
               ...Object.fromEntries(uniqueLocators.map(l => [l, 0]))
             });
           }
           const wideRow = wideMap.get(key);
-          if (row.wipLocator) {
-            wideRow[row.wipLocator] = (wideRow[row.wipLocator] || 0) + (row.qty || 0);
+          if (row.WIPLocator) {
+            wideRow[row.WIPLocator] = (wideRow[row.WIPLocator] || 0) + (row.Qty || 0);
           }
         });
 
         const wideData = Array.from(wideMap.values());
         setPipelineData(wideData);
 
-        const uniqueDates = Array.from(new Set(dbPipeline.map(row => String(row.date)))).sort();
+        const uniqueDates = Array.from(new Set(dbPipeline.map(row => String(row.Date)))).sort();
         setDates(uniqueDates);
         if (uniqueDates.length > 0 && !selectedDate) {
           setSelectedDate(uniqueDates[0]);
@@ -208,7 +209,7 @@ export default function ProductionForecaster() {
       // Locator Mapping
       const mapping: Record<string, number> = {};
       dbMappingRows.forEach(r => {
-        if (r.wipLocator) mapping[r.wipLocator] = r.daysFromShipment || 0;
+        if (r.WIPLocator) mapping[r.WIPLocator] = r.DaysFromShipment || 0;
       });
       setLocatorMapping(mapping);
 

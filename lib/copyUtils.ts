@@ -86,15 +86,15 @@ export async function generateSmartCopy(
     childRows.forEach(part => {
       part.dailyRecords.forEach(record => {
         dbRecordsToUpsert.push({
-          department: departmentName,
-          weekIdentifier: targetWeekId,
-          partNumber: part.partNumber,
-          dayOfWeek: record.dayOfWeek,
-          target: record.target,
-          actual: record.actual,
-          date: record.date,
-          shift: part.shift,
-          reasonCode: record.reasonCode || null
+          Department: departmentName,
+          WeekIdentifier: targetWeekId,
+          PartNumber: part.partNumber,
+          DayOfWeek: record.dayOfWeek,
+          Target: record.target,
+          Actual: record.actual,
+          Date: record.date,
+          Shift: part.shift,
+          ReasonCode: record.reasonCode || null
         });
       });
     });

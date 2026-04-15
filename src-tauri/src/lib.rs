@@ -7,117 +7,165 @@ use tokio::sync::Mutex;
 use tokio_util::compat::TokioAsyncWriteCompatExt;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct ScorecardRow {
-    department: String,
-    week_identifier: String,
-    part_number: String,
-    day_of_week: String,
-    target: Option<i16>,
-    actual: Option<i16>,
-    date: Option<String>,
-    shift: Option<String>,
-    reason_code: Option<String>,
+pub struct ScorecardRow {
+    #[serde(rename = "Department")]
+    pub department: String,
+    #[serde(rename = "WeekIdentifier")]
+    pub week_identifier: String,
+    #[serde(rename = "PartNumber")]
+    pub part_number: String,
+    #[serde(rename = "DayOfWeek")]
+    pub day_of_week: String,
+    #[serde(rename = "Target")]
+    pub target: Option<i32>,
+    #[serde(rename = "Actual")]
+    pub actual: Option<i32>,
+    #[serde(rename = "Date")]
+    pub date: Option<String>,
+    #[serde(rename = "Shift")]
+    pub shift: Option<String>,
+    #[serde(rename = "ReasonCode")]
+    pub reason_code: Option<String>,
 }
 
 // Data models for MSSQL Preview based on provided schema
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct LocatorMapping {
-    wip_locator: Option<String>,
-    process: Option<String>,
-    days_from_shipment: Option<i16>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PartInfo {
-    part_number: Option<String>,
-    process: Option<String>,
-    batch_size: Option<i16>,
-    processing_time: Option<i16>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ProcessInfo {
-    process: Option<String>,
-    date: Option<String>,
-    hours_available: Option<i16>,
-    machine_id: Option<String>,
-    shift: Option<String>,
-    week_identifier: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct PipelineRow {
-    date: Option<String>,
-    customer: Option<String>,
-    customer_city: Option<String>,
-    part_number: Option<String>,
-    part_name: Option<String>,
-    wip_locator: Option<String>,
-    qty: Option<i16>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct PlanRow {
-    pub date: Option<String>,
-    pub part_number: Option<String>,
-    pub part_name: Option<String>,
+pub struct LocatorMapping {
+    #[serde(rename = "WIPLocator")]
+    pub wip_locator: Option<String>,
+    #[serde(rename = "ProcessName")]
     pub process: Option<String>,
-    pub qty: Option<i16>,
-    pub actual: Option<i16>,
+    #[serde(rename = "DaysFromShipment")]
+    pub days_from_shipment: Option<i32>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PartInfo {
+    #[serde(rename = "PartNumber")]
+    pub part_number: Option<String>,
+    #[serde(rename = "ProcessName")]
+    pub process: Option<String>,
+    #[serde(rename = "BatchSize")]
+    pub batch_size: Option<i32>,
+    #[serde(rename = "ProcessingTime")]
+    pub processing_time: Option<i32>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProcessInfo {
+    #[serde(rename = "ProcessName")]
+    pub process: Option<String>,
+    #[serde(rename = "Date")]
+    pub date: Option<String>,
+    #[serde(rename = "HoursAvailable")]
+    pub hours_available: Option<i32>,
+    #[serde(rename = "MachineID")]
+    pub machine_id: Option<String>,
+    #[serde(rename = "Shift")]
     pub shift: Option<String>,
+    #[serde(rename = "WeekIdentifier")]
     pub week_identifier: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PipelineRow {
+    #[serde(rename = "Date")]
+    pub date: Option<String>,
+    #[serde(rename = "Customer")]
+    pub customer: Option<String>,
+    #[serde(rename = "CustomerCity")]
+    pub customer_city: Option<String>,
+    #[serde(rename = "PartNumber")]
+    pub part_number: Option<String>,
+    #[serde(rename = "PartName")]
+    pub part_name: Option<String>,
+    #[serde(rename = "WIPLocator")]
+    pub wip_locator: Option<String>,
+    #[serde(rename = "Qty")]
+    pub qty: Option<i32>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PlanRow {
+    #[serde(rename = "Date")]
+    pub date: Option<String>,
+    #[serde(rename = "PartNumber")]
+    pub part_number: Option<String>,
+    #[serde(rename = "PartName")]
+    pub part_name: Option<String>,
+    #[serde(rename = "ProcessName")]
+    pub process: Option<String>,
+    #[serde(rename = "Qty")]
+    pub qty: Option<i32>,
+    #[serde(rename = "Actual")]
+    pub actual: Option<i32>,
+    #[serde(rename = "Shift")]
+    pub shift: Option<String>,
+    #[serde(rename = "WeekIdentifier")]
+    pub week_identifier: Option<String>,
+    #[serde(rename = "DayOfWeek")]
     pub day_of_week: Option<String>,
+    #[serde(rename = "ReasonCode")]
     pub reason_code: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct ShiftProductionRecord {
+    #[serde(rename = "Date")]
     pub date: String,
+    #[serde(rename = "Department")]
     pub department: String,
+    #[serde(rename = "WeekIdentifier")]
     pub week_identifier: String,
+    #[serde(rename = "PartNumber")]
     pub part_number: String,
+    #[serde(rename = "DayOfWeek")]
     pub day_of_week: String,
-    pub target: Option<i16>,
-    pub actual: Option<i16>,
+    #[serde(rename = "Target")]
+    pub target: Option<i32>,
+    #[serde(rename = "Actual")]
+    pub actual: Option<i32>,
+    #[serde(rename = "Shift")]
     pub shift: String,
+    #[serde(rename = "ReasonCode")]
     pub reason_code: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct Process {
+    #[serde(rename = "ProcessName")]
     pub process_name: String,
+    #[serde(rename = "MachineID")]
     pub machine_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct ReasonCodeData {
+    #[serde(rename = "ProcessName")]
     pub process: Option<String>,
+    #[serde(rename = "ReasonCode")]
     pub reason_code: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct DailyRateRow {
+    #[serde(rename = "PartNumber")]
     pub part_number: Option<String>,
-    pub week: i16,
-    pub year: i16,
-    pub qty: i16,
+    #[serde(rename = "Week")]
+    pub week: i32,
+    #[serde(rename = "Year")]
+    pub year: i32,
+    #[serde(rename = "Qty")]
+    pub qty: i32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct RollingGapRow {
+    #[serde(rename = "PartNumber")]
     pub part_number: String,
+    #[serde(rename = "Shift")]
     pub shift: String,
+    #[serde(rename = "RollingGap")]
     pub rolling_gap: i32,
 }
 
@@ -187,8 +235,8 @@ async fn get_scorecard_data(connection_string: String) -> Result<Vec<ScorecardRo
                 .unwrap_or_default()
                 .trim()
                 .to_string(),
-            target: get_i16_robust(&row, "Target"),
-            actual: get_i16_robust(&row, "Actual"),
+            target: get_int_robust(&row, "Target"),
+            actual: get_int_robust(&row, "Actual"),
             date: row.get::<&str, _>("Date").map(|s| s.trim().to_string()),
             shift: row.get::<&str, _>("Shift").map(|s| s.trim().to_string()),
             reason_code: row
@@ -362,8 +410,8 @@ async fn upsert_scorecard_data(
             WeekIdentifier NVARCHAR(50),
             PartNumber NVARCHAR(50),
             DayOfWeek NVARCHAR(50),
-            Target SMALLINT,
-            Actual SMALLINT,
+            Target INT,
+            Actual INT,
             Date DATE,
             Shift NVARCHAR(50),
             ReasonCode NVARCHAR(50)
@@ -456,8 +504,8 @@ async fn replace_delivery_data(
             WeekIdentifier NVARCHAR(50),
             PartNumber NVARCHAR(50),
             DayOfWeek NVARCHAR(50),
-            Target SMALLINT,
-            Actual SMALLINT,
+            Target INT,
+            Actual INT,
             Date DATE,
             Shift NVARCHAR(50),
             ReasonCode NVARCHAR(50)
@@ -568,18 +616,18 @@ async fn create_client(
     Ok(client)
 }
 
-fn get_i16_robust(row: &tiberius::Row, col: &str) -> Option<i16> {
-    if let Ok(val) = row.try_get::<i16, _>(col) {
+fn get_int_robust(row: &tiberius::Row, col: &str) -> Option<i32> {
+    if let Ok(val) = row.try_get::<i32, _>(col) {
         return val;
     }
-    if let Ok(val) = row.try_get::<i32, _>(col) {
-        return val.map(|v| v as i16);
+    if let Ok(val) = row.try_get::<i16, _>(col) {
+        return val.map(|v| v as i32);
     }
     if let Ok(val) = row.try_get::<f64, _>(col) {
-        return val.map(|v| v as i16);
+        return val.map(|v| v as i32);
     }
     if let Ok(val) = row.try_get::<&str, _>(col) {
-        return val.and_then(|s| s.trim().parse::<i16>().ok());
+        return val.and_then(|s| s.trim().parse::<i32>().ok());
     }
     None
 }
@@ -621,7 +669,7 @@ async fn get_locator_mapping_preview(
                 .get::<&str, _>("WIPLocator")
                 .map(|s| s.trim().to_string()),
             process: row.get::<&str, _>("ProcessName").map(|s| s.trim().to_string()),
-            days_from_shipment: get_i16_robust(&row, "DaysFromShipment"),
+            days_from_shipment: get_int_robust(&row, "DaysFromShipment"),
         })
         .collect();
 
@@ -650,8 +698,8 @@ async fn get_part_info_preview(connection_string: String) -> Result<Vec<PartInfo
                 .get::<&str, _>("PartNumber")
                 .map(|s| s.trim().to_string()),
             process: row.get::<&str, _>("ProcessName").map(|s| s.trim().to_string()),
-            batch_size: get_i16_robust(&row, "BatchSize"),
-            processing_time: get_i16_robust(&row, "ProcessingTime"),
+            batch_size: get_int_robust(&row, "BatchSize"),
+            processing_time: get_int_robust(&row, "ProcessingTime"),
         })
         .collect();
 
@@ -673,7 +721,7 @@ async fn get_process_info_preview(connection_string: String) -> Result<Vec<Proce
         .map(|row| ProcessInfo {
             process: row.get::<&str, _>("ProcessName").map(|s| s.trim().to_string()),
             date: row.get::<&str, _>("Date").map(|s| s.trim().to_string()),
-            hours_available: get_i16_robust(&row, "HoursAvailable"),
+            hours_available: get_int_robust(&row, "HoursAvailable"),
             machine_id: row
                 .get::<&str, _>("MachineID")
                 .map(|s| s.trim().to_string()),
@@ -712,7 +760,7 @@ async fn get_process_info(
         .map(|row| ProcessInfo {
             process: row.get::<&str, _>("ProcessName").map(|s| s.trim().to_string()),
             date: row.get::<&str, _>("Date").map(|s| s.trim().to_string()),
-            hours_available: get_i16_robust(&row, "HoursAvailable"),
+            hours_available: get_int_robust(&row, "HoursAvailable"),
             machine_id: row
                 .get::<&str, _>("MachineID")
                 .map(|s| s.trim().to_string()),
@@ -750,7 +798,7 @@ async fn get_pipeline_data_preview(connection_string: String) -> Result<Vec<Pipe
             wip_locator: row
                 .get::<&str, _>("WIPLocator")
                 .map(|s| s.trim().to_string()),
-            qty: get_i16_robust(&row, "Qty"),
+            qty: get_int_robust(&row, "Qty"),
         })
         .collect();
 
@@ -775,8 +823,8 @@ async fn get_plan_data_preview(connection_string: String) -> Result<Vec<PlanRow>
                 .map(|s| s.trim().to_string()),
             part_name: Some("".to_string()),
             process: row.get::<&str, _>("ProcessName").map(|s| s.trim().to_string()),
-            qty: get_i16_robust(&row, "Qty"),
-            actual: get_i16_robust(&row, "Actual"),
+            qty: get_int_robust(&row, "Qty"),
+            actual: get_int_robust(&row, "Actual"),
             shift: row.get::<&str, _>("Shift").map(|s| s.trim().to_string()),
             week_identifier: row
                 .get::<&str, _>("WeekIdentifier")
@@ -918,8 +966,8 @@ async fn get_plan_data_for_shift(
                 .map(|s| s.trim().to_string()),
             part_name: Some("".to_string()),
             process: row.get::<&str, _>("ProcessName").map(|s| s.trim().to_string()),
-            qty: get_i16_robust(&row, "Qty"),
-            actual: get_i16_robust(&row, "Actual"),
+            qty: get_int_robust(&row, "Qty"),
+            actual: get_int_robust(&row, "Actual"),
             shift: row.get::<&str, _>("Shift").map(|s| s.trim().to_string()),
             week_identifier: row
                 .get::<&str, _>("WeekIdentifier")
@@ -1145,7 +1193,7 @@ async fn parse_and_transpose_pipeline_csv(file_path: String) -> Result<Vec<Pipel
                 .map(|s| s.to_string())
                 .unwrap_or_default();
             let qty_str = qty_col_idx.and_then(|i| record.get(i)).unwrap_or("0");
-            let qty = qty_str.trim().parse::<f64>().unwrap_or(0.0) as i16;
+            let qty = qty_str.trim().parse::<f64>().unwrap_or(0.0) as i32;
 
             if qty > 0 && !locator_name.is_empty() {
                 transposed.push(PipelineRow {
@@ -1163,7 +1211,7 @@ async fn parse_and_transpose_pipeline_csv(file_path: String) -> Result<Vec<Pipel
             for (pos, locator_name) in &wip_locator_cols {
                 if let Some(qty_str) = record.get(*pos) {
                     if !qty_str.is_empty() {
-                        let qty = qty_str.trim().parse::<f64>().unwrap_or(0.0) as i16;
+                        let qty = qty_str.trim().parse::<f64>().unwrap_or(0.0) as i32;
                         if qty > 0 {
                             transposed.push(PipelineRow {
                                 date: date_val.clone(),
@@ -1456,9 +1504,9 @@ async fn get_daily_rate_preview(connection_string: String) -> Result<Vec<DailyRa
             part_number: row
                 .get::<&str, _>("PartNumber")
                 .map(|s| s.trim().to_string()),
-            week: get_i16_robust(&row, "Week").unwrap_or(0),
-            year: get_i16_robust(&row, "Year").unwrap_or(0),
-            qty: get_i16_robust(&row, "Qty").unwrap_or(0),
+            week: get_int_robust(&row, "Week").unwrap_or(0),
+            year: get_int_robust(&row, "Year").unwrap_or(0),
+            qty: get_int_robust(&row, "Qty").unwrap_or(0),
         })
         .collect();
 

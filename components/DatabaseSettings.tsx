@@ -48,41 +48,41 @@ import { useScorecardStore } from "@/lib/scorecardStore";
 
 
 interface LocatorMapping {
-  wipLocator?: string;
-  process?: string;
-  daysFromShipment?: number;
+  WIPLocator?: string;
+  ProcessName?: string;
+  DaysFromShipment?: number;
 }
 
 interface PartInfo {
-  partNumber?: string;
-  process?: string;
-  batchSize?: number;
-  processingTime?: number;
+  PartNumber?: string;
+  ProcessName?: string;
+  BatchSize?: number;
+  ProcessingTime?: number;
 }
 
 interface ProcessInfo {
-  process?: string;
-  date?: string;
-  hoursAvailable?: number;
-  machineId?: string;
-  shift?: string;
+  ProcessName?: string;
+  Date?: string;
+  HoursAvailable?: number;
+  MachineID?: string;
+  Shift?: string;
 }
 
 interface DailyRate {
-  partNumber?: string;
-  week?: number;
-  year?: number;
-  qty?: number;
+  PartNumber?: string;
+  Week?: number;
+  Year?: number;
+  Qty?: number;
 }
 
 interface Process {
-  processName: string;
-  machineId?: string;
+  ProcessName: string;
+  MachineID?: string;
 }
 
 interface ReasonCodeData {
-  process?: string;
-  reasonCode?: string;
+  ProcessName?: string;
+  ReasonCode?: string;
 }
 
 export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'planner' }) {
@@ -114,8 +114,8 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
 
   // Deletion tracking
   const [deletedLocators, setDeletedLocators] = useState<string[]>([]);
-  const [deletedPartInfos, setDeletedPartInfos] = useState<{partNumber: string, process: string}[]>([]);
-  const [deletedProcessInfos, setDeletedProcessInfos] = useState<{process: string, date: string, machineId: string, shift: string}[]>([]);
+  const [deletedPartInfos, setDeletedPartInfos] = useState<{PartNumber: string, ProcessName: string}[]>([]);
+  const [deletedProcessInfos, setDeletedProcessInfos] = useState<{ProcessName: string, Date: string, MachineID: string, Shift: string}[]>([]);
   const [deletedDailyRates, setDeletedDailyRates] = useState<DailyRate[]>([]);
   const [deletedProcesses, setDeletedProcesses] = useState<Process[]>([]);
   const [deletedReasonCodes, setDeletedReasonCodes] = useState<ReasonCodeData[]>([]);
@@ -317,7 +317,7 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
       } else if (activeTab === "partInfo") {
         // Handle deletions
         if (deletedPartInfos.length > 0) {
-          const identifiers = deletedPartInfos.map(p => ({ part_number: p.partNumber, process: p.process }));
+          const identifiers = deletedPartInfos.map(p => ({ PartNumber: p.PartNumber, ProcessName: p.ProcessName }));
           await invoke("delete_part_infos", { connectionString, identifiers });
         }
         // Handle upserts
@@ -325,7 +325,7 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
       } else if (activeTab === "processInfo") {
         // Handle deletions
         if (deletedProcessInfos.length > 0) {
-          const identifiers = deletedProcessInfos.map(p => ({ process: p.process, date: p.date, machine_id: p.machineId, shift: p.shift }));
+          const identifiers = deletedProcessInfos.map(p => ({ process: p.ProcessName, date: p.Date, machine_id: p.MachineID, shift: p.Shift }));
           await invoke("delete_process_infos", { connectionString, identifiers });
         }
         // Handle upserts
@@ -334,19 +334,19 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
         // Handle deletions
         if (deletedDailyRates.length > 0) {
           const identifiers = deletedDailyRates.map(r => ({ 
-            partNumber: String(r.partNumber || "").trim(), 
-            week: Number(r.week || 0), 
-            year: Number(r.year || 0),
-            qty: Number(r.qty || 0)
+            PartNumber: String(r.PartNumber || "").trim(), 
+            Week: Number(r.Week || 0), 
+            Year: Number(r.Year || 0), 
+            Qty: Number(r.Qty || 0)
           }));
           await invoke("delete_daily_rates", { connectionString, records: identifiers });
         }
         // Handle upserts
         const upsertRecords = dailyRates.map(r => ({
-          partNumber: String(r.partNumber || "").trim(),
-          week: Number(r.week || 0),
-          year: Number(r.year || 0),
-          qty: Number(r.qty || 0)
+          PartNumber: String(r.PartNumber || "").trim(),
+          Week: Number(r.Week || 0),
+          Year: Number(r.Year || 0),
+          Qty: Number(r.Qty || 0)
         }));
         await invoke("upsert_daily_rate", { connectionString, records: upsertRecords });
       } else if (activeTab === "process") {
@@ -361,10 +361,10 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
           await fetchGlobalProcesses(connectionString);
       } else if (activeTab === "reasonCode") {
          if (deletedReasonCodes.length > 0) {
-           const cleanDeleted = deletedReasonCodes.map(r => ({ process: r.process || "", reasonCode: r.reasonCode || "" }));
+           const cleanDeleted = deletedReasonCodes.map(r => ({ ProcessName: r.ProcessName || "", ReasonCode: r.ReasonCode || "" }));
            await invoke("delete_reason_codes", { connectionString, records: cleanDeleted });
          }
-         const cleanRecords = reasonCodes.map(r => ({ process: r.process || "", reasonCode: r.reasonCode || "" }));
+         const cleanRecords = reasonCodes.map(r => ({ ProcessName: r.ProcessName || "", ReasonCode: r.ReasonCode || "" }));
          await invoke("upsert_reason_codes", { connectionString, records: cleanRecords });
       }
       
@@ -417,25 +417,25 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
 
   const addRecord = () => {
     if (activeTab === "locatorMapping") {
-      setLocatorMappings(prev => [...prev, { wipLocator: "", process: "", daysFromShipment: 0 }]);
+      setLocatorMappings(prev => [...prev, { WIPLocator: "", ProcessName: "", DaysFromShipment: 0 }]);
     } else if (activeTab === "partInfo") {
-      setPartInfos(prev => [...prev, { partNumber: "", process: "", batchSize: 0, processingTime: 0 }]);
+      setPartInfos(prev => [...prev, { PartNumber: "", ProcessName: "", BatchSize: 0, ProcessingTime: 0 }]);
     } else if (activeTab === "processInfo") {
       const today = new Date().toISOString().split('T')[0];
-      setProcessInfos(prev => [...prev, { process: "", date: today, hoursAvailable: 8, machineId: "", shift: "A" }]);
+      setProcessInfos(prev => [...prev, { ProcessName: "", Date: today, HoursAvailable: 8, MachineID: "", Shift: "A" }]);
     } else if (activeTab === "dailyRate") {
       const currentWeekId = getCurrentWeekId();
       const [currYear, currWeekStr] = currentWeekId.split("-w");
       setDailyRates(prev => [...prev, { 
-        partNumber: "", 
-        week: parseInt(currWeekStr), 
-        year: parseInt(currYear), 
-        qty: 0 
+        PartNumber: "", 
+        Week: parseInt(currWeekStr), 
+        Year: parseInt(currYear), 
+        Qty: 0 
       }]);
     } else if (activeTab === "process") {
-      setProcesses(prev => [...prev, { processName: "", machineId: "" }]);
+      setProcesses(prev => [...prev, { ProcessName: "", MachineID: "" }]);
     } else if (activeTab === "reasonCode") {
-      setReasonCodes(prev => [...prev, { process: "", reasonCode: "" }]);
+      setReasonCodes(prev => [...prev, { ProcessName: "", ReasonCode: "" }]);
     }
   };
 
@@ -473,40 +473,40 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
     if (activeTab === "locatorMapping") {
       const record = locatorMappings[index];
       const initial = JSON.parse(initialLocatorMappings) as LocatorMapping[];
-      const wasInDb = initial.some(r => normalize(r.wipLocator) === normalize(record.wipLocator));
+      const wasInDb = initial.some(r => normalize(r.WIPLocator) === normalize(record.WIPLocator));
       
-      if (wasInDb && record.wipLocator) {
-        setDeletedLocators(prev => [...prev, record.wipLocator!]);
+      if (wasInDb && record.WIPLocator) {
+        setDeletedLocators(prev => [...prev, record.WIPLocator!]);
       }
       setLocatorMappings(prev => prev.filter((_, i) => i !== index));
     } else if (activeTab === "partInfo") {
       const record = partInfos[index];
       const initial = JSON.parse(initialPartInfos) as PartInfo[];
       const wasInDb = initial.some(r => 
-        normalize(r.partNumber) === normalize(record.partNumber) && 
-        normalize(r.process) === normalize(record.process)
+        normalize(r.PartNumber) === normalize(record.PartNumber) && 
+        normalize(r.ProcessName) === normalize(record.ProcessName)
       );
       
-      if (wasInDb && record.partNumber && record.process) {
-        setDeletedPartInfos(prev => [...prev, { partNumber: record.partNumber!, process: record.process! }]);
+      if (wasInDb && record.PartNumber && record.ProcessName) {
+        setDeletedPartInfos(prev => [...prev, { PartNumber: record.PartNumber!, ProcessName: record.ProcessName! }]);
       }
       setPartInfos(prev => prev.filter((_, i) => i !== index));
     } else if (activeTab === "processInfo") {
       const record = processInfos[index];
       const initial = JSON.parse(initialProcessInfos) as ProcessInfo[];
       const wasInDb = initial.some(r => 
-        normalize(r.process) === normalize(record.process) && 
-        normalize(r.date) === normalize(record.date) && 
-        normalize(r.machineId) === normalize(record.machineId) &&
-        normalize(r.shift) === normalize(record.shift)
+        normalize(r.ProcessName) === normalize(record.ProcessName) && 
+        normalize(r.Date) === normalize(record.Date) && 
+        normalize(r.MachineID) === normalize(record.MachineID) &&
+        normalize(r.Shift) === normalize(record.Shift)
       );
       
-      if (wasInDb && (record.process || record.date)) {
+      if (wasInDb && (record.ProcessName || record.Date)) {
         setDeletedProcessInfos(prev => [...prev, { 
-          process: record.process || null as any, 
-          date: record.date || null as any, 
-          machineId: record.machineId || null as any,
-          shift: record.shift || null as any
+          ProcessName: record.ProcessName || null as any, 
+          Date: record.Date || null as any, 
+          MachineID: record.MachineID || null as any,
+          Shift: record.Shift || null as any
         }]);
       }
       setProcessInfos(prev => prev.filter((_, i) => i !== index));
@@ -514,9 +514,9 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
       const record = dailyRates[index];
       const initial = JSON.parse(initialDailyRates) as DailyRate[];
       const wasInDb = initial.some(r => 
-        normalize(r.partNumber) === normalize(record.partNumber) &&
-        normalize(r.week) === normalize(record.week) &&
-        normalize(r.year) === normalize(record.year)
+        normalize(r.PartNumber) === normalize(record.PartNumber) &&
+        normalize(r.Week) === normalize(record.Week) &&
+        normalize(r.Year) === normalize(record.Year)
       );
       
       if (wasInDb) {
@@ -527,14 +527,14 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
       const record = processes[index];
       const initial = JSON.parse(initialProcesses) as Process[];
       const wasInDb = initial.some(r => 
-        normalize(r.processName) === normalize(record.processName) &&
-        normalize(r.machineId) === normalize(record.machineId)
+        normalize(r.ProcessName) === normalize(record.ProcessName) &&
+        normalize(r.MachineID) === normalize(record.MachineID)
       );
       
-      if (wasInDb && record.processName) {
+      if (wasInDb && record.ProcessName) {
         setDeletedProcesses(prev => [...prev, { 
-          processName: record.processName, 
-          machineId: record.machineId || "" 
+          ProcessName: record.ProcessName, 
+          MachineID: record.MachineID || "" 
         }]);
       }
       setProcesses(prev => prev.filter((_, i) => i !== index));
@@ -542,8 +542,8 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
       const record = reasonCodes[index];
       const initial = JSON.parse(initialReasonCodes) as ReasonCodeData[];
       const wasInDb = initial.some(r => 
-        normalize(r.process) === normalize(record.process) &&
-        normalize(r.reasonCode) === normalize(record.reasonCode)
+        normalize(r.ProcessName) === normalize(record.ProcessName) &&
+        normalize(r.ReasonCode) === normalize(record.ReasonCode)
       );
       if (wasInDb) {
         setDeletedReasonCodes(prev => [...prev, record]);
@@ -566,31 +566,31 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
           
           if (activeTab === "locatorMapping") {
             const mapped = rawData.map(r => ({
-              wipLocator: r.WIPLocator || r.wipLocator || "",
-              process: r.Process || r.process || "",
-              daysFromShipment: parseInt(r.DaysFromShipment || r.daysFromShipment || "0")
+              WIPLocator: r.WIPLocator || r.wipLocator || "",
+              ProcessName: r.Process || r.process || r.ProcessName || "",
+              DaysFromShipment: parseInt(r.DaysFromShipment || r.daysFromShipment || "0")
             }));
             await invoke("replace_locator_mappings", { connectionString, records: mapped });
           } else if (activeTab === "partInfo") {
             const mapped = rawData.map(r => ({
-              partNumber: r.PartNumber || r.partNumber || "",
-              process: r.Process || r.process || "",
-              batchSize: parseInt(r.BatchSize || r.batchSize || "0"),
-              processingTime: parseInt(r.ProcessingTime || r.processingTime || "0")
+              PartNumber: r.PartNumber || r.partNumber || "",
+              ProcessName: r.Process || r.process || r.ProcessName || "",
+              BatchSize: parseInt(r.BatchSize || r.batchSize || "0"),
+              ProcessingTime: parseInt(r.ProcessingTime || r.processingTime || "0")
             }));
             await invoke("replace_part_infos", { connectionString, records: mapped });
           } else if (activeTab === "processInfo") {
             const mapped = rawData.map(r => ({
-              process: r.Process || r.process || "",
-              date: r.Date || r.date || "",
-              hoursAvailable: parseInt(r.HoursAvailable || r.hoursAvailable || "0"),
-              machineId: r.MachineID || r.MachineId || r.machineId || "",
-              shift: r.Shift || r.shift || ""
+              ProcessName: r.Process || r.process || r.ProcessName || "",
+              Date: r.Date || r.date || "",
+              HoursAvailable: parseInt(r.HoursAvailable || r.hoursAvailable || "0"),
+              MachineID: r.MachineID || r.MachineId || r.machineId || "",
+              Shift: r.Shift || r.shift || ""
             }));
             await invoke("replace_process_infos", { connectionString, records: mapped });
           } else if (activeTab === "dailyRate") {
             const now = new Date();
-            const currentWeekId = getCurrentWeekId(); // e.g. "2026-w13"
+            const currentWeekId = getCurrentWeekId();
             const [currYear, currWeekStr] = currentWeekId.split("-w");
             const defaultYear = parseInt(currYear);
             const defaultWeek = parseInt(currWeekStr);
@@ -604,39 +604,37 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
               };
 
               return {
-                partNumber: String(find(['partnumber', 'part', 'pn']) || ""),
-                week: parseInt(String(find(['week', 'wk']) || defaultWeek)),
-                year: parseInt(String(find(['year', 'yr']) || defaultYear)),
-                qty: parseInt(String(find(['qty', 'quantity', 'rate', 'dailyrate']) || "0"))
+                PartNumber: String(find(['partnumber', 'part', 'pn']) || ""),
+                Week: parseInt(String(find(['week', 'wk']) || defaultWeek)),
+                Year: parseInt(String(find(['year', 'yr']) || defaultYear)),
+                Qty: parseInt(String(find(['qty', 'quantity', 'rate', 'dailyrate']) || "0"))
               };
             });
             await invoke("replace_daily_rates", { connectionString, records: mapped });
           } else if (activeTab === "process") {
             const mapped = rawData.map(r => ({
-              processName: r.ProcessName || r.processName || r.Process || r.process || "",
-              machineId: r.MachineID || r.MachineId || r.machineId || ""
+              ProcessName: r.ProcessName || r.processName || r.Process || r.process || "",
+              MachineID: r.MachineID || r.MachineId || r.machineId || ""
             }));
             await invoke("replace_processes", { connectionString, records: mapped });
-            
-            // Refresh global process store
             await fetchGlobalProcesses(connectionString);
           } else if (activeTab === "reasonCode") {
             const mapped = rawData.map(r => ({
-              process: r.Process || r.process || "",
-              reasonCode: r.ReasonCode || r.reasonCode || r.Reason || r.reason || ""
+              ProcessName: r.Process || r.process || r.ProcessName || "",
+              ReasonCode: r.ReasonCode || r.reasonCode || r.Reason || r.reason || ""
             }));
             await invoke("replace_reason_codes", { connectionString, records: mapped });
           } else if (activeTab === "deliveryData") {
             const mapped = rawData.map(r => ({
-              department: r.Department || r.department || "",
-              weekIdentifier: r.WeekIdentifier || r.weekIdentifier || "",
-              partNumber: r.PartNumber || r.partNumber || "",
-              dayOfWeek: r.DayOfWeek || r.dayOfWeek || "",
-              target: r.Target !== undefined && r.Target !== "" ? parseInt(r.Target) : null,
-              actual: r.Actual !== undefined && r.Actual !== "" ? parseInt(r.Actual) : null,
-              date: r.Date || r.date || null,
-              shift: r.Shift || r.shift || null,
-              reasonCode: r.ReasonCode || r.reasonCode || null
+              Department: r.Department || r.department || "",
+              WeekIdentifier: r.WeekIdentifier || r.weekIdentifier || "",
+              PartNumber: r.PartNumber || r.partNumber || "",
+              DayOfWeek: r.DayOfWeek || r.dayOfWeek || "",
+              Target: r.Target !== undefined && r.Target !== "" ? parseInt(r.Target) : null,
+              Actual: r.Actual !== undefined && r.Actual !== "" ? parseInt(r.Actual) : null,
+              Date: r.Date || r.date || null,
+              Shift: r.Shift || r.shift || null,
+              ReasonCode: r.ReasonCode || r.reasonCode || null
             }));
             await invoke("replace_delivery_data", { connectionString, records: mapped });
           }
@@ -763,8 +761,8 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
                       variant="unstyled" 
                       size="xs" 
                       p={0} 
-                      value={row.wipLocator || ""} 
-                      onChange={(e) => updateRecord(i, "wipLocator", e.currentTarget.value)} 
+                      value={row.WIPLocator || ""} 
+                      onChange={(e) => updateRecord(i, "WIPLocator", e.currentTarget.value)} 
                     />
                   </Table.Td>
                   <Table.Td>
@@ -772,8 +770,8 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
                       variant="unstyled"
                       size="xs"
                       data={globalProcesses}
-                      value={row.process || ""}
-                      onChange={(val) => updateRecord(i, "process", val || "")}
+                      value={row.Process || ""}
+                      onChange={(val) => updateRecord(i, "Process", val || "")}
                       searchable
                       clearable
                       placeholder="Select process"
@@ -783,8 +781,8 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
                     <NumberInput 
                       variant="unstyled" 
                       size="xs" 
-                      value={row.daysFromShipment} 
-                      onChange={(val) => updateRecord(i, "daysFromShipment", val)} 
+                      value={row.DaysFromShipment} 
+                      onChange={(val) => updateRecord(i, "DaysFromShipment", val)} 
                     />
                   </Table.Td>
                   <Table.Td>
@@ -806,13 +804,13 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
     if (activeTab === "partInfo") {
       return (
         <ScrollArea h={400} mt="md">
-          <Table striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="auto">
+          <Table striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="xs">
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Part Number</Table.Th>
                 <Table.Th>Process</Table.Th>
                 <Table.Th>Batch Size</Table.Th>
-                <Table.Th>Processing Time</Table.Th>
+                <Table.Th>Processing Time (m)</Table.Th>
                 <Table.Th w={50}></Table.Th>
               </Table.Tr>
             </Table.Thead>
@@ -820,25 +818,40 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
               {partInfos.map((row, i) => (
                 <Table.Tr key={i}>
                   <Table.Td>
-                    <TextInput variant="unstyled" size="xs" value={row.partNumber || ""} onChange={(e) => updateRecord(i, "partNumber", e.currentTarget.value)} />
+                    <TextInput 
+                      variant="unstyled" 
+                      size="xs" 
+                      p={0} 
+                      value={row.PartNumber || ""} 
+                      onChange={(e) => updateRecord(i, "PartNumber", e.currentTarget.value)} 
+                    />
                   </Table.Td>
                   <Table.Td>
                     <Select
                       variant="unstyled"
                       size="xs"
                       data={globalProcesses}
-                      value={row.process || ""}
-                      onChange={(val) => updateRecord(i, "process", val || "")}
+                      value={row.ProcessName || ""}
+                      onChange={(val) => updateRecord(i, "ProcessName", val || "")}
                       searchable
                       clearable
-                      placeholder="Select process"
                     />
                   </Table.Td>
                   <Table.Td>
-                    <NumberInput variant="unstyled" size="xs" value={row.batchSize} onChange={(val) => updateRecord(i, "batchSize", val)} />
+                    <NumberInput 
+                      variant="unstyled" 
+                      size="xs" 
+                      value={row.BatchSize} 
+                      onChange={(val) => updateRecord(i, "BatchSize", val)} 
+                    />
                   </Table.Td>
                   <Table.Td>
-                    <NumberInput variant="unstyled" size="xs" value={row.processingTime} onChange={(val) => updateRecord(i, "processingTime", val)} />
+                    <NumberInput 
+                      variant="unstyled" 
+                      size="xs" 
+                      value={row.ProcessingTime} 
+                      onChange={(val) => updateRecord(i, "ProcessingTime", val)} 
+                    />
                   </Table.Td>
                   <Table.Td>
                     <ActionIcon variant="subtle" color="red" onClick={() => removeLocalRecord(i)}>
@@ -864,9 +877,9 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
               <Table.Tr>
                 <Table.Th>Process</Table.Th>
                 <Table.Th>Date</Table.Th>
+                <Table.Th>Machine ID</Table.Th>
                 <Table.Th>Shift</Table.Th>
                 <Table.Th>Hours Available</Table.Th>
-                <Table.Th>Machine ID</Table.Th>
                 <Table.Th w={50}></Table.Th>
               </Table.Tr>
             </Table.Thead>
@@ -878,30 +891,45 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
                       variant="unstyled"
                       size="xs"
                       data={globalProcesses}
-                      value={row.process || ""}
-                      onChange={(val) => updateRecord(i, "process", val || "")}
+                      value={row.ProcessName || ""}
+                      onChange={(val) => updateRecord(i, "ProcessName", val || "")}
                       searchable
                       clearable
-                      placeholder="Select process"
                     />
                   </Table.Td>
                   <Table.Td>
-                    <TextInput variant="unstyled" size="xs" value={row.date || ""} onChange={(e) => updateRecord(i, "date", e.currentTarget.value)} />
+                    <DatePickerInput
+                      variant="unstyled"
+                      size="xs"
+                      value={parseOrNull(row.Date)}
+                      onChange={(val) => updateRecord(i, "Date", formatIso(val))}
+                    />
+                  </Table.Td>
+                  <Table.Td>
+                    <TextInput 
+                      variant="unstyled" 
+                      size="xs" 
+                      p={0} 
+                      value={row.MachineID || ""} 
+                      onChange={(e) => updateRecord(i, "MachineID", e.currentTarget.value)} 
+                    />
                   </Table.Td>
                   <Table.Td>
                     <Select
                       variant="unstyled"
                       size="xs"
                       data={['A', 'B', 'C', 'D']}
-                      value={row.shift || ""}
-                      onChange={(val) => updateRecord(i, "shift", val || "")}
+                      value={row.Shift || ""}
+                      onChange={(val) => updateRecord(i, "Shift", val || "A")}
                     />
                   </Table.Td>
                   <Table.Td>
-                    <NumberInput variant="unstyled" size="xs" value={row.hoursAvailable} onChange={(val) => updateRecord(i, "hoursAvailable", val)} />
-                  </Table.Td>
-                  <Table.Td>
-                    <TextInput variant="unstyled" size="xs" value={row.machineId || ""} onChange={(e) => updateRecord(i, "machineId", e.currentTarget.value)} />
+                    <NumberInput 
+                      variant="unstyled" 
+                      size="xs" 
+                      value={row.HoursAvailable} 
+                      onChange={(val) => updateRecord(i, "HoursAvailable", val)} 
+                    />
                   </Table.Td>
                   <Table.Td>
                     <ActionIcon variant="subtle" color="red" onClick={() => removeLocalRecord(i)}>
@@ -928,7 +956,7 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
                 <Table.Th>Part Number</Table.Th>
                 <Table.Th>Week</Table.Th>
                 <Table.Th>Year</Table.Th>
-                <Table.Th>Qty (Rate)</Table.Th>
+                <Table.Th>Daily Rate (Qty)</Table.Th>
                 <Table.Th w={50}></Table.Th>
               </Table.Tr>
             </Table.Thead>
@@ -940,21 +968,35 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
                       variant="unstyled"
                       size="xs"
                       data={allPartNumbers}
-                      value={row.partNumber || ""}
-                      onChange={(val) => updateRecord(i, "partNumber", val || "")}
+                      value={row.PartNumber || ""}
+                      onChange={(val) => updateRecord(i, "PartNumber", val || "")}
                       searchable
                       clearable
-                      placeholder="Select part"
                     />
                   </Table.Td>
                   <Table.Td>
-                    <NumberInput variant="unstyled" size="xs" value={row.week} onChange={(val) => updateRecord(i, "week", val)} />
+                    <NumberInput 
+                      variant="unstyled" 
+                      size="xs" 
+                      value={row.Week} 
+                      onChange={(val) => updateRecord(i, "Week", val)} 
+                    />
                   </Table.Td>
                   <Table.Td>
-                    <NumberInput variant="unstyled" size="xs" value={row.year} onChange={(val) => updateRecord(i, "year", val)} />
+                    <NumberInput 
+                      variant="unstyled" 
+                      size="xs" 
+                      value={row.Year} 
+                      onChange={(val) => updateRecord(i, "Year", val)} 
+                    />
                   </Table.Td>
                   <Table.Td>
-                    <NumberInput variant="unstyled" size="xs" value={row.qty} onChange={(val) => updateRecord(i, "qty", val)} />
+                    <NumberInput 
+                      variant="unstyled" 
+                      size="xs" 
+                      value={row.Qty} 
+                      onChange={(val) => updateRecord(i, "Qty", val)} 
+                    />
                   </Table.Td>
                   <Table.Td>
                     <ActionIcon variant="subtle" color="red" onClick={() => removeLocalRecord(i)}>
@@ -991,9 +1033,9 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
                       variant="unstyled" 
                       size="xs" 
                       p={0} 
+                      value={row.ProcessName || ""} 
+                      onChange={(e) => updateRecord(i, "ProcessName", e.currentTarget.value)} 
                       placeholder="e.g. Plating, Shipping..."
-                      value={row.processName || ""} 
-                      onChange={(e) => updateRecord(i, "processName", e.currentTarget.value)} 
                     />
                   </Table.Td>
                   <Table.Td>
@@ -1001,9 +1043,9 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
                       variant="unstyled" 
                       size="xs" 
                       p={0} 
+                      value={row.MachineID || ""} 
+                      onChange={(e) => updateRecord(i, "MachineID", e.currentTarget.value)} 
                       placeholder="e.g. MC-01"
-                      value={row.machineId || ""} 
-                      onChange={(e) => updateRecord(i, "machineId", e.currentTarget.value)} 
                     />
                   </Table.Td>
                   <Table.Td>
@@ -1014,7 +1056,7 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
                 </Table.Tr>
               ))}
               {processes.length === 0 && (
-                <Table.Tr><Table.Td colSpan={3}><Text ta="center" c="dimmed">No processes found. Click "Add Record" to initialize.</Text></Table.Td></Table.Tr>
+                <Table.Tr><Table.Td colSpan={3}><Text ta="center" c="dimmed">No records found</Text></Table.Td></Table.Tr>
               )}
             </Table.Tbody>
           </Table>
@@ -1041,11 +1083,10 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
                       variant="unstyled"
                       size="xs"
                       data={globalProcesses}
-                      value={row.process || ""}
-                      onChange={(val) => updateRecord(i, "process", val || "")}
+                      value={row.ProcessName || ""}
+                      onChange={(val) => updateRecord(i, "ProcessName", val || "")}
                       searchable
                       clearable
-                      placeholder="Select process"
                     />
                   </Table.Td>
                   <Table.Td>
@@ -1053,9 +1094,8 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
                       variant="unstyled" 
                       size="xs" 
                       p={0} 
-                      placeholder="e.g. Broken Spindle..."
-                      value={row.reasonCode || ""} 
-                      onChange={(e) => updateRecord(i, "reasonCode", e.currentTarget.value)} 
+                      value={row.ReasonCode || ""} 
+                      onChange={(e) => updateRecord(i, "ReasonCode", e.currentTarget.value)} 
                     />
                   </Table.Td>
                   <Table.Td>
@@ -1066,7 +1106,7 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
                 </Table.Tr>
               ))}
               {reasonCodes.length === 0 && (
-                <Table.Tr><Table.Td colSpan={3}><Text ta="center" c="dimmed">No reason codes configured.</Text></Table.Td></Table.Tr>
+                <Table.Tr><Table.Td colSpan={3}><Text ta="center" c="dimmed">No records found</Text></Table.Td></Table.Tr>
               )}
             </Table.Tbody>
           </Table>

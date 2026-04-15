@@ -9,8 +9,8 @@ GO
 CREATE TABLE dbo.PartInfo (
     PartNumber NVARCHAR(50) NOT NULL,
     ProcessName NVARCHAR(50) NOT NULL,
-    BatchSize SMALLINT,
-    ProcessingTime SMALLINT,
+    BatchSize INT,
+    ProcessingTime INT,
     CONSTRAINT PK_PartInfo PRIMARY KEY (PartNumber, ProcessName)
 );
 GO
@@ -26,42 +26,7 @@ CREATE TABLE dbo.Process (
 );
 GO
 
--- 3. ProcessInfo
-IF OBJECT_ID('dbo.ProcessInfo', 'U') IS NOT NULL
-BEGIN
-    -- Handle migration: ensure NO nulls exist before adding the constraint if the table exists
-    EXEC('UPDATE dbo.ProcessInfo SET MachineID = '''' WHERE MachineID IS NULL');
-    DROP TABLE dbo.ProcessInfo;
-END
-GO
-CREATE TABLE dbo.ProcessInfo (
-    ProcessName NVARCHAR(50) NOT NULL,
-    Date DATE NOT NULL,
-    Shift NVARCHAR(50) NOT NULL,
-    MachineID NVARCHAR(50) NOT NULL DEFAULT '',
-    HoursAvailable SMALLINT,
-    WeekIdentifier NVARCHAR(50),
-    CONSTRAINT PK_ProcessInfo PRIMARY KEY (ProcessName, Date, Shift, MachineID)
-);
-GO
-
--- 4. DeliveryData
-IF OBJECT_ID('dbo.DeliveryData', 'U') IS NOT NULL
-DROP TABLE dbo.DeliveryData;
-GO
-CREATE TABLE dbo.DeliveryData (
-    Date DATE NOT NULL,
-    Department NVARCHAR(50) NOT NULL,
-    PartNumber NVARCHAR(50) NOT NULL,
-    Shift NVARCHAR(50) NOT NULL, -- Shift cannot be NULL if it is part of the PK
-    WeekIdentifier NVARCHAR(50),
-    DayOfWeek NVARCHAR(50),
-    Target SMALLINT,
-    Actual SMALLINT,
-    ReasonCode NVARCHAR(50),
-    CONSTRAINT PK_DeliveryData PRIMARY KEY (Date, Department, PartNumber, Shift)
-);
--- 5. ReasonCode
+-- 3. ReasonCode (Moved up for Foreign Key reference)
 IF OBJECT_ID('dbo.ReasonCode', 'U') IS NOT NULL
 DROP TABLE dbo.ReasonCode;
 GO
@@ -72,6 +37,46 @@ CREATE TABLE dbo.ReasonCode (
 );
 GO
 
+-- 4. ProcessInfo
+IF OBJECT_ID('dbo.ProcessInfo', 'U') IS NOT NULL
+BEGIN
+    -- Handle migration: ensure NO nulls exist before adding the constraint if the table exists
+    EXEC('UPDATE dbo.ProcessInfo SET MachineID = '''' WHERE MachineID IS NULL');
+    DROP TABLE dbo.ProcessInfo;
+END
+GO
+CREATE TABLE dbo.ProcessInfo (
+    ProcessInfoID INT IDENTITY(1,1) PRIMARY KEY CLUSTERED,
+    ProcessName NVARCHAR(50) NOT NULL,
+    Date DATE NOT NULL,
+    Shift NVARCHAR(50) NOT NULL,
+    MachineID NVARCHAR(50) NOT NULL DEFAULT '',
+    HoursAvailable INT,
+    WeekIdentifier NVARCHAR(50),
+    CONSTRAINT UQ_ProcessInfo UNIQUE NONCLUSTERED (ProcessName, Date, Shift, MachineID)
+);
+GO
+
+-- 5. DeliveryData
+IF OBJECT_ID('dbo.DeliveryData', 'U') IS NOT NULL
+DROP TABLE dbo.DeliveryData;
+GO
+CREATE TABLE dbo.DeliveryData (
+    DeliveryDataID INT IDENTITY(1,1) PRIMARY KEY CLUSTERED,
+    Date DATE NOT NULL,
+    Department NVARCHAR(50) NOT NULL,
+    PartNumber NVARCHAR(50) NOT NULL,
+    Shift NVARCHAR(50) NOT NULL, 
+    WeekIdentifier NVARCHAR(50),
+    DayOfWeek NVARCHAR(50),
+    Target INT,
+    Actual INT,
+    ReasonCode NVARCHAR(50),
+    CONSTRAINT UQ_DeliveryData UNIQUE NONCLUSTERED (Date, Department, PartNumber, Shift),
+    CONSTRAINT FK_DeliveryData_ReasonCode FOREIGN KEY (Department, ReasonCode) REFERENCES dbo.ReasonCode (ProcessName, ReasonCode)
+);
+GO
+
 -- 6. LocatorMapping
 IF OBJECT_ID('dbo.LocatorMapping', 'U') IS NOT NULL
 DROP TABLE dbo.LocatorMapping;
@@ -79,7 +84,7 @@ GO
 CREATE TABLE dbo.LocatorMapping (
     WIPLocator NVARCHAR(50) NOT NULL,
     ProcessName NVARCHAR(50),
-    DaysFromShipment SMALLINT,
+    DaysFromShipment INT,
     CONSTRAINT PK_LocatorMapping PRIMARY KEY (WIPLocator)
 );
 GO
@@ -90,9 +95,9 @@ DROP TABLE dbo.DailyRate;
 GO
 CREATE TABLE dbo.DailyRate (
     PartNumber NVARCHAR(50) NOT NULL,
-    Week SMALLINT NOT NULL,
-    Year SMALLINT NOT NULL,
-    Qty SMALLINT,
+    Week INT NOT NULL,
+    Year INT NOT NULL,
+    Qty INT,
     CONSTRAINT PK_DailyRate PRIMARY KEY (PartNumber, Week, Year)
 );
 GO

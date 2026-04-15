@@ -72,7 +72,10 @@ export default function DeliveryScorecardDisplay() {
         
         const gapMap: Record<string, number> = {};
         gaps.forEach((g: any) => {
-          gapMap[`${g.partNumber}-${g.shift}`] = g.rollingGap;
+          // Note: Rust struct RollingGapRow uses rename_all = "camelCase" currently, 
+          // but I will update it to PascalCase in the next step for consistency.
+          // For now, I'll update this component to expect PascalCase.
+          gapMap[`${g.PartNumber}-${g.Shift}`] = g.RollingGap;
         });
         setRollingGaps(gapMap);
       } catch (err) {
@@ -113,8 +116,8 @@ export default function DeliveryScorecardDisplay() {
     const map = new Map<string, number>();
     if (partInfo && activeTab) {
       partInfo.forEach(p => {
-        if (p.process === activeTab) {
-          map.set(p.partNumber, p.batchSize || 1);
+        if (p.ProcessName === activeTab) {
+          map.set(p.PartNumber, p.BatchSize || 1);
         }
       });
     }

@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 
+import { SQLProcess } from './types';
+
 interface Process {
   processName: string;
   machineId?: string;
@@ -32,8 +34,8 @@ export const useProcessStore = create<ProcessStore>((set, get) => ({
     if (!connectionString) return;
     set({ isLoading: true, error: null });
     try {
-      const data = await invoke<Process[]>('get_processes_preview', { connectionString });
-      const distinctNames = Array.from(new Set(data.map(p => p.processName))).sort();
+      const data = await invoke<SQLProcess[]>('get_processes_preview', { connectionString });
+      const distinctNames = Array.from(new Set(data.map(p => p.ProcessName))).sort();
       set({ processes: distinctNames, isLoading: false });
     } catch (err: any) {
       console.error('Failed to fetch processes:', err);
@@ -46,7 +48,7 @@ export const useProcessStore = create<ProcessStore>((set, get) => ({
     try {
       await invoke('upsert_process', { 
         connectionString, 
-        records: [{ processName: name.trim() }] 
+        records: [{ ProcessName: name.trim() }] 
       });
       // Refresh local state
       const current = get().processes;
@@ -64,7 +66,7 @@ export const useProcessStore = create<ProcessStore>((set, get) => ({
     try {
       await invoke('delete_processes', { 
         connectionString, 
-        records: [{ processName: name, machineId: machineId || "" }] 
+        records: [{ ProcessName: name, MachineID: machineId || "" }] 
       });
       // Refresh local state
       set({ processes: get().processes.filter(p => p !== name) });

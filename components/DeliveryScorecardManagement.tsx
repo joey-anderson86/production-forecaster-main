@@ -331,15 +331,15 @@ export default function DeliveryScorecardManagement() {
       if (part?.partNumber && part?.shift) {
         const record = part.dailyRecords.find(r => r.dayOfWeek === day);
         recordsToSave.push({
-            department: activeTab,
-            weekIdentifier: selectedWeekId,
-            partNumber: part.partNumber,
-            dayOfWeek: day,
-            target: field === 'target' ? value : record?.target,
-            actual: field === 'actual' ? value : record?.actual,
-            date: record?.date,
-            shift: part.shift,
-            reasonCode: record?.reasonCode
+            Department: activeTab,
+            WeekIdentifier: selectedWeekId,
+            PartNumber: part.partNumber,
+            DayOfWeek: day,
+            Target: field === 'target' ? value : record?.target,
+            Actual: field === 'actual' ? value : record?.actual,
+            Date: record?.date,
+            Shift: part.shift,
+            ReasonCode: record?.reasonCode || ""
         });
       }
     });
