@@ -38,12 +38,8 @@ interface GroupedPartScorecard {
 
 export default function DeliveryScorecardDisplay() {
   const theme = useMantineTheme();
-  const processes = useProcessStore(state => state.processes);
+  const { processes, activeProcess: activeTab, setActiveProcess: setActiveTab } = useProcessStore();
   const store = useScorecardStore();
-  const [activeTab, setActiveTab] = useLocalStorage<string | null>({
-    key: 'production-planner-active-tab',
-    defaultValue: null
-  });
   const { selectedWeekId, setSelectedWeekId } = useGlobalWeek();
   const [expandedParts, setExpandedParts] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');

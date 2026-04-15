@@ -12,7 +12,7 @@ import {
 import {
   TextInput, ActionIcon, Group, Tooltip,
   Menu, Button, Stack, Text, Box, Slider, Modal, Tabs,
-  Popover, MultiSelect, Badge, SegmentedControl, Center
+  Popover, MultiSelect, Badge, SegmentedControl, Center, Select
 } from '@mantine/core';
 import { ColorSchemeToggle } from '@/components/ColorSchemeToggle';
 import DeliveryScorecardManagement from '@/components/DeliveryScorecardManagement';
@@ -29,8 +29,10 @@ import { twMerge } from 'tailwind-merge';
 import { invoke } from '@tauri-apps/api/core';
 import { load } from '@tauri-apps/plugin-store';
 import { notifications } from '@mantine/notifications';
-import { getCurrentWeekId } from '@/lib/dateUtils';
+import { getCurrentWeekId, generateWeekLabel } from '@/lib/dateUtils';
 import { PipelineRow, DailyRateRow, RawPipelineRow, SQLDailyRate, SQLLocatorMapping } from '@/lib/types';
+import { useGlobalWeek } from '@/components/WeekContext';
+import { useProcessStore } from '@/lib/processStore';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -62,6 +64,8 @@ export default function ProductionForecaster() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const [mainTab, setMainTab] = useState<string>('scorecard-dash');
+  const { selectedWeekId, setSelectedWeekId } = useGlobalWeek();
+  const { fetchProcesses } = useProcessStore();
 
   const [roleMode, setRoleMode] = useLocalStorage<'supervisor' | 'planner'>({
     key: 'app-role-mode',
@@ -137,8 +141,8 @@ export default function ProductionForecaster() {
       // 2. Fetch Daily Rates
       const dbRates = await invoke<SQLDailyRate[]>("get_daily_rate_preview", { connectionString });
 
-      // Filter for current week/year
-      const currentWeekId = getCurrentWeekId(); // "2026-w13"
+      // Filter for target week/year from global state
+      const currentWeekId = selectedWeekId || getCurrentWeekId();
       const [currYear, currWeekStr] = currentWeekId.split("-w");
       const targetYear = parseInt(currYear);
       const targetWeek = parseInt(currWeekStr);
@@ -609,6 +613,22 @@ export default function ProductionForecaster() {
               radius="md"
             />
             <ColorSchemeToggle />
+            <Select
+              className="w-48"
+              placeholder="Select week"
+              value={selectedWeekId}
+              onChange={setSelectedWeekId}
+              data={[
+                { value: getCurrentWeekId(), label: `Current Week (${generateWeekLabel(getCurrentWeekId())})` },
+                // Add more weeks here if they were globally fetched, for now we let components handle creation
+                // But we display the selected one
+                ...(selectedWeekId && selectedWeekId !== getCurrentWeekId() 
+                  ? [{ value: selectedWeekId, label: generateWeekLabel(selectedWeekId) }] 
+                  : [])
+              ]}
+              leftSection={<LayoutList size={16} />}
+              styles={{ input: { fontWeight: 600 } }}
+            />
             <BarChart3 className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
           </Group>
         </header>

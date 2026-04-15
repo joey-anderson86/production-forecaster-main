@@ -54,6 +54,7 @@ import {
   isWorkingDay
 } from '@/lib/dateUtils';
 import { useScorecardStore } from '@/lib/scorecardStore';
+import { useProcessStore } from '@/lib/processStore';
 import { invoke } from '@tauri-apps/api/core';
 import { load } from '@tauri-apps/plugin-store';
 import { useAvailableMachines } from '@/hooks/useAvailableMachines';
@@ -433,11 +434,10 @@ function AddWorkWeekModal({
 
 export function EquipmentManagement() {
   const [schedules, setSchedules] = useState<MachineSchedule[]>([]);
-  const [activeTab, setActiveTab] = useState<string | null>(null);
+  const { processes, activeProcess: activeTab, setActiveProcess: setActiveTab, fetchProcesses } = useProcessStore();
   const [expandedMachines, setExpandedMachines] = useState<Set<string>>(new Set());
   const { selectedWeekId: selectedWeek, setSelectedWeekId: setSelectedWeek } = useGlobalWeek();
 
-  const [processes, setProcesses] = useState<string[]>([]);
   const [activeWeeks, setActiveWeeks] = useState<string[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEquipModalOpen, setIsEquipModalOpen] = useState(false);
@@ -470,24 +470,22 @@ export function EquipmentManagement() {
     loadConnStr();
   }, []);
 
-  // Fetch processes and weeks on mount (once connection string is available)
+  // Fetch initial config on mount
   useEffect(() => {
     if (!connectionString) return;
 
     const fetchConfig = async () => {
       try {
-        const [procList, weekList] = await Promise.all([
-          invoke<string[]>('get_processes', { connectionString }),
-          invoke<string[]>('get_active_weeks', { connectionString }),
-        ]);
+        // Fetch processes into global store if empty
+        if (processes.length === 0) {
+          await fetchProcesses(connectionString);
+        }
 
-        setProcesses(procList);
+        // Fetch active weeks locally (or consider globalizing if needed)
+        const weekList = await invoke<string[]>('get_active_weeks', { connectionString });
         setActiveWeeks(weekList);
 
-        // Set defaults if current values are placeholder or not in the lists
-        if (procList.length > 0 && !activeTab) {
-          setActiveTab(procList[0]);
-        }
+        // Set default week if none selected
         if (weekList.length > 0 && !selectedWeek) {
           setSelectedWeek(weekList[0]);
         }
@@ -497,7 +495,7 @@ export function EquipmentManagement() {
     };
 
     fetchConfig();
-  }, [connectionString]);
+  }, [connectionString, processes.length, fetchProcesses, selectedWeek, setSelectedWeek]);
 
   const shiftSettings = useScorecardStore(state => state.shiftSettings);
 

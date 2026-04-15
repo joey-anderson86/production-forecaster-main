@@ -31,20 +31,16 @@ import { useProductionDisplayUnit } from '@/hooks/useProductionDisplayUnit';
 const DAYS_OF_WEEK: DayOfWeek[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export default function DeliveryScorecardManagement() {
-  const processes = useProcessStore(state => state.processes);
+  const { processes, activeProcess: activeTab, setActiveProcess: setActiveTab } = useProcessStore();
   const store = useScorecardStore();
   const [displayUnit, setDisplayUnit] = useProductionDisplayUnit();
-  const [activeTab, setActiveTab] = useLocalStorage<string | null>({
-    key: 'production-planner-active-tab',
-    defaultValue: null
-  });
 
   // Initialize active tab if null
   useEffect(() => {
     if (!activeTab && processes.length > 0) {
       setActiveTab(processes[0]);
     }
-  }, [processes, activeTab]);
+  }, [processes, activeTab, setActiveTab]);
   const { selectedWeekId, setSelectedWeekId } = useGlobalWeek();
   const [connectionString, setConnectionString] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
