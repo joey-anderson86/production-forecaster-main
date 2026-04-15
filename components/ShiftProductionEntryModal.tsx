@@ -50,16 +50,16 @@ import { useReasonCodes } from '@/lib/hooks/useReasonCodes';
 
 /** Mirrors the PlanRow returned from the Rust backend */
 interface PlanRow {
-  date: string | null;
-  partNumber: string | null;
-  partName: string | null;
-  process: string | null;
-  qty: number | null;
-  actual: number | null;
-  shift: string | null;
-  weekIdentifier: string | null;
-  dayOfWeek: string | null;
-  reasonCode: string | null;
+  Date: string | null;
+  PartNumber: string | null;
+  PartName: string | null;
+  Process: string | null;
+  Qty: number | null;
+  Actual: number | null;
+  Shift: string | null;
+  WeekIdentifier: string | null;
+  DayOfWeek: string | null;
+  ReasonCode: string | null;
 }
 
 /** Internal state for each row in the shift production table */
@@ -75,15 +75,15 @@ interface ShiftProductionEntry {
 
 /** Payload shape sent to submit_shift_production */
 interface ShiftProductionPayload {
-  date: string;
-  department: string;
-  weekIdentifier: string;
-  partNumber: string;
-  dayOfWeek: string;
-  target: number | null;
-  actual: number | null;
-  shift: string;
-  reasonCode: string | null;
+  Date: string;
+  Department: string;
+  WeekIdentifier: string;
+  PartNumber: string;
+  DayOfWeek: string;
+  Target: number | null;
+  Actual: number | null;
+  Shift: string;
+  ReasonCode: string | null;
 }
 
 // ─── Props ─────────────────────────────────────────────────────────
@@ -269,11 +269,11 @@ export function ShiftProductionEntryModal({
 
       const newEntries: ShiftProductionEntry[] = planRows.map((row) => ({
         id: nextEntryId(),
-        partNumber: row.partNumber?.trim() || 'UNKNOWN',
-        partName: row.partName?.trim() || '',
-        target: row.qty ?? 0,
-        actual: row.actual !== null && row.actual !== undefined ? row.actual : '',
-        reasonCode: row.reasonCode?.trim() || '',
+        partNumber: row.PartNumber?.trim() || 'UNKNOWN',
+        partName: row.PartName?.trim() || '',
+        target: row.Qty ?? 0,
+        actual: row.Actual !== null && row.Actual !== undefined ? row.Actual : '',
+        reasonCode: row.ReasonCode?.trim() || '',
         isUnplanned: false,
       }));
 
@@ -435,15 +435,15 @@ export function ShiftProductionEntryModal({
       const dayOfWeek = getDayOfWeek(parsedDate);
 
       const payload: ShiftProductionPayload[] = entries.map((entry) => ({
-        date: dateStr,
-        department: selectedDept!,
-        weekIdentifier: weekId,
-        partNumber: entry.partNumber,
-        dayOfWeek,
-        target: entry.target,
-        actual: typeof entry.actual === 'number' ? entry.actual : 0,
-        shift: selectedShift!,
-        reasonCode: entry.reasonCode.trim() || null,
+        Date: dateStr,
+        Department: selectedDept!,
+        WeekIdentifier: weekId,
+        PartNumber: entry.partNumber,
+        DayOfWeek: dayOfWeek,
+        Target: entry.target,
+        Actual: typeof entry.actual === 'number' ? entry.actual : 0,
+        Shift: selectedShift!,
+        ReasonCode: entry.reasonCode.trim() || null,
       }));
 
       await invoke('submit_shift_production', {

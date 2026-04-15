@@ -65,7 +65,7 @@ export default function ProductionForecaster() {
 
   const [mainTab, setMainTab] = useState<string>('scorecard-dash');
   const { selectedWeekId, setSelectedWeekId } = useGlobalWeek();
-  const { fetchProcesses } = useProcessStore();
+  const { activeProcess, fetchProcesses } = useProcessStore();
 
   const [roleMode, setRoleMode] = useLocalStorage<'supervisor' | 'planner'>({
     key: 'app-role-mode',
@@ -640,11 +640,12 @@ export default function ProductionForecaster() {
               {roleMode === 'planner' && (
                 <>
                   <Tabs.Tab value="scorecard-mgmt">Production Planner</Tabs.Tab>
+                  <Tabs.Tab value="equipment-scheduler">Equipment Scheduler</Tabs.Tab>
                   <Tabs.Tab value="equipment-mgmt">Equipment Management</Tabs.Tab>
                 </>
               )}
               {/*<Tabs.Tab value="production-board">Production Board</Tabs.Tab>*/}
-              {/*<Tabs.Tab value="forecaster">Production Forecaster</Tabs.Tab>*/}
+              <Tabs.Tab value="forecaster">Production Forecaster</Tabs.Tab>
               <Tabs.Tab value="settings">Settings</Tabs.Tab>
             </Tabs.List>
           </Tabs>
@@ -1179,9 +1180,12 @@ export default function ProductionForecaster() {
           </div>
         )}
 
-        {mainTab === 'production-board' && (
+        {mainTab === 'equipment-scheduler' && (
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 min-h-[600px]">
-            <EquipmentScheduler />
+            <EquipmentScheduler 
+              initialProcessName={activeProcess || undefined} 
+              initialWeekId={selectedWeekId || undefined} 
+            />
           </div>
         )}
 

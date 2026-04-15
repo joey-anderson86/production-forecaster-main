@@ -108,9 +108,9 @@ export function DeliveryLossPareto({
 
   // Generate unique shifts and parts for the filter dropdowns
   const filterOptions = useMemo(() => {
-    if (!weekData?.parts) return { shifts: [], parts: [] };
-    const shifts = Array.from(new Set(weekData.parts.map(p => p.shift))).sort();
-    const parts = Array.from(new Set(weekData.parts.map(p => p.partNumber))).sort();
+    if (!weekData?.Parts) return { shifts: [], parts: [] };
+    const shifts = Array.from(new Set(weekData.Parts.map(p => p.Shift))).sort();
+    const parts = Array.from(new Set(weekData.Parts.map(p => p.PartNumber))).sort();
     
     return {
       shifts: shifts.map(s => ({ value: s, label: `Shift ${s}` })),
@@ -122,18 +122,18 @@ export function DeliveryLossPareto({
     if (!weekData) return [];
     
     // Apply filters to the weekData parts before generating Pareto data
-    const filteredParts = weekData.parts.filter(p => {
-      const matchShift = !shiftFilter || p.shift === shiftFilter;
-      const matchPart = !partFilter || p.partNumber === partFilter;
+    const filteredParts = weekData.Parts.filter(p => {
+      const matchShift = !shiftFilter || p.Shift === shiftFilter;
+      const matchPart = !partFilter || p.PartNumber === partFilter;
       return matchShift && matchPart;
     });
 
     const filteredWeekData = {
       ...weekData,
-      parts: filteredParts
+      Parts: filteredParts
     };
 
-    return generateParetoData(filteredWeekData, displayUnit, batchSizeMap);
+    return generateParetoData(filteredWeekData as any, displayUnit, batchSizeMap);
   }, [weekData, displayUnit, batchSizeMap, shiftFilter, partFilter]);
 
   // Determine if we should show the "no data" placeholder instead of the chart
@@ -150,7 +150,7 @@ export function DeliveryLossPareto({
               <Badge variant="light" color="orange" size="sm">Root Cause Analysis</Badge>
             </Group>
             <Text c="dimmed" size="xs">
-              Cumulative distribution of production misses by reason code for <strong>{departmentName}</strong> ({weekData?.weekLabel || 'Selected Week'}).
+              Cumulative distribution of production misses by reason code for <strong>{departmentName}</strong> ({weekData?.WeekLabel || 'Selected Week'}).
             </Text>
           </Box>
           

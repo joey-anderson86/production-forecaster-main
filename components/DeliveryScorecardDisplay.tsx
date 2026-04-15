@@ -198,8 +198,8 @@ export default function DeliveryScorecardDisplay() {
   const activeDepartment = activeTab ? store.departments[activeTab] : null;
 
   // Render variables
-  const weekOptions = activeDepartment 
-    ? Object.values(activeDepartment.weeks).map(w => ({ value: w.weekId, label: w.weekLabel })) 
+  const weekOptions = activeDepartment?.Weeks 
+    ? Object.values(activeDepartment.Weeks).map(w => ({ value: w.WeekId, label: w.WeekLabel })) 
     : [];
 
   if (selectedWeekId && !weekOptions.find(w => w.value === selectedWeekId)) {
@@ -208,9 +208,9 @@ export default function DeliveryScorecardDisplay() {
 
   // Removed localized useEffect that was clearing global week selection
 
-  const activeWeek = activeDepartment && selectedWeekId ? activeDepartment.weeks[selectedWeekId] : null;
+  const activeWeek = activeDepartment?.Weeks && selectedWeekId ? activeDepartment.Weeks[selectedWeekId] : null;
 
-  const attainmentMetrics = useAttainmentMath(activeWeek?.parts);
+  const attainmentMetrics = useAttainmentMath(activeWeek?.Parts);
 
   const getCellStyles = (actual: number | null, target: number | null) => {
     if (actual === null || target === null) return {};
@@ -242,19 +242,19 @@ export default function DeliveryScorecardDisplay() {
      const todayNumeric = getTodayNumeric();
      const groups: Record<string, GroupedPartScorecard> = {};
 
-     activeWeek.parts.forEach(part => {
+     activeWeek.Parts.forEach(part => {
         // Calculate child rolling gap
-        let childRollingGap = rollingGaps[`${part.partNumber}-${part.shift}`] || 0;
-        const batchSize = batchSizeMap.get(part.partNumber) || 1;
+        let childRollingGap = rollingGaps[`${part.PartNumber}-${part.Shift}`] || 0;
+        const batchSize = batchSizeMap.get(part.PartNumber) || 1;
         const multiplier = displayUnit === 'pieces' ? batchSize : 1;
 
-        if (!groups[part.partNumber]) {
-           groups[part.partNumber] = {
-              partNumber: part.partNumber,
+        if (!groups[part.PartNumber]) {
+           groups[part.PartNumber] = {
+              partNumber: part.PartNumber,
                aggregatedRecords: DAYS_OF_WEEK.map(day => ({
-                  dayOfWeek: day as DayOfWeek,
-                  actual: 0,
-                  target: 0,
+                  DayOfWeek: day as DayOfWeek,
+                  Actual: 0,
+                  Target: 0,
                   reasons: [] as string[]
                } as DailyScorecardRecord & { reasons: string[] })),
               shifts: [],
@@ -265,21 +265,21 @@ export default function DeliveryScorecardDisplay() {
            };
         }
 
-        const group = groups[part.partNumber];
+        const group = groups[part.PartNumber];
         group.shifts.push({ ...part, rollingGap: childRollingGap });
 
-         part.dailyRecords.forEach((record, idx) => {
+         part.DailyRecords.forEach((record, idx) => {
             const agg = group.aggregatedRecords[idx] as any;
-            agg.actual = (agg.actual ?? 0) + ((record.actual ?? 0) * multiplier);
-            agg.target = (agg.target ?? 0) + ((record.target ?? 0) * multiplier);
-            if (record.reasonCode) {
+            agg.Actual = (agg.Actual ?? 0) + ((record.Actual ?? 0) * multiplier);
+            agg.Target = (agg.Target ?? 0) + ((record.Target ?? 0) * multiplier);
+            if (record.ReasonCode) {
                if (!agg.reasons) agg.reasons = [];
-               agg.reasons.push(`${part.shift}: ${record.reasonCode}`);
+               agg.reasons.push(`${part.Shift}: ${record.ReasonCode}`);
             }
          });
 
-        const partActual = part.dailyRecords.reduce((sum, r) => sum + (r.actual || 0), 0) * multiplier;
-        const partTarget = part.dailyRecords.reduce((sum, r) => sum + (r.target || 0), 0) * multiplier;
+        const partActual = part.DailyRecords.reduce((sum, r) => sum + (r.Actual || 0), 0) * multiplier;
+        const partTarget = part.DailyRecords.reduce((sum, r) => sum + (r.Target || 0), 0) * multiplier;
         
         group.totalActual += partActual;
         group.totalTarget += partTarget;
@@ -328,8 +328,8 @@ export default function DeliveryScorecardDisplay() {
 
     groupedParts.forEach(group => {
       group.aggregatedRecords.forEach((record, idx) => {
-        totals.daily[idx].actual += record.actual || 0;
-        totals.daily[idx].target += record.target || 0;
+        totals.daily[idx].actual += (record as any).Actual || 0;
+        totals.daily[idx].target += (record as any).Target || 0;
       });
       totals.totalActual += group.totalActual;
       totals.totalTarget += group.totalTarget;
@@ -571,7 +571,7 @@ export default function DeliveryScorecardDisplay() {
                       </Table.Th>
                       <Table.Th ta="center"><Text size="xs" fw={700} c="dimmed">SHIFT</Text></Table.Th>
                       {DAYS_OF_WEEK.map((day, idx) => {
-                        const dayDate = activeWeek ? getWeekDates(activeWeek.weekId)[idx] : null;
+                        const dayDate = activeWeek ? getWeekDates(activeWeek.WeekId)[idx] : null;
                         const dateStr = dayDate ? dayDate.toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }) : '';
                         return (
                           <Table.Th key={day} ta="center">
@@ -678,15 +678,16 @@ export default function DeliveryScorecardDisplay() {
                               <Badge variant="dot" size="xs" color="indigo">All Shifts</Badge>
                             </Table.Td>
                             {group.aggregatedRecords.map((record, idx) => {
-                              const styles = getCellStyles(record.actual, record.target);
+                              const agg = record as any;
+                              const styles = getCellStyles(agg.Actual, agg.Target);
                               return (
                                 <Table.Td key={idx} ta="center" bg={styles.bg}>
                                   <Tooltip
                                      label={
                                        <Stack gap={2}>
                                          <Text size="xs" fw={700}>Part: {group.partNumber} (All Shifts)</Text>
-                                         <Text size="xs">Total Actual: {record.actual}</Text>
-                                         <Text size="xs">Total Target: {record.target}</Text>
+                                         <Text size="xs">Total Actual: {agg.Actual}</Text>
+                                         <Text size="xs">Total Target: {agg.Target}</Text>
                                          {(record as any).reasons?.length > 0 && (
                                            <Box mt={4}>
                                              <Text size="10px" fw={700} c="dimmed" tt="uppercase">Shift Reasons:</Text>
@@ -699,7 +700,7 @@ export default function DeliveryScorecardDisplay() {
                                      }
                                      withArrow
                                      position="top"
-                                     disabled={record.actual === 0 && record.target === 0}
+                                     disabled={agg.Actual === 0 && agg.Target === 0}
                                      styles={{
                                        tooltip: {
                                          backgroundColor: 'light-dark(white, var(--mantine-color-dark-6))',
@@ -709,8 +710,8 @@ export default function DeliveryScorecardDisplay() {
                                      }}
                                   >
                                     <Box py="xs" px="xs">
-                                      <Text size="sm" fw={700} c={styles.color}>{record.actual}</Text>
-                                      <Text size="10px" c="light-dark(gray.6, dark.2)">Tgt: {record.target}</Text>
+                                      <Text size="sm" fw={700} c={styles.color}>{agg.Actual}</Text>
+                                      <Text size="10px" c="light-dark(gray.6, dark.2)">Tgt: {agg.Target}</Text>
                                     </Box>
                                   </Tooltip>
                                 </Table.Td>
@@ -738,18 +739,18 @@ export default function DeliveryScorecardDisplay() {
                           {isExpanded && [...group.shifts]
                             .sort((a, b) => {
                               const order: Record<string, number> = { 'A': 1, 'B': 2, 'C': 3, 'D': 4 };
-                              return (order[a.shift] || 99) - (order[b.shift] || 99);
+                              return (order[a.Shift] || 99) - (order[b.Shift] || 99);
                             })
-                            .map(part => {
-                            const totalActual = part.dailyRecords.reduce((sum, r) => sum + (r.actual || 0), 0);
-                            const totalTarget = part.dailyRecords.reduce((sum, r) => sum + (r.target || 0), 0);
+                            .map((part, index) => {
+                            const totalActual = part.DailyRecords.reduce((sum, r) => sum + (r.Actual || 0), 0);
+                            const totalTarget = part.DailyRecords.reduce((sum, r) => sum + (r.Target || 0), 0);
                             const gap = totalActual - totalTarget;
 
-                            const batchSize = batchSizeMap.get(part.partNumber) || 1;
+                            const batchSize = batchSizeMap.get(part.PartNumber) || 1;
                             const multiplier = displayUnit === 'pieces' ? batchSize : 1;
 
                             return (
-                              <Table.Tr key={part.id} bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))">
+                              <Table.Tr key={part.Id || `${part.PartNumber}-${part.Shift}-${index}`} bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))">
                                 <Table.Td 
                                   pl={40}
                                   style={{
@@ -761,20 +762,20 @@ export default function DeliveryScorecardDisplay() {
                                 >
                                   <Group gap="xs" wrap="nowrap">
                                      <Text size="xs" c="dimmed" fw={500} style={{ width: 14 }}></Text>
-                                     <Text size="xs" c="dimmed" fw={500}>{part.partNumber}</Text>
+                                     <Text size="xs" c="dimmed" fw={500}>{part.PartNumber}</Text>
                                   </Group>
                                 </Table.Td>
                                 <Table.Td ta="center">
-                                  <Badge variant="light" size="xs" color="blue">{part.shift}</Badge>
+                                  <Badge variant="light" size="xs" color="blue">{part.Shift}</Badge>
                                 </Table.Td>
                                 {DAYS_OF_WEEK.map(day => {
-                                  const record = part.dailyRecords.find(r => r.dayOfWeek === day);
-                                  const actualValue = record?.actual ?? null;
-                                  const targetValue = record?.target ?? null;
+                                  const record = part.DailyRecords.find(r => r.DayOfWeek === day);
+                                  const actualValue = record?.Actual ?? null;
+                                  const targetValue = record?.Target ?? null;
                                   
                                   // Panama Schedule Logic
-                                  const anchorDate = store.shiftSettings[part.shift];
-                                  const targetDate = record?.date ? parseISOLocal(record.date) : null;
+                                  const anchorDate = store.shiftSettings[part.Shift];
+                                  const targetDate = record?.Date ? parseISOLocal(record.Date) : null;
                                   const isWorking = targetDate ? isWorkingDay(targetDate, anchorDate) : true;
                                   const isDayOff = !isWorking;
 
@@ -804,28 +805,28 @@ export default function DeliveryScorecardDisplay() {
                                       bg={cellBg} 
                                       p={0}
                                       className={`${isDayOff ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-gray-50'} transition-colors`}
-                                      onClick={() => !isDayOff && record && handleCellClick(part.id, part.partNumber, part.shift, day, record)}
+                                      onClick={() => !isDayOff && record && handleCellClick(part.Id, part.PartNumber, part.Shift, day, record)}
                                     >
                                       <Tooltip 
                                         label={
                                           <Stack gap={2}>
                                             <Group gap="xs" justify="space-between">
-                                              <Text size="xs" fw={700}>Part: {part.partNumber} (Shift {part.shift})</Text>
+                                              <Text size="xs" fw={700}>Part: {part.PartNumber} (Shift {part.Shift})</Text>
                                               {isDayOff && <Badge size="9px" variant="light" color="gray">Off Schedule</Badge>}
                                             </Group>
                                             <Text size="xs">Actual: {displayedActual ?? 'Not recorded'}</Text>
                                             <Text size="xs">Target: {displayedTarget ?? 0}</Text>
-                                            {record?.reasonCode && (
+                                            {record?.ReasonCode && (
                                               <Box mt={4}>
                                                 <Text size="10px" fw={700} c="dimmed" tt="uppercase">Loss Reason:</Text>
-                                                <Text size="xs" c="orange.7" fw={600}>{record.reasonCode}</Text>
+                                                <Text size="xs" c="orange.7" fw={600}>{record.ReasonCode}</Text>
                                               </Box>
                                             )}
                                           </Stack>
                                         }
                                         withArrow
                                         position="top"
-                                        disabled={record?.actual === 0 && record?.target === 0 && !isDayOff}
+                                        disabled={record?.Actual === 0 && record?.Target === 0 && !isDayOff}
                                         styles={{
                                           tooltip: {
                                             backgroundColor: 'light-dark(white, var(--mantine-color-dark-6))',
@@ -949,9 +950,9 @@ export default function DeliveryScorecardDisplay() {
             <EditEntryModal
               opened={editModalOpened}
               onClose={() => setEditModalOpened(false)}
-              departmentName={activeDepartment.departmentName}
-              weekId={activeWeek.weekId}
-              weekLabel={activeWeek.weekLabel}
+              departmentName={activeDepartment.DepartmentName}
+              weekId={activeWeek.WeekId}
+              weekLabel={activeWeek.WeekLabel}
               partNumber={editingEntry.partNumber}
               shift={editingEntry.shift}
               rowId={editingEntry.rowId}

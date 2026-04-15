@@ -39,14 +39,14 @@ export function useAttainmentMath(parts: PartScorecard[] | null | undefined): At
     const shiftStats: Record<string, { cappedActual: number; totalTarget: number }> = {};
 
     parts.forEach(part => {
-      const shift = part.shift || 'Unknown';
+      const shift = part.Shift || 'Unknown';
       if (!shiftStats[shift]) {
         shiftStats[shift] = { cappedActual: 0, totalTarget: 0 };
       }
 
-      part.dailyRecords.forEach((record, dayIdx) => {
-        const actual = record.actual;
-        const target = record.target ?? 0;
+      part.DailyRecords.forEach((record, dayIdx) => {
+        const actual = record.Actual;
+        const target = record.Target ?? 0;
 
         // STRICT RULE: Only include day if actual is recorded (not null)
         if (actual !== null && actual !== undefined) {

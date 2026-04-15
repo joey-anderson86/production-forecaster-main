@@ -15,27 +15,27 @@ export function generateParetoData(
   displayUnit: 'batches' | 'pieces' = 'batches',
   batchSizeMap: Map<string, number> = new Map()
 ): ParetoDataPoint[] {
-  if (!weekData || !weekData.parts) return [];
+  if (!weekData || !weekData.Parts) return [];
 
   // reasonCounts[reason][partNumber] = count/sum
   const reasonCounts: Record<string, Record<string, number>> = {};
   let totalMissVolume = 0;
 
-  weekData.parts.forEach(part => {
-    part.dailyRecords.forEach(record => {
+  weekData.Parts.forEach(part => {
+    part.DailyRecords.forEach(record => {
       // Check if actual is less than target
       if (
-        record.actual !== null && 
-        record.target !== null && 
-        record.actual < record.target && 
-        record.reasonCode && 
-        record.reasonCode.trim() !== ""
+        record.Actual !== null && 
+        record.Target !== null && 
+        record.Actual < record.Target && 
+        record.ReasonCode && 
+        record.ReasonCode.trim() !== ""
       ) {
-        const reason = record.reasonCode.trim();
-        const partNum = part.partNumber;
+        const reason = record.ReasonCode.trim();
+        const partNum = part.PartNumber;
 
         // Calculate miss volume and apply multiplier
-        const rawMiss = record.target - record.actual;
+        const rawMiss = record.Target - record.Actual;
         const multiplier = displayUnit === 'pieces' ? (batchSizeMap.get(partNum) || 1) : 1;
         const scaledMiss = rawMiss * multiplier;
 

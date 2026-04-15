@@ -6,37 +6,37 @@ import { SQLDeliveryData } from './types';
 export type DayOfWeek = 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat' | 'Sun';
 
 export interface DailyScorecardRecord {
-  dayOfWeek: DayOfWeek;
-  actual: number | null; 
-  target: number | null; 
-  wipAvailable?: number;
-  date?: string;       // YYYY-MM-DD
-  reasonCode?: string | null;
+  DayOfWeek: DayOfWeek;
+  Actual: number | null; 
+  Target: number | null; 
+  WipAvailable?: number;
+  Date?: string;       // YYYY-MM-DD
+  ReasonCode?: string | null;
 }
 
 export interface PartScorecard {
-  id: string; // New field for stable identity
-  partNumber: string;
-  shift: string;
-  dailyRecords: DailyScorecardRecord[]; // Always length 7
-  groupId?: string; // New field for grouping newly added rows
+  Id: string; // New field for stable identity
+  PartNumber: string;
+  Shift: string;
+  DailyRecords: DailyScorecardRecord[]; // Always length 7
+  GroupId?: string; // New field for grouping newly added rows
 }
 
 export interface WeeklyScorecard {
-  weekId: string; // e.g., "2026-w41"
-  weekLabel: string; // e.g., "Week 41 (Oct 5 - Oct 11)"
-  parts: PartScorecard[];
+  WeekId: string; // e.g., "2026-w41"
+  WeekLabel: string; // e.g., "Week 41 (Oct 5 - Oct 11)"
+  Parts: PartScorecard[];
 }
 
 export interface DepartmentScorecard {
-  departmentName: string;
-  weeks: Record<string, WeeklyScorecard>; // Key is weekId
+  DepartmentName: string;
+  Weeks: Record<string, WeeklyScorecard>; // Key is weekId
 }
 
 export interface BulkImportGroup {
-  departmentName: string;
-  weekLabel: string;
-  parts: PartScorecard[];
+  DepartmentName: string;
+  WeekLabel: string;
+  Parts: PartScorecard[];
 }
 
 export interface ScorecardState {
@@ -95,13 +95,13 @@ interface ScorecardActions {
 export type ScorecardStore = ScorecardState & ScorecardActions;
 
 const emptyDailyRecords = (weekId: string): DailyScorecardRecord[] => [
-  { dayOfWeek: 'Mon', actual: null, target: null, date: getISODateForDay(weekId, 'Mon') },
-  { dayOfWeek: 'Tue', actual: null, target: null, date: getISODateForDay(weekId, 'Tue') },
-  { dayOfWeek: 'Wed', actual: null, target: null, date: getISODateForDay(weekId, 'Wed') },
-  { dayOfWeek: 'Thu', actual: null, target: null, date: getISODateForDay(weekId, 'Thu') },
-  { dayOfWeek: 'Fri', actual: null, target: null, date: getISODateForDay(weekId, 'Fri') },
-  { dayOfWeek: 'Sat', actual: null, target: null, date: getISODateForDay(weekId, 'Sat') },
-  { dayOfWeek: 'Sun', actual: null, target: null, date: getISODateForDay(weekId, 'Sun') },
+  { DayOfWeek: 'Mon', Actual: null, Target: null, Date: getISODateForDay(weekId, 'Mon') },
+  { DayOfWeek: 'Tue', Actual: null, Target: null, Date: getISODateForDay(weekId, 'Tue') },
+  { DayOfWeek: 'Wed', Actual: null, Target: null, Date: getISODateForDay(weekId, 'Wed') },
+  { DayOfWeek: 'Thu', Actual: null, Target: null, Date: getISODateForDay(weekId, 'Thu') },
+  { DayOfWeek: 'Fri', Actual: null, Target: null, Date: getISODateForDay(weekId, 'Fri') },
+  { DayOfWeek: 'Sat', Actual: null, Target: null, Date: getISODateForDay(weekId, 'Sat') },
+  { DayOfWeek: 'Sun', Actual: null, Target: null, Date: getISODateForDay(weekId, 'Sun') },
 ];
 
 
@@ -126,8 +126,8 @@ export const useScorecardStore = create<ScorecardStore>()(
           departments: {
             ...state.departments,
             [departmentName]: {
-              departmentName,
-              weeks: {}
+              DepartmentName: departmentName,
+              Weeks: {}
             }
           }
         };
@@ -148,9 +148,9 @@ export const useScorecardStore = create<ScorecardStore>()(
             ...state.departments,
             [departmentName]: {
               ...dept,
-              weeks: {
-                ...dept.weeks,
-                [weekId]: dept.weeks[weekId] || { weekId, weekLabel, parts: [] }
+              Weeks: {
+                ...dept.Weeks,
+                [weekId]: dept.Weeks[weekId] || { WeekId: weekId, WeekLabel: weekLabel, Parts: [] }
               }
             }
           }
@@ -159,9 +159,9 @@ export const useScorecardStore = create<ScorecardStore>()(
 
       deleteWeek: (departmentName, weekId) => set((state) => {
         const dept = state.departments[departmentName];
-        if (!dept || !dept.weeks[weekId]) return state;
+        if (!dept || !dept.Weeks[weekId]) return state;
 
-        const newWeeks = { ...dept.weeks };
+        const newWeeks = { ...dept.Weeks };
         delete newWeeks[weekId];
 
         return {
@@ -169,7 +169,7 @@ export const useScorecardStore = create<ScorecardStore>()(
             ...state.departments,
             [departmentName]: {
               ...dept,
-              weeks: newWeeks
+              Weeks: newWeeks
             }
           }
         };
@@ -180,23 +180,23 @@ export const useScorecardStore = create<ScorecardStore>()(
         if (!dept) return state;
 
         // Ensure week exists (initializes if missing)
-        const week = dept.weeks[weekId] || { 
-          weekId, 
-          weekLabel: generateWeekLabel(weekId), 
-          parts: [] 
+        const week = dept.Weeks[weekId] || { 
+          WeekId: weekId, 
+          WeekLabel: generateWeekLabel(weekId), 
+          Parts: [] 
         };
         
         // Only prevent duplicates if values are provided
-        if (partNumber && shift && week.parts.some(p => p.partNumber === partNumber && p.shift === shift)) {
+        if (partNumber && shift && week.Parts.some(p => p.PartNumber === partNumber && p.Shift === shift)) {
           return state;
         }
 
         const newPart: PartScorecard = {
-          id: crypto.randomUUID(),
-          partNumber,
-          shift,
-          dailyRecords: emptyDailyRecords(weekId),
-          groupId
+          Id: crypto.randomUUID(),
+          PartNumber: partNumber,
+          Shift: shift,
+          DailyRecords: emptyDailyRecords(weekId),
+          GroupId: groupId
         };
 
         return {
@@ -204,37 +204,37 @@ export const useScorecardStore = create<ScorecardStore>()(
             ...state.departments,
             [departmentName]: {
               ...dept,
-              weeks: {
-                ...dept.weeks,
+              Weeks: {
+                ...dept.Weeks,
                 [weekId]: {
                   ...week,
-                  parts: [...week.parts, newPart]
+                  Parts: [...week.Parts, newPart]
                 }
               }
             }
           },
           dirtyRows: {
             ...state.dirtyRows,
-            [newPart.id]: true
+            [newPart.Id]: true
           }
         };
       }),
 
       removePartNumber: (departmentName, weekId, rowId) => set((state) => {
          const dept = state.departments[departmentName];
-         if (!dept || !dept.weeks[weekId]) return state;
+         if (!dept || !dept.Weeks[weekId]) return state;
 
-         const week = dept.weeks[weekId];
+         const week = dept.Weeks[weekId];
          return {
            departments: {
              ...state.departments,
              [departmentName]: {
                ...dept,
-               weeks: {
-                 ...dept.weeks,
+               Weeks: {
+                 ...dept.Weeks,
                  [weekId]: {
                    ...week,
-                   parts: week.parts.filter(p => p.id !== rowId)
+                   Parts: week.Parts.filter(p => p.Id !== rowId)
                  }
                }
              }
@@ -244,22 +244,24 @@ export const useScorecardStore = create<ScorecardStore>()(
 
       updatePartIdentity: (departmentName, weekId, rowId, updates) => set((state) => {
         const dept = state.departments[departmentName];
-        if (!dept || !dept.weeks[weekId]) return state;
+        if (!dept || !dept.Weeks[weekId]) return state;
 
-        const week = dept.weeks[weekId];
-        const updatedParts = week.parts.map(part => {
-          if (part.id !== rowId) return part;
+        const week = dept.Weeks[weekId];
+        const updatedParts = week.Parts.map(part => {
+          if (part.Id !== rowId) return part;
           
-          let updatedPart = { ...part, ...updates };
+          let updatedPart = { ...part };
+          if (updates.partNumber !== undefined) updatedPart.PartNumber = updates.partNumber;
+          if (updates.shift !== undefined) updatedPart.Shift = updates.shift;
 
           // Panama Schedule: Force non-working days to null if shift changes
-          if (updates.shift && updates.shift !== part.shift) {
+          if (updates.shift && updates.shift !== part.Shift) {
             const newAnchor = state.shiftSettings[updates.shift];
             if (newAnchor) {
-              updatedPart.dailyRecords = updatedPart.dailyRecords.map(record => {
-            const targetDate = record.date ? parseISOLocal(record.date) : null;
+              updatedPart.DailyRecords = updatedPart.DailyRecords.map(record => {
+                const targetDate = record.Date ? parseISOLocal(record.Date) : null;
                 if (targetDate && !isWorkingDay(targetDate, newAnchor)) {
-                  return { ...record, target: null };
+                  return { ...record, Target: null };
                 }
                 return record;
               });
@@ -274,11 +276,11 @@ export const useScorecardStore = create<ScorecardStore>()(
             ...state.departments,
             [departmentName]: {
               ...dept,
-              weeks: {
-                ...dept.weeks,
+              Weeks: {
+                ...dept.Weeks,
                 [weekId]: {
                   ...week,
-                  parts: updatedParts
+                  Parts: updatedParts
                 }
               }
             }
@@ -292,12 +294,12 @@ export const useScorecardStore = create<ScorecardStore>()(
 
       updatePartGroupIdentity: (departmentName, weekId, groupId, partNumber) => set((state) => {
         const dept = state.departments[departmentName];
-        if (!dept || !dept.weeks[weekId]) return state;
+        if (!dept || !dept.Weeks[weekId]) return state;
 
-        const week = dept.weeks[weekId];
-        const updatedParts = week.parts.map(part => {
-          if (part.groupId !== groupId) return part;
-          return { ...part, partNumber };
+        const week = dept.Weeks[weekId];
+        const updatedParts = week.Parts.map(part => {
+          if (part.GroupId !== groupId) return part;
+          return { ...part, PartNumber: partNumber };
         });
 
         return {
@@ -305,11 +307,11 @@ export const useScorecardStore = create<ScorecardStore>()(
             ...state.departments,
             [departmentName]: {
               ...dept,
-              weeks: {
-                ...dept.weeks,
+              Weeks: {
+                ...dept.Weeks,
                 [weekId]: {
                   ...week,
-                  parts: updatedParts
+                  Parts: updatedParts
                 }
               }
             }
@@ -319,18 +321,20 @@ export const useScorecardStore = create<ScorecardStore>()(
 
       updateDailyRecord: (departmentName, weekId, rowId, dayOfWeek, field, value) => set((state) => {
         const dept = state.departments[departmentName];
-        if (!dept || !dept.weeks[weekId]) return state;
+        if (!dept || !dept.Weeks[weekId]) return state;
 
-        const week = dept.weeks[weekId];
-        const updatedParts = week.parts.map(part => {
-          if (part.id !== rowId) return part;
+        const week = dept.Weeks[weekId];
+        const updatedParts = week.Parts.map(part => {
+          if (part.Id !== rowId) return part;
           
+          const targetField = field;
+
           return {
             ...part,
-            dailyRecords: part.dailyRecords.map(record => {
-              if (record.dayOfWeek !== dayOfWeek) return record;
+            DailyRecords: part.DailyRecords.map(record => {
+              if (record.DayOfWeek !== dayOfWeek) return record;
               
-              return { ...record, [field]: value };
+              return { ...record, [targetField]: value };
             })
           };
         });
@@ -340,11 +344,11 @@ export const useScorecardStore = create<ScorecardStore>()(
              ...state.departments,
              [departmentName]: {
                ...dept,
-               weeks: {
-                 ...dept.weeks,
+               Weeks: {
+                 ...dept.Weeks,
                  [weekId]: {
                    ...week,
-                   parts: updatedParts
+                   Parts: updatedParts
                  }
                }
              }
@@ -358,17 +362,17 @@ export const useScorecardStore = create<ScorecardStore>()(
 
       importWeeklyCsv: (departmentName, weekId, data) => set((state) => {
         const dept = state.departments[departmentName];
-        if (!dept || !dept.weeks[weekId]) return state;
+        if (!dept || !dept.Weeks[weekId]) return state;
 
-        const week = dept.weeks[weekId];
+        const week = dept.Weeks[weekId];
         
         // Ensure imported data has dates populated and IDs
         const augmentedData = data.map(part => ({
           ...part,
-          id: part.id || crypto.randomUUID(),
-          dailyRecords: part.dailyRecords.map(record => ({
+          Id: part.Id || crypto.randomUUID(),
+          DailyRecords: part.DailyRecords.map(record => ({
             ...record,
-            date: record.date || getISODateForDay(weekId, record.dayOfWeek)
+            Date: record.Date || getISODateForDay(weekId, record.DayOfWeek)
           }))
         }));
         
@@ -377,11 +381,11 @@ export const useScorecardStore = create<ScorecardStore>()(
             ...state.departments,
             [departmentName]: {
               ...dept,
-              weeks: {
-                ...dept.weeks,
+              Weeks: {
+                ...dept.Weeks,
                 [weekId]: {
                   ...week,
-                  parts: augmentedData 
+                  Parts: augmentedData 
                 }
               }
             }
@@ -393,13 +397,13 @@ export const useScorecardStore = create<ScorecardStore>()(
         let newDepartments = { ...state.departments };
 
         groups.forEach(group => {
-          const dept = newDepartments[group.departmentName];
+          const dept = newDepartments[group.DepartmentName];
           if (!dept) return; // Ignore if department doesn't exist
 
           // Find existing week by label
           let existingWeekId: string | null = null;
-          for (const [id, w] of Object.entries(dept.weeks)) {
-            if (w.weekLabel === group.weekLabel) {
+          for (const [id, w] of Object.entries(dept.Weeks)) {
+            if (w.WeekLabel === group.WeekLabel) {
               existingWeekId = id;
               break;
             }
@@ -408,25 +412,25 @@ export const useScorecardStore = create<ScorecardStore>()(
           const weekIdToUse = existingWeekId || `week-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
           // Ensure imported data has dates populated and IDs
-          const augmentedParts = group.parts.map(part => ({
+          const augmentedParts = group.Parts.map(part => ({
             ...part,
-            id: part.id || crypto.randomUUID(),
-            dailyRecords: part.dailyRecords.map(record => ({
+            Id: part.Id || crypto.randomUUID(),
+            DailyRecords: part.DailyRecords.map(record => ({
               ...record,
-              date: record.date || getISODateForDay(weekIdToUse, record.dayOfWeek)
+              Date: record.Date || getISODateForDay(weekIdToUse, record.DayOfWeek)
             }))
           }));
 
           newDepartments = {
             ...newDepartments,
-            [group.departmentName]: {
+            [group.DepartmentName]: {
               ...dept,
-              weeks: {
-                ...dept.weeks,
+              Weeks: {
+                ...dept.Weeks,
                 [weekIdToUse]: {
-                  weekId: weekIdToUse,
-                  weekLabel: group.weekLabel,
-                  parts: augmentedParts
+                  WeekId: weekIdToUse,
+                  WeekLabel: group.WeekLabel,
+                  Parts: augmentedParts
                 }
               }
             }
@@ -447,53 +451,53 @@ export const useScorecardStore = create<ScorecardStore>()(
           rawData.forEach(row => {
             const dept = row.Department;
             const weekId = row.WeekIdentifier;
-            const pNum = row.PartNumber;
+            const pNum = row.PartNumber.trim().toUpperCase();
+            const shift = (row.Shift || 'A').trim().toUpperCase();
             
             if (!newDepartments[dept]) {
-              newDepartments[dept] = { departmentName: dept, weeks: {} };
+              newDepartments[dept] = { DepartmentName: dept, Weeks: {} };
             }
             
-            if (!newDepartments[dept].weeks[weekId]) {
+            if (!newDepartments[dept].Weeks[weekId]) {
               // Try to preserve existing week label if it exists in current state
               const currentState = get();
               const existingDept = currentState.departments[dept];
-              const existingWeek = existingDept?.weeks[weekId];
+              const existingWeek = existingDept?.Weeks[weekId];
               
-              newDepartments[dept].weeks[weekId] = { 
-                weekId, 
-                weekLabel: existingWeek?.weekLabel || weekId, 
-                parts: [] 
+              newDepartments[dept].Weeks[weekId] = { 
+                WeekId: weekId, 
+                WeekLabel: existingWeek?.WeekLabel || weekId, 
+                Parts: [] 
               };
             }
             
-            const week = newDepartments[dept].weeks[weekId];
-            const shift = row.Shift || 'A'; // Default to 'A' if null
-            let part = week.parts.find(p => p.partNumber === pNum && p.shift === shift);
+            const week = newDepartments[dept].Weeks[weekId];
+            let part = week.Parts.find(p => p.PartNumber.toUpperCase() === pNum && p.Shift.toUpperCase() === shift);
             
             if (!part) {
               part = {
-                id: crypto.randomUUID(),
-                partNumber: pNum,
-                shift,
-                dailyRecords: [
-                  { dayOfWeek: 'Mon', actual: null, target: null, date: getISODateForDay(weekId, 'Mon') },
-                  { dayOfWeek: 'Tue', actual: null, target: null, date: getISODateForDay(weekId, 'Tue') },
-                  { dayOfWeek: 'Wed', actual: null, target: null, date: getISODateForDay(weekId, 'Wed') },
-                  { dayOfWeek: 'Thu', actual: null, target: null, date: getISODateForDay(weekId, 'Thu') },
-                  { dayOfWeek: 'Fri', actual: null, target: null, date: getISODateForDay(weekId, 'Fri') },
-                  { dayOfWeek: 'Sat', actual: null, target: null, date: getISODateForDay(weekId, 'Sat') },
-                  { dayOfWeek: 'Sun', actual: null, target: null, date: getISODateForDay(weekId, 'Sun') },
+                Id: crypto.randomUUID(),
+                PartNumber: pNum,
+                Shift,
+                DailyRecords: [
+                  { DayOfWeek: 'Mon', Actual: null, Target: null, Date: getISODateForDay(weekId, 'Mon') },
+                  { DayOfWeek: 'Tue', Actual: null, Target: null, Date: getISODateForDay(weekId, 'Tue') },
+                  { DayOfWeek: 'Wed', Actual: null, Target: null, Date: getISODateForDay(weekId, 'Wed') },
+                  { DayOfWeek: 'Thu', Actual: null, Target: null, Date: getISODateForDay(weekId, 'Thu') },
+                  { DayOfWeek: 'Fri', Actual: null, Target: null, Date: getISODateForDay(weekId, 'Fri') },
+                  { DayOfWeek: 'Sat', Actual: null, Target: null, Date: getISODateForDay(weekId, 'Sat') },
+                  { DayOfWeek: 'Sun', Actual: null, Target: null, Date: getISODateForDay(weekId, 'Sun') },
                 ]
               };
-              week.parts.push(part);
+              week.Parts.push(part);
             }
             
-            const record = part.dailyRecords.find(d => d.dayOfWeek === row.DayOfWeek);
+            const record = part.DailyRecords.find(d => d.DayOfWeek === row.DayOfWeek);
             if (record) {
-              record.actual = row.Actual;
-              record.target = row.Target;
-              record.date = row.Date;
-              record.reasonCode = row.ReasonCode;
+              record.Actual = row.Actual;
+              record.Target = row.Target;
+              record.Date = row.Date;
+              record.ReasonCode = row.ReasonCode;
             }
           });
           
@@ -505,32 +509,31 @@ export const useScorecardStore = create<ScorecardStore>()(
 
       syncToDb: async (connectionString: string, departmentName?: string, weekId?: string) => {
         const { departments, dirtyRows } = get();
-        const { invoke } = await import('@tauri-apps/api/core');
         const records: any[] = [];
         const syncedRowIds = new Set<string>();
         
         Object.values(departments).forEach(dept => {
           // If we are scoped, only collect records for that department
-          if (departmentName && dept.departmentName !== departmentName) return;
+          if (departmentName && dept.DepartmentName !== departmentName) return;
 
-          Object.values(dept.weeks).forEach(week => {
+          Object.values(dept.Weeks).forEach(week => {
             // If we are scoped, only collect records for that week
-            if (weekId && week.weekId !== weekId) return;
+            if (weekId && week.WeekId !== weekId) return;
 
-            week.parts.forEach(part => {
-              if (dirtyRows[part.id]) {
-                syncedRowIds.add(part.id);
-                part.dailyRecords.forEach(record => {
+            week.Parts.forEach(part => {
+              if (dirtyRows[part.Id]) {
+                syncedRowIds.add(part.Id);
+                part.DailyRecords.forEach(record => {
                   records.push({
-                    Department: dept.departmentName,
-                    WeekIdentifier: week.weekId,
-                    PartNumber: part.partNumber,
-                    Shift: part.shift,
-                    DayOfWeek: record.dayOfWeek,
-                    Target: record.target,
-                    Actual: record.actual,
-                    Date: record.date ? formatSqlDateFromIso(record.date) : null,
-                    ReasonCode: record.reasonCode
+                    Department: dept.DepartmentName,
+                    WeekIdentifier: week.WeekId,
+                    PartNumber: (part.PartNumber || "").trim().toUpperCase(),
+                    Shift: (part.Shift || "A").trim().toUpperCase(),
+                    DayOfWeek: record.DayOfWeek,
+                    Target: record.Target,
+                    Actual: record.Actual,
+                    Date: record.Date ? formatSqlDateFromIso(record.Date) : null,
+                    ReasonCode: record.ReasonCode
                   });
                 });
               }
@@ -558,13 +561,13 @@ export const useScorecardStore = create<ScorecardStore>()(
       saveRecordToDb: async (connectionString: string, departmentName: string, weekId: string, rowId: string, dayOfWeek: DayOfWeek) => {
         const { departments } = get();
         const dept = departments[departmentName];
-        if (!dept || !dept.weeks[weekId]) return;
+        if (!dept || !dept.Weeks[weekId]) return;
 
-        const week = dept.weeks[weekId];
-        const part = week.parts.find(p => p.id === rowId);
+        const week = dept.Weeks[weekId];
+        const part = week.Parts.find(p => p.Id === rowId);
         if (!part) return;
 
-        const record = part.dailyRecords.find(r => r.dayOfWeek === dayOfWeek);
+        const record = part.DailyRecords.find(r => r.DayOfWeek === dayOfWeek);
         if (!record) return;
 
         set({ syncStatus: 'saving', error: null });
@@ -576,13 +579,13 @@ export const useScorecardStore = create<ScorecardStore>()(
           const dbRecord = {
             Department: departmentName,
             WeekIdentifier: weekId,
-            PartNumber: part.partNumber || "",
-            DayOfWeek: record.dayOfWeek,
-            Target: record.target,
-            Actual: record.actual,
-            Date: record.date ? formatSqlDateFromIso(record.date) : null,
-            Shift: part.shift || "",
-            ReasonCode: record.reasonCode
+            PartNumber: part.PartNumber || "",
+            DayOfWeek: record.DayOfWeek,
+            Target: record.Target,
+            Actual: record.Actual,
+            Date: record.Date ? formatSqlDateFromIso(record.Date) : null,
+            Shift: part.Shift || "",
+            ReasonCode: record.ReasonCode
           };
 
           await invoke('upsert_scorecard_data', { 
@@ -592,7 +595,7 @@ export const useScorecardStore = create<ScorecardStore>()(
           
           set((state) => {
             const nextDirtyRows = { ...state.dirtyRows };
-            delete nextDirtyRows[part.id];
+            delete nextDirtyRows[part.Id];
             return { syncStatus: 'saved', dirtyRows: nextDirtyRows };
           });
         } catch (err: any) {
@@ -605,27 +608,27 @@ export const useScorecardStore = create<ScorecardStore>()(
       saveRowToDb: async (connectionString: string, departmentName: string, weekId: string, rowId: string) => {
         const { departments } = get();
         const dept = departments[departmentName];
-        if (!dept || !dept.weeks[weekId]) return;
+        if (!dept || !dept.Weeks[weekId]) return;
 
-        const week = dept.weeks[weekId];
-        const part = week.parts.find(p => p.id === rowId);
-        if (!part || !part.partNumber || !part.shift) return;
+        const week = dept.Weeks[weekId];
+        const part = week.Parts.find(p => p.Id === rowId);
+        if (!part || !part.PartNumber || !part.Shift) return;
 
         set({ syncStatus: 'saving', error: null });
 
         try {
           const { invoke } = await import('@tauri-apps/api/core');
           
-          const records = part.dailyRecords.map(record => ({
+          const records = part.DailyRecords.map(record => ({
             Department: departmentName,
             WeekIdentifier: weekId,
-            PartNumber: part.partNumber,
-            DayOfWeek: record.dayOfWeek,
-            Target: record.target,
-            Actual: record.actual,
-            Date: record.date ? formatSqlDateFromIso(record.date) : null,
-            Shift: part.shift,
-            ReasonCode: record.reasonCode
+            PartNumber: part.PartNumber,
+            DayOfWeek: record.DayOfWeek,
+            Target: record.Target,
+            Actual: record.Actual,
+            Date: record.Date ? formatSqlDateFromIso(record.Date) : null,
+            Shift: part.Shift,
+            ReasonCode: record.ReasonCode
           }));
 
           await invoke('upsert_scorecard_data', { 
@@ -635,7 +638,7 @@ export const useScorecardStore = create<ScorecardStore>()(
           
           set((state) => {
             const nextDirtyRows = { ...state.dirtyRows };
-            delete nextDirtyRows[part.id];
+            delete nextDirtyRows[part.Id];
             return { syncStatus: 'saved', dirtyRows: nextDirtyRows };
           });
         } catch (err: any) {
@@ -672,7 +675,51 @@ export const useScorecardStore = create<ScorecardStore>()(
       }))
     }),
     {
-      name: 'scorecard-storage', // Key for local storage persistence
+      name: 'scorecard-storage',
+      version: 1,
+      migrate: (persistedState: any, version: number) => {
+        if (version === 0) {
+          const state = persistedState as any;
+          if (state.departments) {
+            Object.keys(state.departments).forEach(deptKey => {
+              const dept = state.departments[deptKey];
+              if (dept.weeks && !dept.Weeks) {
+                dept.Weeks = dept.weeks;
+                delete dept.weeks;
+              }
+              if (dept.Weeks) {
+                Object.keys(dept.Weeks).forEach(weekKey => {
+                  const week = dept.Weeks[weekKey];
+                  if (week.weekId && !week.WeekId) { week.WeekId = week.weekId; delete week.weekId; }
+                  if (week.weekLabel && !week.WeekLabel) { week.WeekLabel = week.weekLabel; delete week.weekLabel; }
+                  if (week.parts && !week.Parts) { week.Parts = week.parts; delete week.parts; }
+                  
+                  if (week.Parts) {
+                    week.Parts.forEach((part: any) => {
+                      if (part.partNumber && !part.PartNumber) { part.PartNumber = part.partNumber; delete part.partNumber; }
+                      if (part.shift && !part.Shift) { part.Shift = part.shift; delete part.shift; }
+                      if (part.dailyRecords && !part.DailyRecords) { part.DailyRecords = part.dailyRecords; delete part.dailyRecords; }
+                      
+                      if (part.DailyRecords) {
+                        part.DailyRecords.forEach((record: any) => {
+                          if (record.dayOfWeek && !record.DayOfWeek) { record.DayOfWeek = record.dayOfWeek; delete record.dayOfWeek; }
+                          // Note: Use undefined check because Actual/Target can be null
+                          if (record.actual !== undefined && record.Actual === undefined) { record.Actual = record.actual; delete record.actual; }
+                          if (record.target !== undefined && record.Target === undefined) { record.Target = record.target; delete record.target; }
+                          if (record.reasonCode !== undefined && record.ReasonCode === undefined) { record.ReasonCode = record.reasonCode; delete record.reasonCode; }
+                          if (record.date && !record.Date) { record.Date = record.date; delete record.date; }
+                        });
+                      }
+                    });
+                  }
+                });
+              }
+            });
+          }
+          return state;
+        }
+        return persistedState;
+      }
     }
   )
 );

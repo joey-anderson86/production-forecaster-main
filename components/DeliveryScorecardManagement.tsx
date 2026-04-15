@@ -167,7 +167,7 @@ export default function DeliveryScorecardManagement() {
     if (copySourceWeekId && copySourceWeekId !== 'none') {
       setIsSubmittingWeek(true);
       try {
-        const sourceWeek = store.departments[activeTab].weeks[copySourceWeekId];
+        const sourceWeek = store.departments[activeTab].Weeks[copySourceWeekId];
         if (!sourceWeek) throw new Error("Source week not found");
 
         const { dbRecordsToUpsert } = await generateSmartCopy(
@@ -277,7 +277,7 @@ export default function DeliveryScorecardManagement() {
     };
   }, []);
 
-  const coreHandleUpdateRecord = (rowId: string, day: DayOfWeek, field: 'target' | 'actual', val: number | null) => {
+  const coreHandleUpdateRecord = (rowId: string, day: DayOfWeek, field: 'Target' | 'Actual', val: number | null) => {
     if (!activeTab || !selectedWeekId) return;
     
     // 1. Optimistic Update in Store (UI Updates immediately)
@@ -285,8 +285,8 @@ export default function DeliveryScorecardManagement() {
 
     // 2. IDENTITY GATE: Do not attempt to save to DB if Part Number or Shift is missing.
     // The database requires these to establish a unique identity for the record.
-    const part = activeWeek?.parts.find(p => p.id === rowId);
-    if (!part?.partNumber || !part?.shift) {
+    const part = activeWeek?.Parts.find(p => p.Id === rowId);
+    if (!part?.PartNumber || !part?.Shift) {
       console.log("Postponing DB save: Identity incomplete (no Part Number or Shift)");
       return;
     }
@@ -313,7 +313,7 @@ export default function DeliveryScorecardManagement() {
     }, 750);
   };
 
-  const handleBatchUpdateRecords = (updates: { rowId: string, day: DayOfWeek, field: 'target' | 'actual', value: number | null }[]) => {
+  const handleBatchUpdateRecords = (updates: { rowId: string, day: DayOfWeek, field: 'Target' | 'Actual', value: number | null }[]) => {
     if (!activeTab || !selectedWeekId) return;
 
     const recordsToSave: any[] = [];
@@ -323,19 +323,19 @@ export default function DeliveryScorecardManagement() {
       store.updateDailyRecord(activeTab, selectedWeekId, rowId, day, field, value);
 
       // 2. Prepare DB Record (Identity Gate)
-      const part = activeWeek?.parts.find(p => p.id === rowId);
-      if (part?.partNumber && part?.shift) {
-        const record = part.dailyRecords.find(r => r.dayOfWeek === day);
+      const part = activeWeek?.Parts.find(p => p.Id === rowId);
+      if (part?.PartNumber && part?.Shift) {
+        const record = part.DailyRecords.find(r => r.DayOfWeek === day);
         recordsToSave.push({
             Department: activeTab,
             WeekIdentifier: selectedWeekId,
-            PartNumber: part.partNumber,
+            PartNumber: part.PartNumber,
             DayOfWeek: day,
-            Target: field === 'target' ? value : record?.target,
-            Actual: field === 'actual' ? value : record?.actual,
-            Date: record?.date,
-            Shift: part.shift,
-            ReasonCode: record?.reasonCode || ""
+            Target: field === 'Target' ? value : record?.Target,
+            Actual: field === 'Actual' ? value : record?.Actual,
+            Date: record?.Date,
+            Shift: part.Shift,
+            ReasonCode: record?.ReasonCode || ""
         });
       }
     });
@@ -400,24 +400,24 @@ export default function DeliveryScorecardManagement() {
 
   const handleExportCSV = () => {
     if (!activeDepartment || !selectedWeekId) return;
-    const weekData = activeDepartment.weeks[selectedWeekId];
+    const weekData = activeDepartment.Weeks[selectedWeekId];
     if (!weekData) return;
 
     const csvData = [
       ["Department", "WeekIdentifier", "PartNumber", "Shift", "DayOfWeek", "Target", "Actual", "Date"]
     ];
 
-    weekData.parts.forEach(part => {
-      part.dailyRecords.forEach(record => {
+    weekData.Parts.forEach(part => {
+      part.DailyRecords.forEach(record => {
         csvData.push([
-          activeDepartment.departmentName,
-          weekData.weekId,
-          part.partNumber,
-          part.shift,
-          record.dayOfWeek,
-          record.target !== null ? record.target.toString() : "",
-          record.actual !== null ? record.actual.toString() : "",
-          record.date || ""
+          activeDepartment.DepartmentName,
+          weekData.WeekId,
+          part.PartNumber,
+          part.Shift,
+          record.DayOfWeek,
+          record.Target !== null ? record.Target.toString() : "",
+          record.Actual !== null ? record.Actual.toString() : "",
+          record.Date || ""
         ]);
       });
     });
@@ -426,7 +426,7 @@ export default function DeliveryScorecardManagement() {
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `${activeTab}_${weekData.weekId}_Export.csv`;
+    link.download = `${activeTab}_${weekData.WeekId}_Export.csv`;
     link.click();
   };
 
@@ -436,18 +436,18 @@ export default function DeliveryScorecardManagement() {
     ];
 
     Object.values(store.departments).forEach(dept => {
-      Object.values(dept.weeks).forEach(week => {
-        week.parts.forEach(part => {
-          part.dailyRecords.forEach(record => {
+      Object.values(dept.Weeks).forEach(week => {
+        week.Parts.forEach(part => {
+          part.DailyRecords.forEach(record => {
             csvData.push([
-              dept.departmentName,
-              week.weekId,
-              part.partNumber,
-              part.shift,
-              record.dayOfWeek,
-              record.target !== null ? record.target.toString() : "",
-              record.actual !== null ? record.actual.toString() : "",
-              record.date || ""
+              dept.DepartmentName,
+              week.WeekId,
+              part.PartNumber,
+              part.Shift,
+              record.DayOfWeek,
+              record.Target !== null ? record.Target.toString() : "",
+              record.Actual !== null ? record.Actual.toString() : "",
+              record.Date || ""
             ]);
           });
         });
@@ -463,14 +463,14 @@ export default function DeliveryScorecardManagement() {
   };
 
   const weekOptions = activeDepartment 
-    ? Object.values(activeDepartment.weeks).map(w => ({ value: w.weekId, label: w.weekLabel })) 
+    ? Object.values(activeDepartment.Weeks).map(w => ({ value: w.WeekId, label: w.WeekLabel })) 
     : [];
 
   if (selectedWeekId && !weekOptions.find(w => w.value === selectedWeekId)) {
     weekOptions.push({ value: selectedWeekId, label: generateWeekLabel(selectedWeekId) });
   }
 
-  const activeWeek = activeDepartment && selectedWeekId ? activeDepartment.weeks[selectedWeekId] : null;
+  const activeWeek = activeDepartment && selectedWeekId ? activeDepartment.Weeks[selectedWeekId] : null;
 
   return (
     <Stack gap="md" className="w-full">
@@ -563,7 +563,7 @@ export default function DeliveryScorecardManagement() {
                 <WeeklyPlanTable 
                   department={activeTab!}
                   weekId={selectedWeekId!}
-                  parts={activeWeek?.parts || []}
+                  parts={activeWeek?.Parts || []}
                   availableParts={availableParts}
                   isLoadingParts={isLoadingParts}
                   processInfo={processInfo}
@@ -574,13 +574,13 @@ export default function DeliveryScorecardManagement() {
                   expandAllSignal={expandAllSignal}
                   collapseAllSignal={collapseAllSignal}
                   onRemovePartGroup={(groupKey: string) => {
-                    const rowsToRemove = activeWeek?.parts.filter(p => {
-                      const key = p.partNumber || p.groupId || 'Unassigned';
+                    const rowsToRemove = activeWeek?.Parts.filter(p => {
+                      const key = p.PartNumber || p.GroupId || 'Unassigned';
                       return key === groupKey;
                     }) || [];
 
                     if (rowsToRemove.length === 0) return;
-                    const partName = rowsToRemove[0].partNumber || "Unassigned Part";
+                    const partName = rowsToRemove[0].PartNumber || "Unassigned Part";
 
                     modals.openConfirmModal({
                       title: <Text fw={700}>Remove Part</Text>,
@@ -595,8 +595,8 @@ export default function DeliveryScorecardManagement() {
                         if (connectionString) {
                           // Collect all unique deletion tasks
                           for (const row of rowsToRemove) {
-                            if (row.partNumber && row.shift) {
-                              store.deletePartFromDb(connectionString, activeTab!, selectedWeekId!, row.partNumber, row.shift)
+                            if (row.PartNumber && row.Shift) {
+                              store.deletePartFromDb(connectionString, activeTab!, selectedWeekId!, row.PartNumber, row.Shift)
                                 .catch(err => console.error("Sync delete failed:", err));
                             }
                           }
@@ -604,7 +604,7 @@ export default function DeliveryScorecardManagement() {
                         
                         // Remove from local store
                         rowsToRemove.forEach(row => {
-                          store.removePartNumber(activeTab!, selectedWeekId!, row.id);
+                          store.removePartNumber(activeTab!, selectedWeekId!, row.Id);
                         });
 
                         notifications.show({
@@ -625,9 +625,9 @@ export default function DeliveryScorecardManagement() {
                   onUpdatePartGroupIdentity={(groupId: string, partNum: string) => {
                     store.updatePartGroupIdentity(activeTab!, selectedWeekId!, groupId, partNum);
                     if (connectionString) {
-                       const rowsToSync = activeWeek?.parts.filter(p => p.groupId === groupId);
+                       const rowsToSync = activeWeek?.Parts.filter(p => p.GroupId === groupId);
                        rowsToSync?.forEach(row => {
-                          store.saveRowToDb(connectionString, activeTab!, selectedWeekId!, row.id)
+                          store.saveRowToDb(connectionString, activeTab!, selectedWeekId!, row.Id)
                             .catch(e => console.error("Group identity sync failed:", e));
                        });
                     }

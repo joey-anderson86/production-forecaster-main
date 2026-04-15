@@ -21,24 +21,24 @@ export function ShiftAttainmentChart({ weekData, departmentName, compact = false
   const chartHeight = compact ? 450 : 350;
   const [selectedShift, setSelectedShift] = useState<string | null>(null);
   
-  const { cappedShiftAttainment: attainmentData, hasData: hookHasData } = useAttainmentMath(weekData?.parts);
+  const { cappedShiftAttainment: attainmentData, hasData: hookHasData } = useAttainmentMath(weekData?.Parts);
 
   // Calculate drill-down data when a shift is selected
   const drillDownData = useMemo(() => {
-    if (!selectedShift || !weekData?.parts) return [];
+    if (!selectedShift || !weekData?.Parts) return [];
     
     const partStats: Record<string, { cappedActual: number; totalTarget: number }> = {};
     
-    weekData.parts
-      .filter(p => p.shift === selectedShift)
+    weekData.Parts
+      .filter(p => p.Shift === selectedShift)
       .forEach(part => {
-        if (!partStats[part.partNumber]) {
-          partStats[part.partNumber] = { cappedActual: 0, totalTarget: 0 };
+        if (!partStats[part.PartNumber]) {
+          partStats[part.PartNumber] = { cappedActual: 0, totalTarget: 0 };
         }
-        part.dailyRecords.forEach(record => {
-          if (record.actual !== null && record.actual !== undefined) {
-            partStats[part.partNumber].cappedActual += Math.min(record.actual, record.target ?? 0);
-            partStats[part.partNumber].totalTarget += (record.target ?? 0);
+        part.DailyRecords.forEach(record => {
+          if (record.Actual !== null && record.Actual !== undefined) {
+            partStats[part.PartNumber].cappedActual += Math.min(record.Actual, record.Target ?? 0);
+            partStats[part.PartNumber].totalTarget += (record.Target ?? 0);
           }
         });
       });
@@ -87,7 +87,7 @@ export function ShiftAttainmentChart({ weekData, departmentName, compact = false
             <Text c="dimmed" size="xs">
               {selectedShift 
                 ? `Performance breakdown by part number for Shift ${selectedShift}.`
-                : `Weekly attainment for ${departmentName} (${weekData.weekLabel}). Actuals are capped at 100% of target per run.`
+                : `Weekly attainment for ${departmentName} (${weekData.WeekLabel}). Actuals are capped at 100% of target per run.`
               }
             </Text>
           </Box>

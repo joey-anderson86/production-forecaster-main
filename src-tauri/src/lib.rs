@@ -7,170 +7,125 @@ use tokio::sync::Mutex;
 use tokio_util::compat::TokioAsyncWriteCompatExt;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "PascalCase")]
 pub struct ScorecardRow {
-    #[serde(rename = "Department")]
     pub department: String,
-    #[serde(rename = "WeekIdentifier")]
     pub week_identifier: String,
-    #[serde(rename = "PartNumber")]
     pub part_number: String,
-    #[serde(rename = "DayOfWeek")]
     pub day_of_week: String,
-    #[serde(rename = "Target")]
     pub target: Option<i32>,
-    #[serde(rename = "Actual")]
     pub actual: Option<i32>,
-    #[serde(rename = "Date")]
     pub date: Option<String>,
-    #[serde(rename = "Shift")]
     pub shift: Option<String>,
-    #[serde(rename = "ReasonCode")]
     pub reason_code: Option<String>,
 }
 
 // Data models for MSSQL Preview based on provided schema
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
 pub struct LocatorMapping {
     #[serde(rename = "WIPLocator")]
     pub wip_locator: Option<String>,
-    #[serde(rename = "ProcessName")]
-    pub process: Option<String>,
-    #[serde(rename = "DaysFromShipment")]
+    pub process_name: Option<String>,
     pub days_from_shipment: Option<i32>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
 pub struct PartInfo {
-    #[serde(rename = "PartNumber")]
     pub part_number: Option<String>,
-    #[serde(rename = "ProcessName")]
-    pub process: Option<String>,
-    #[serde(rename = "BatchSize")]
+    pub process_name: Option<String>,
     pub batch_size: Option<i32>,
-    #[serde(rename = "ProcessingTime")]
     pub processing_time: Option<i32>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
 pub struct ProcessInfo {
-    #[serde(rename = "ProcessName")]
-    pub process: Option<String>,
-    #[serde(rename = "Date")]
+    pub process_name: Option<String>,
     pub date: Option<String>,
-    #[serde(rename = "HoursAvailable")]
     pub hours_available: Option<i32>,
     #[serde(rename = "MachineID")]
     pub machine_id: Option<String>,
-    #[serde(rename = "Shift")]
     pub shift: Option<String>,
-    #[serde(rename = "WeekIdentifier")]
     pub week_identifier: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "PascalCase")]
 pub struct PipelineRow {
-    #[serde(rename = "Date")]
     pub date: Option<String>,
-    #[serde(rename = "Customer")]
     pub customer: Option<String>,
-    #[serde(rename = "CustomerCity")]
     pub customer_city: Option<String>,
-    #[serde(rename = "PartNumber")]
     pub part_number: Option<String>,
-    #[serde(rename = "PartName")]
     pub part_name: Option<String>,
-    #[serde(rename = "WIPLocator")]
     pub wip_locator: Option<String>,
-    #[serde(rename = "Qty")]
     pub qty: Option<i32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "PascalCase")]
 pub struct PlanRow {
-    #[serde(rename = "Date")]
     pub date: Option<String>,
-    #[serde(rename = "PartNumber")]
     pub part_number: Option<String>,
-    #[serde(rename = "PartName")]
     pub part_name: Option<String>,
-    #[serde(rename = "ProcessName")]
-    pub process: Option<String>,
-    #[serde(rename = "Qty")]
+    pub process_name: Option<String>,
     pub qty: Option<i32>,
-    #[serde(rename = "Actual")]
     pub actual: Option<i32>,
-    #[serde(rename = "Shift")]
     pub shift: Option<String>,
-    #[serde(rename = "WeekIdentifier")]
     pub week_identifier: Option<String>,
-    #[serde(rename = "DayOfWeek")]
     pub day_of_week: Option<String>,
-    #[serde(rename = "ReasonCode")]
     pub reason_code: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "PascalCase")]
 pub struct ShiftProductionRecord {
-    #[serde(rename = "Date")]
     pub date: String,
-    #[serde(rename = "Department")]
     pub department: String,
-    #[serde(rename = "WeekIdentifier")]
     pub week_identifier: String,
-    #[serde(rename = "PartNumber")]
     pub part_number: String,
-    #[serde(rename = "DayOfWeek")]
     pub day_of_week: String,
-    #[serde(rename = "Target")]
     pub target: Option<i32>,
-    #[serde(rename = "Actual")]
     pub actual: Option<i32>,
-    #[serde(rename = "Shift")]
     pub shift: String,
-    #[serde(rename = "ReasonCode")]
     pub reason_code: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "PascalCase")]
 pub struct Process {
-    #[serde(rename = "ProcessName")]
     pub process_name: String,
     #[serde(rename = "MachineID")]
     pub machine_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "PascalCase")]
 pub struct ReasonCodeData {
-    #[serde(rename = "ProcessName")]
-    pub process: Option<String>,
-    #[serde(rename = "ReasonCode")]
+    pub process_name: Option<String>,
     pub reason_code: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "PascalCase")]
 pub struct DailyRateRow {
-    #[serde(rename = "PartNumber")]
     pub part_number: Option<String>,
-    #[serde(rename = "Week")]
     pub week: i32,
-    #[serde(rename = "Year")]
     pub year: i32,
-    #[serde(rename = "Qty")]
     pub qty: i32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
 pub struct RollingGapRow {
-    #[serde(rename = "PartNumber")]
     pub part_number: String,
-    #[serde(rename = "Shift")]
     pub shift: String,
-    #[serde(rename = "RollingGap")]
     pub rolling_gap: i32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "PascalCase")]
 pub struct DistributeDemandRequest {
     pub total_demand: i32,
     pub child_rows: Vec<ChildRowDesc>,
@@ -181,18 +136,75 @@ pub struct DistributeDemandRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "PascalCase")]
 pub struct ChildRowDesc {
     pub id: String,
     pub shift: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "PascalCase")]
 pub struct DistributeDemandResult {
     pub row_id: String,
     pub day: String,
     pub value: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "PascalCase")]
+pub struct JobBlock {
+    pub id: String,
+    pub part_number: String,
+    pub shift: String,
+    pub target_qty: i32,
+    pub processing_time_mins: f64,
+    pub standard_batch_size: Option<i32>,
+    pub batch_index: i32,
+    pub is_batch_split: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct ShiftSchedule {
+    pub jobs: Vec<JobBlock>,
+    pub capacity_hrs: f64,
+    pub total_assigned_hours: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct MachineSchedule {
+    #[serde(rename = "MachineID")]
+    pub machine_id: String,
+    pub daily_capacity_hrs: f64, // Aggregate for day
+    pub schedule:
+        std::collections::HashMap<String, std::collections::HashMap<String, ShiftSchedule>>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct SchedulerState {
+    pub unassigned: Vec<JobBlock>,
+    pub machines: std::collections::HashMap<String, MachineSchedule>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct SchedulerMeta {
+    pub active_weeks: Vec<String>,
+    pub process_hierarchy: std::collections::HashMap<String, Vec<String>>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct JobAssignment {
+    #[serde(rename = "JobID")]
+    pub job_id: String,
+    #[serde(rename = "MachineID")]
+    pub machine_id: Option<String>,
+    pub date: String,
+    pub day_of_week: String,
+    pub qty: i32,
 }
 
 // State for managing the MSSQL connection status and settings
@@ -229,16 +241,16 @@ async fn get_scorecard_data(connection_string: String) -> Result<Vec<ScorecardRo
                 .get::<&str, _>("PartNumber")
                 .unwrap_or_default()
                 .trim()
-                .to_string(),
+                .to_uppercase(),
             day_of_week: row
                 .get::<&str, _>("DayOfWeek")
                 .unwrap_or_default()
                 .trim()
                 .to_string(),
-            target: get_int_robust(&row, "Target"),
-            actual: get_int_robust(&row, "Actual"),
+            target: get_i32_robust(&row, "Target"),
+            actual: get_i32_robust(&row, "Actual"),
             date: row.get::<&str, _>("Date").map(|s| s.trim().to_string()),
-            shift: row.get::<&str, _>("Shift").map(|s| s.trim().to_string()),
+            shift: row.get::<&str, _>("Shift").map(|s| s.trim().to_uppercase()),
             reason_code: row
                 .get::<&str, _>("ReasonCode")
                 .map(|s| s.trim().to_string()),
@@ -268,14 +280,31 @@ async fn get_rolling_gaps(
         FROM RankedGaps
         WHERE rn = 1
     ";
-    let stream = client.query(query, &[&department]).await.map_err(|e| e.to_string())?;
-    let rows = stream.into_first_result().await.map_err(|e| e.to_string())?;
+    let stream = client
+        .query(query, &[&department])
+        .await
+        .map_err(|e| e.to_string())?;
+    let rows = stream
+        .into_first_result()
+        .await
+        .map_err(|e| e.to_string())?;
 
-    let result = rows.into_iter().map(|row| RollingGapRow {
-        part_number: row.get::<&str, _>("PartNumber").unwrap_or_default().trim().to_string(),
-        shift: row.get::<&str, _>("Shift").unwrap_or_default().trim().to_string(),
-        rolling_gap: row.get::<i32, _>("RollingGap").unwrap_or_default(),
-    }).collect();
+    let result = rows
+        .into_iter()
+        .map(|row| RollingGapRow {
+            part_number: row
+                .get::<&str, _>("PartNumber")
+                .unwrap_or_default()
+                .trim()
+                .to_string(),
+            shift: row
+                .get::<&str, _>("Shift")
+                .unwrap_or_default()
+                .trim()
+                .to_string(),
+            rolling_gap: row.get::<i32, _>("RollingGap").unwrap_or_default(),
+        })
+        .collect();
 
     Ok(result)
 }
@@ -285,23 +314,23 @@ fn is_working_day(date_str: &str, anchor_date_str: &str) -> bool {
         return true;
     }
     use chrono::NaiveDate;
-    
+
     let date = NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok();
     let anchor_date = NaiveDate::parse_from_str(anchor_date_str, "%Y-%m-%d").ok();
 
     if let (Some(d1), Some(d2)) = (date, anchor_date) {
         let diff_days = (d1 - d2).num_days();
-        let cycle_day = ((diff_days % 14) + 14) % 14; 
-        
+        let cycle_day = ((diff_days % 14) + 14) % 14;
+
         let working_pattern = [
-            true, true,          // Days 0, 1
-            false, false,        // Days 2, 3
-            true, true, true,    // Days 4, 5, 6
-            false, false,        // Days 7, 8
-            true, true,          // Days 9, 10
-            false, false, false  // Days 11, 12, 13
+            true, true, // Days 0, 1
+            false, false, // Days 2, 3
+            true, true, true, // Days 4, 5, 6
+            false, false, // Days 7, 8
+            true, true, // Days 9, 10
+            false, false, false, // Days 11, 12, 13
         ];
-        
+
         working_pattern[cycle_day as usize]
     } else {
         true
@@ -309,7 +338,9 @@ fn is_working_day(date_str: &str, anchor_date_str: &str) -> bool {
 }
 
 #[tauri::command]
-async fn calculate_demand_distribution(req: DistributeDemandRequest) -> Result<Vec<DistributeDemandResult>, String> {
+async fn calculate_demand_distribution(
+    req: DistributeDemandRequest,
+) -> Result<Vec<DistributeDemandResult>, String> {
     #[derive(Debug)]
     struct ValidSlot {
         row_id: String,
@@ -326,7 +357,11 @@ async fn calculate_demand_distribution(req: DistributeDemandRequest) -> Result<V
     for (day_idx, day_name) in days_of_week.iter().enumerate() {
         if let Some(Some(date_str)) = req.week_dates.get(day_idx) {
             for part in &req.child_rows {
-                let anchor_date = req.anchor_dates.get(&part.shift).map(|s| s.as_str()).unwrap_or("");
+                let anchor_date = req
+                    .anchor_dates
+                    .get(&part.shift)
+                    .map(|s| s.as_str())
+                    .unwrap_or("");
                 if is_working_day(date_str, anchor_date) {
                     if let Some(capacities) = req.shift_capacities.get(day_idx) {
                         let capacity = capacities.get(&part.shift).copied().unwrap_or(0.0);
@@ -354,7 +389,8 @@ async fn calculate_demand_distribution(req: DistributeDemandRequest) -> Result<V
 
     let mut assigned_count = 0;
     for slot in &mut valid_slots {
-        let base = (req.total_demand as f64 * (slot.capacity / total_weekly_capacity)).floor() as i32;
+        let base =
+            (req.total_demand as f64 * (slot.capacity / total_weekly_capacity)).floor() as i32;
         slot.base_assignment = base;
         assigned_count += base;
     }
@@ -363,9 +399,13 @@ async fn calculate_demand_distribution(req: DistributeDemandRequest) -> Result<V
 
     if remainder > 0 {
         valid_slots.sort_by(|a, b| {
-            let unused_a = a.capacity - ((a.base_assignment as f64 * req.processing_time_min) / 60.0);
-            let unused_b = b.capacity - ((b.base_assignment as f64 * req.processing_time_min) / 60.0);
-            unused_b.partial_cmp(&unused_a).unwrap_or(std::cmp::Ordering::Equal)
+            let unused_a =
+                a.capacity - ((a.base_assignment as f64 * req.processing_time_min) / 60.0);
+            let unused_b =
+                b.capacity - ((b.base_assignment as f64 * req.processing_time_min) / 60.0);
+            unused_b
+                .partial_cmp(&unused_a)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
         let mut i = 0;
@@ -377,11 +417,14 @@ async fn calculate_demand_distribution(req: DistributeDemandRequest) -> Result<V
         }
     }
 
-    let result = valid_slots.into_iter().map(|slot| DistributeDemandResult {
-        row_id: slot.row_id,
-        day: slot.day,
-        value: slot.base_assignment,
-    }).collect();
+    let result = valid_slots
+        .into_iter()
+        .map(|slot| DistributeDemandResult {
+            row_id: slot.row_id,
+            day: slot.day,
+            value: slot.base_assignment,
+        })
+        .collect();
 
     Ok(result)
 }
@@ -389,14 +432,14 @@ async fn calculate_demand_distribution(req: DistributeDemandRequest) -> Result<V
 #[tauri::command]
 async fn upsert_scorecard_data(
     connection_string: String,
-    records: Vec<ScorecardRow>,
+    mut records: Vec<ScorecardRow>,
 ) -> Result<(), String> {
     if records.is_empty() {
         return Ok(());
     }
 
     let mut client = create_client(&connection_string).await?;
-    
+
     // Start transaction
     client
         .simple_query("BEGIN TRANSACTION")
@@ -417,8 +460,22 @@ async fn upsert_scorecard_data(
             ReasonCode NVARCHAR(50)
         )
     ";
-    
-    client.simple_query(create_temp_sql).await.map_err(|e| e.to_string())?;
+
+    client
+        .simple_query(create_temp_sql)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Normalize data before processing to avoid lifetime issues with dynamic strings in `params`
+    for rec in &mut records {
+        rec.part_number = rec.part_number.trim().to_uppercase();
+        let normalized_shift = rec.shift.as_deref().unwrap_or("A").trim().to_uppercase();
+        rec.shift = Some(if normalized_shift.is_empty() {
+            "A".to_string()
+        } else {
+            normalized_shift
+        });
+    }
 
     // Insert into temp table in batches to respect 2000 param limit
     let chunk_size = 200; // 9 params * 200 = 1800 params < 2000
@@ -426,17 +483,25 @@ async fn upsert_scorecard_data(
         let mut sql = String::from("INSERT INTO #TempDeliveryData (Department, WeekIdentifier, PartNumber, DayOfWeek, Target, Actual, Date, Shift, ReasonCode) VALUES ");
         let mut params: Vec<&dyn tiberius::ToSql> = Vec::new();
         let mut param_idx = 1;
-        
+
         for (i, rec) in chunk.iter().enumerate() {
             if i > 0 {
                 sql.push_str(", ");
             }
             sql.push_str(&format!(
                 "(@p{}, @p{}, @p{}, @p{}, @p{}, @p{}, CAST(@p{} AS DATE), @p{}, @p{})",
-                param_idx, param_idx+1, param_idx+2, param_idx+3, param_idx+4, param_idx+5, param_idx+6, param_idx+7, param_idx+8
+                param_idx,
+                param_idx + 1,
+                param_idx + 2,
+                param_idx + 3,
+                param_idx + 4,
+                param_idx + 5,
+                param_idx + 6,
+                param_idx + 7,
+                param_idx + 8
             ));
             param_idx += 9;
-            
+
             params.push(&rec.department);
             params.push(&rec.week_identifier);
             params.push(&rec.part_number);
@@ -447,8 +512,11 @@ async fn upsert_scorecard_data(
             params.push(&rec.shift);
             params.push(&rec.reason_code);
         }
-        
-        client.execute(&sql, &params).await.map_err(|e| e.to_string())?;
+
+        client
+            .execute(&sql, &params)
+            .await
+            .map_err(|e| e.to_string())?;
     }
 
     // Perform bulk MERGE
@@ -457,27 +525,31 @@ async fn upsert_scorecard_data(
         USING #TempDeliveryData AS source
         ON (target.Department = source.Department 
             AND target.PartNumber = source.PartNumber 
-            AND target.Date = source.Date 
-            AND (target.Shift = source.Shift OR (target.Shift IS NULL AND source.Shift IS NULL)))
+            AND CAST(target.Date AS DATE) = source.Date 
+            AND (target.Shift = source.Shift OR (target.Shift IS NULL AND source.Shift = 'A')))
         WHEN MATCHED THEN
             UPDATE SET 
                 Target = source.Target, 
                 Actual = source.Actual, 
                 WeekIdentifier = source.WeekIdentifier, 
                 DayOfWeek = source.DayOfWeek, 
-                ReasonCode = source.ReasonCode
+                ReasonCode = source.ReasonCode,
+                Shift = source.Shift
         WHEN NOT MATCHED THEN
             INSERT (Department, WeekIdentifier, PartNumber, DayOfWeek, Target, Actual, Date, Shift, ReasonCode)
             VALUES (source.Department, source.WeekIdentifier, source.PartNumber, source.DayOfWeek, source.Target, source.Actual, source.Date, source.Shift, source.ReasonCode);
     ";
 
-    client.execute(merge_sql, &[]).await.map_err(|e| e.to_string())?;
+    client
+        .execute(merge_sql, &[])
+        .await
+        .map_err(|e| e.to_string())?;
 
     client
         .simple_query("COMMIT TRANSACTION")
         .await
         .map_err(|e| e.to_string())?;
-    
+
     Ok(())
 }
 
@@ -487,7 +559,7 @@ async fn replace_delivery_data(
     records: Vec<ScorecardRow>,
 ) -> Result<(), String> {
     let mut client = create_client(&connection_string).await?;
-    
+
     client
         .simple_query("BEGIN TRANSACTION")
         .await
@@ -511,25 +583,36 @@ async fn replace_delivery_data(
             ReasonCode NVARCHAR(50)
         )
     ";
-    
-    client.simple_query(create_temp_sql).await.map_err(|e| e.to_string())?;
+
+    client
+        .simple_query(create_temp_sql)
+        .await
+        .map_err(|e| e.to_string())?;
 
     let chunk_size = 200;
     for chunk in records.chunks(chunk_size) {
         let mut sql = String::from("INSERT INTO #TempDeliveryData (Department, WeekIdentifier, PartNumber, DayOfWeek, Target, Actual, Date, Shift, ReasonCode) VALUES ");
         let mut params: Vec<&dyn tiberius::ToSql> = Vec::new();
         let mut param_idx = 1;
-        
+
         for (i, rec) in chunk.iter().enumerate() {
             if i > 0 {
                 sql.push_str(", ");
             }
             sql.push_str(&format!(
                 "(@p{}, @p{}, @p{}, @p{}, @p{}, @p{}, CAST(@p{} AS DATE), @p{}, @p{})",
-                param_idx, param_idx+1, param_idx+2, param_idx+3, param_idx+4, param_idx+5, param_idx+6, param_idx+7, param_idx+8
+                param_idx,
+                param_idx + 1,
+                param_idx + 2,
+                param_idx + 3,
+                param_idx + 4,
+                param_idx + 5,
+                param_idx + 6,
+                param_idx + 7,
+                param_idx + 8
             ));
             param_idx += 9;
-            
+
             params.push(&rec.department);
             params.push(&rec.week_identifier);
             params.push(&rec.part_number);
@@ -540,8 +623,11 @@ async fn replace_delivery_data(
             params.push(&rec.shift);
             params.push(&rec.reason_code);
         }
-        
-        client.execute(&sql, &params).await.map_err(|e| e.to_string())?;
+
+        client
+            .execute(&sql, &params)
+            .await
+            .map_err(|e| e.to_string())?;
     }
 
     let insert_sql = "
@@ -550,13 +636,16 @@ async fn replace_delivery_data(
         FROM #TempDeliveryData
     ";
 
-    client.execute(insert_sql, &[]).await.map_err(|e| e.to_string())?;
+    client
+        .execute(insert_sql, &[])
+        .await
+        .map_err(|e| e.to_string())?;
 
     client
         .simple_query("COMMIT TRANSACTION")
         .await
         .map_err(|e| e.to_string())?;
-    
+
     Ok(())
 }
 
@@ -616,7 +705,7 @@ async fn create_client(
     Ok(client)
 }
 
-fn get_int_robust(row: &tiberius::Row, col: &str) -> Option<i32> {
+fn get_i32_robust(row: &tiberius::Row, col: &str) -> Option<i32> {
     if let Ok(val) = row.try_get::<i32, _>(col) {
         return val;
     }
@@ -668,8 +757,10 @@ async fn get_locator_mapping_preview(
             wip_locator: row
                 .get::<&str, _>("WIPLocator")
                 .map(|s| s.trim().to_string()),
-            process: row.get::<&str, _>("ProcessName").map(|s| s.trim().to_string()),
-            days_from_shipment: get_int_robust(&row, "DaysFromShipment"),
+            process_name: row
+                .get::<&str, _>("ProcessName")
+                .map(|s| s.trim().to_string()),
+            days_from_shipment: get_i32_robust(&row, "DaysFromShipment"),
         })
         .collect();
 
@@ -697,9 +788,11 @@ async fn get_part_info_preview(connection_string: String) -> Result<Vec<PartInfo
             part_number: row
                 .get::<&str, _>("PartNumber")
                 .map(|s| s.trim().to_string()),
-            process: row.get::<&str, _>("ProcessName").map(|s| s.trim().to_string()),
-            batch_size: get_int_robust(&row, "BatchSize"),
-            processing_time: get_int_robust(&row, "ProcessingTime"),
+            process_name: row
+                .get::<&str, _>("ProcessName")
+                .map(|s| s.trim().to_string()),
+            batch_size: get_i32_robust(&row, "BatchSize"),
+            processing_time: get_i32_robust(&row, "ProcessingTime"),
         })
         .collect();
 
@@ -719,9 +812,11 @@ async fn get_process_info_preview(connection_string: String) -> Result<Vec<Proce
     let result = rows
         .into_iter()
         .map(|row| ProcessInfo {
-            process: row.get::<&str, _>("ProcessName").map(|s| s.trim().to_string()),
+            process_name: row
+                .get::<&str, _>("ProcessName")
+                .map(|s| s.trim().to_string()),
             date: row.get::<&str, _>("Date").map(|s| s.trim().to_string()),
-            hours_available: get_int_robust(&row, "HoursAvailable"),
+            hours_available: get_i32_robust(&row, "HoursAvailable"),
             machine_id: row
                 .get::<&str, _>("MachineID")
                 .map(|s| s.trim().to_string()),
@@ -758,9 +853,11 @@ async fn get_process_info(
     let result = rows
         .into_iter()
         .map(|row| ProcessInfo {
-            process: row.get::<&str, _>("ProcessName").map(|s| s.trim().to_string()),
+            process_name: row
+                .get::<&str, _>("ProcessName")
+                .map(|s| s.trim().to_string()),
             date: row.get::<&str, _>("Date").map(|s| s.trim().to_string()),
-            hours_available: get_int_robust(&row, "HoursAvailable"),
+            hours_available: get_i32_robust(&row, "HoursAvailable"),
             machine_id: row
                 .get::<&str, _>("MachineID")
                 .map(|s| s.trim().to_string()),
@@ -798,7 +895,7 @@ async fn get_pipeline_data_preview(connection_string: String) -> Result<Vec<Pipe
             wip_locator: row
                 .get::<&str, _>("WIPLocator")
                 .map(|s| s.trim().to_string()),
-            qty: get_int_robust(&row, "Qty"),
+            qty: get_i32_robust(&row, "Qty"),
         })
         .collect();
 
@@ -822,9 +919,11 @@ async fn get_plan_data_preview(connection_string: String) -> Result<Vec<PlanRow>
                 .get::<&str, _>("PartNumber")
                 .map(|s| s.trim().to_string()),
             part_name: Some("".to_string()),
-            process: row.get::<&str, _>("ProcessName").map(|s| s.trim().to_string()),
-            qty: get_int_robust(&row, "Qty"),
-            actual: get_int_robust(&row, "Actual"),
+            process_name: row
+                .get::<&str, _>("ProcessName")
+                .map(|s| s.trim().to_string()),
+            qty: get_i32_robust(&row, "Qty"),
+            actual: get_i32_robust(&row, "Actual"),
             shift: row.get::<&str, _>("Shift").map(|s| s.trim().to_string()),
             week_identifier: row
                 .get::<&str, _>("WeekIdentifier")
@@ -901,7 +1000,7 @@ async fn append_plan_data(connection_string: String, records: Vec<PlanRow>) -> R
              VALUES (CAST(@p1 as DATE), @p2, @p3, @p4, @p5, @p6, @p7)",
                 &[
                     &rec.date,
-                    &rec.process,
+                    &rec.process_name,
                     &rec.week_identifier,
                     &rec.part_number,
                     &rec.day_of_week,
@@ -965,9 +1064,11 @@ async fn get_plan_data_for_shift(
                 .get::<&str, _>("PartNumber")
                 .map(|s| s.trim().to_string()),
             part_name: Some("".to_string()),
-            process: row.get::<&str, _>("ProcessName").map(|s| s.trim().to_string()),
-            qty: get_int_robust(&row, "Qty"),
-            actual: get_int_robust(&row, "Actual"),
+            process_name: row
+                .get::<&str, _>("ProcessName")
+                .map(|s| s.trim().to_string()),
+            qty: get_i32_robust(&row, "Qty"),
+            actual: get_i32_robust(&row, "Actual"),
             shift: row.get::<&str, _>("Shift").map(|s| s.trim().to_string()),
             week_identifier: row
                 .get::<&str, _>("WeekIdentifier")
@@ -1071,21 +1172,29 @@ async fn submit_shift_production(
         .map_err(|e| e.to_string())?;
 
     for rec in records {
+        let normalized_part = rec.part_number.trim().to_uppercase();
+        let normalized_shift = if rec.shift.trim().is_empty() {
+            "A".to_string()
+        } else {
+            rec.shift.trim().to_uppercase()
+        };
+
         client.execute(
             "MERGE dbo.DeliveryData AS target
              USING (SELECT @p1 as Department, @p2 as WeekIdentifier, @p3 as PartNumber, @p4 as DayOfWeek, 
                            @p5 as Target, @p6 as Actual, CAST(@p7 as DATE) as Date, @p8 as Shift, @p9 as ReasonCode) AS source
              ON (target.Department = source.Department AND target.PartNumber = source.PartNumber 
-                 AND target.Date = source.Date AND (target.Shift = source.Shift OR (target.Shift IS NULL AND source.Shift IS NULL)))
+                 AND CAST(target.Date AS DATE) = source.Date 
+                 AND (target.Shift = source.Shift OR (target.Shift IS NULL AND source.Shift = 'A')))
              WHEN MATCHED THEN
                 UPDATE SET Target = source.Target, Actual = source.Actual, WeekIdentifier = source.WeekIdentifier, 
-                           DayOfWeek = source.DayOfWeek, ReasonCode = source.ReasonCode
+                           DayOfWeek = source.DayOfWeek, ReasonCode = source.ReasonCode, Shift = source.Shift
              WHEN NOT MATCHED THEN
                 INSERT (Department, WeekIdentifier, PartNumber, DayOfWeek, Target, Actual, Date, Shift, ReasonCode)
                 VALUES (source.Department, source.WeekIdentifier, source.PartNumber, source.DayOfWeek, 
                         source.Target, source.Actual, source.Date, source.Shift, source.ReasonCode);",
-            &[&rec.department, &rec.week_identifier, &rec.part_number, &rec.day_of_week,
-              &rec.target, &rec.actual, &rec.date, &rec.shift, &rec.reason_code],
+            &[&rec.department, &rec.week_identifier, &normalized_part, &rec.day_of_week,
+              &rec.target, &rec.actual, &rec.date, &normalized_shift, &rec.reason_code],
         ).await.map_err(|e| {
             // Attempt rollback on error (best-effort)
             e.to_string()
@@ -1267,7 +1376,7 @@ async fn upsert_locator_mapping(
              WHEN NOT MATCHED THEN
                 INSERT (WIPLocator, ProcessName, DaysFromShipment)
                 VALUES (source.WIPLocator, source.ProcessName, source.DaysFromShipment);",
-                &[&rec.wip_locator, &rec.process, &rec.days_from_shipment],
+                &[&rec.wip_locator, &rec.process_name, &rec.days_from_shipment],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -1288,7 +1397,7 @@ async fn upsert_part_info(connection_string: String, records: Vec<PartInfo>) -> 
              WHEN NOT MATCHED THEN
                 INSERT (PartNumber, ProcessName, BatchSize, ProcessingTime)
                 VALUES (source.PartNumber, source.ProcessName, source.BatchSize, source.ProcessingTime);",
-            &[&rec.part_number, &rec.process, &rec.batch_size, &rec.processing_time],
+            &[&rec.part_number, &rec.process_name, &rec.batch_size, &rec.processing_time],
         ).await.map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -1312,7 +1421,7 @@ async fn upsert_process_info(
              WHEN NOT MATCHED THEN
                 INSERT (ProcessName, Date, HoursAvailable, MachineID, Shift, WeekIdentifier)
                 VALUES (source.ProcessName, source.Date, source.HoursAvailable, source.MachineID, source.Shift, source.WeekIdentifier);",
-            &[&rec.process, &rec.date, &rec.hours_available, &mid, &rec.shift, &week],
+            &[&rec.process_name, &rec.date, &rec.hours_available, &mid, &rec.shift, &week],
         ).await.map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -1337,9 +1446,10 @@ async fn delete_locator_mappings(
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
 struct PartInfoId {
     part_number: String,
-    process: String,
+    process_name: String,
 }
 
 #[tauri::command]
@@ -1352,7 +1462,7 @@ async fn delete_part_infos(
         client
             .execute(
                 "DELETE FROM dbo.PartInfo WHERE PartNumber = @p1 AND ProcessName = @p2",
-                &[&id.part_number, &id.process],
+                &[&id.part_number, &id.process_name],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -1361,11 +1471,13 @@ async fn delete_part_infos(
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
 struct ProcessInfoId {
-    process: Option<String>,
-    date: Option<String>,
-    machine_id: Option<String>,
-    shift: Option<String>,
+    pub process_name: Option<String>,
+    pub date: Option<String>,
+    #[serde(rename = "MachineID")]
+    pub machine_id: Option<String>,
+    pub shift: Option<String>,
 }
 
 #[tauri::command]
@@ -1382,7 +1494,7 @@ async fn delete_process_infos(
                AND Date = CAST(@p2 as DATE) 
                AND ISNULL(MachineID, '') = ISNULL(@p3, '')
                AND ISNULL(Shift, '') = ISNULL(@p4, '')",
-                &[&id.process, &id.date, &id.machine_id, &id.shift],
+                &[&id.process_name, &id.date, &id.machine_id, &id.shift],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -1412,7 +1524,7 @@ async fn replace_locator_mappings(
         }
         client.execute(
             "INSERT INTO dbo.LocatorMapping (WIPLocator, ProcessName, DaysFromShipment) VALUES (@p1, @p2, @p3)",
-            &[&rec.wip_locator, &rec.process, &rec.days_from_shipment],
+            &[&rec.wip_locator, &rec.process_name, &rec.days_from_shipment],
         ).await.map_err(|e| e.to_string())?;
     }
 
@@ -1441,7 +1553,7 @@ async fn replace_part_infos(
     for rec in records {
         client.execute(
             "INSERT INTO dbo.PartInfo (PartNumber, ProcessName, BatchSize, ProcessingTime) VALUES (@p1, @p2, @p3, @p4)",
-            &[&rec.part_number, &rec.process, &rec.batch_size, &rec.processing_time],
+            &[&rec.part_number, &rec.process_name, &rec.batch_size, &rec.processing_time],
         ).await.map_err(|e| e.to_string())?;
     }
 
@@ -1472,7 +1584,7 @@ async fn replace_process_infos(
         client.execute(
             "INSERT INTO dbo.ProcessInfo (ProcessName, Date, HoursAvailable, MachineID, Shift, WeekIdentifier) 
              VALUES (@p1, CAST(@p2 as DATE), @p3, @p4, @p5, @p6)",
-            &[&rec.process, &rec.date, &rec.hours_available, &mid, &rec.shift, &rec.week_identifier],
+            &[&rec.process_name, &rec.date, &rec.hours_available, &mid, &rec.shift, &rec.week_identifier],
         ).await.map_err(|e| e.to_string())?;
     }
 
@@ -1504,9 +1616,9 @@ async fn get_daily_rate_preview(connection_string: String) -> Result<Vec<DailyRa
             part_number: row
                 .get::<&str, _>("PartNumber")
                 .map(|s| s.trim().to_string()),
-            week: get_int_robust(&row, "Week").unwrap_or(0),
-            year: get_int_robust(&row, "Year").unwrap_or(0),
-            qty: get_int_robust(&row, "Qty").unwrap_or(0),
+            week: get_i32_robust(&row, "Week").unwrap_or(0),
+            year: get_i32_robust(&row, "Year").unwrap_or(0),
+            qty: get_i32_robust(&row, "Qty").unwrap_or(0),
         })
         .collect();
 
@@ -1599,7 +1711,9 @@ async fn get_processes_preview(connection_string: String) -> Result<Vec<Process>
                 .unwrap_or_default()
                 .trim()
                 .to_string(),
-            machine_id: row.get::<&str, _>("MachineID").map(|s| s.trim().to_string()),
+            machine_id: row
+                .get::<&str, _>("MachineID")
+                .map(|s| s.trim().to_string()),
         })
         .collect();
 
@@ -1629,10 +1743,7 @@ async fn upsert_process(connection_string: String, records: Vec<Process>) -> Res
 }
 
 #[tauri::command]
-async fn delete_processes(
-    connection_string: String,
-    records: Vec<Process>,
-) -> Result<(), String> {
+async fn delete_processes(connection_string: String, records: Vec<Process>) -> Result<(), String> {
     let mut client = create_client(&connection_string).await?;
     for rec in records {
         let machine_id = rec.machine_id.unwrap_or_default();
@@ -1697,7 +1808,9 @@ async fn get_reason_codes_preview(
     let result = rows
         .into_iter()
         .map(|row| ReasonCodeData {
-            process: row.get::<&str, _>("ProcessName").map(|s| s.trim().to_string()),
+            process_name: row
+                .get::<&str, _>("ProcessName")
+                .map(|s| s.trim().to_string()),
             reason_code: row
                 .get::<&str, _>("ReasonCode")
                 .map(|s| s.trim().to_string()),
@@ -1714,14 +1827,17 @@ async fn upsert_reason_codes(
 ) -> Result<(), String> {
     let mut client = create_client(&connection_string).await?;
     for rec in records {
-        client.execute(
-            "MERGE dbo.ReasonCode AS target
+        client
+            .execute(
+                "MERGE dbo.ReasonCode AS target
              USING (SELECT @p1 as ProcessName, @p2 as ReasonCode) AS source
              ON (target.ProcessName = source.ProcessName AND target.ReasonCode = source.ReasonCode)
              WHEN NOT MATCHED THEN
                 INSERT (ProcessName, ReasonCode) VALUES (source.ProcessName, source.ReasonCode);",
-            &[&rec.process, &rec.reason_code]
-        ).await.map_err(|e| e.to_string())?;
+                &[&rec.process_name, &rec.reason_code],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -1733,10 +1849,13 @@ async fn delete_reason_codes(
 ) -> Result<(), String> {
     let mut client = create_client(&connection_string).await?;
     for rec in records {
-        client.execute(
-            "DELETE FROM dbo.ReasonCode WHERE ProcessName = @p1 AND ReasonCode = @p2",
-            &[&rec.process, &rec.reason_code]
-        ).await.map_err(|e| e.to_string())?;
+        client
+            .execute(
+                "DELETE FROM dbo.ReasonCode WHERE ProcessName = @p1 AND ReasonCode = @p2",
+                &[&rec.process_name, &rec.reason_code],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -1761,7 +1880,7 @@ async fn replace_reason_codes(
         client
             .execute(
                 "INSERT INTO dbo.ReasonCode (ProcessName, ReasonCode) VALUES (@p1, @p2)",
-                &[&rec.process, &rec.reason_code],
+                &[&rec.process_name, &rec.reason_code],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -1798,7 +1917,10 @@ async fn get_machines_by_process(
 
     let result = rows
         .into_iter()
-        .filter_map(|row| row.get::<&str, _>("MachineID").map(|s| s.trim().to_string()))
+        .filter_map(|row| {
+            row.get::<&str, _>("MachineID")
+                .map(|s| s.trim().to_string())
+        })
         .collect();
 
     Ok(result)
@@ -1818,7 +1940,10 @@ async fn get_processes(connection_string: String) -> Result<Vec<String>, String>
 
     let result = rows
         .into_iter()
-        .filter_map(|row| row.get::<&str, _>("ProcessName").map(|s| s.trim().to_string()))
+        .filter_map(|row| {
+            row.get::<&str, _>("ProcessName")
+                .map(|s| s.trim().to_string())
+        })
         .collect();
 
     Ok(result)
@@ -1847,16 +1972,289 @@ async fn get_active_weeks(connection_string: String) -> Result<Vec<String>, Stri
     Ok(result)
 }
 
+#[tauri::command]
+async fn get_machine_utilization(
+    connection_string: String,
+    week_id: String,
+    process_name: String,
+) -> Result<SchedulerState, String> {
+    let mut client = create_client(&connection_string).await?;
+
+    // 1. Get machines for this process
+    let machine_query = "SELECT DISTINCT MachineID FROM dbo.ProcessInfo WHERE ProcessName = @p1 AND WeekIdentifier = @p2 AND MachineID IS NOT NULL";
+    let rows = client
+        .query(machine_query, &[&process_name, &week_id])
+        .await
+        .map_err(|e| e.to_string())?
+        .into_first_result()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut machine_ids: Vec<String> = rows
+        .iter()
+        .map(|r| {
+            r.get::<&str, _>("MachineID")
+                .unwrap_or_default()
+                .trim()
+                .to_string()
+        })
+        .collect();
+    if machine_ids.is_empty() {
+        machine_ids.push("General".to_string());
+    }
+
+    // 2. Get capacity (hours_available) for each machine
+    let capacity_query = "SELECT MachineID, CONVERT(VARCHAR, Date, 23) as Date, Shift, HoursAvailable FROM dbo.ProcessInfo WHERE ProcessName = @p1 AND WeekIdentifier = @p2";
+    let rows = client
+        .query(capacity_query, &[&process_name, &week_id])
+        .await
+        .map_err(|e| e.to_string())?
+        .into_first_result()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut capacities: std::collections::HashMap<
+        String,
+        std::collections::HashMap<String, std::collections::HashMap<String, f64>>,
+    > = std::collections::HashMap::new();
+    for row in rows {
+        let m_id = row
+            .get::<&str, _>("MachineID")
+            .unwrap_or("General")
+            .trim()
+            .to_string();
+        let date = row
+            .get::<&str, _>("Date")
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        let shift = row
+            .get::<&str, _>("Shift")
+            .unwrap_or("A")
+            .trim()
+            .to_string();
+        let hours = get_i32_robust(&row, "HoursAvailable").unwrap_or(0) as f64;
+
+        capacities
+            .entry(m_id)
+            .or_default()
+            .entry(date)
+            .or_default()
+            .insert(shift, hours);
+    }
+
+    // 3. Get jobs (DeliveryData) for this process/week
+    let jobs_query = "
+        SELECT DD.PartNumber, DD.Shift, DD.Target, CONVERT(VARCHAR, DD.Date, 23) as Date, DD.DayOfWeek, PI.BatchSize, PI.ProcessingTime 
+        FROM dbo.DeliveryData DD
+        LEFT JOIN dbo.PartInfo PI ON DD.PartNumber = PI.PartNumber AND DD.Department = PI.ProcessName
+        WHERE DD.Department = @p1 AND DD.WeekIdentifier = @p2
+    ";
+    let rows = client
+        .query(jobs_query, &[&process_name, &week_id])
+        .await
+        .map_err(|e| e.to_string())?
+        .into_first_result()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut unassigned: Vec<JobBlock> = Vec::new();
+    let mut machine_schedules: std::collections::HashMap<String, MachineSchedule> =
+        std::collections::HashMap::new();
+
+    for m_id in &machine_ids {
+        machine_schedules.insert(
+            m_id.clone(),
+            MachineSchedule {
+                machine_id: m_id.clone(),
+                daily_capacity_hrs: 0.0,
+                schedule: std::collections::HashMap::new(),
+            },
+        );
+    }
+
+    for row in rows {
+        let p_num = row
+            .get::<&str, _>("PartNumber")
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        let target = get_i32_robust(&row, "Target").unwrap_or(0) as i32;
+        let p_time = get_i32_robust(&row, "ProcessingTime").unwrap_or(0) as f64;
+        let b_size = get_i32_robust(&row, "BatchSize").map(|v| v as i32);
+        let date = row
+            .get::<&str, _>("Date")
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        let shift = row
+            .get::<&str, _>("Shift")
+            .unwrap_or("A")
+            .trim()
+            .to_string();
+
+        if target <= 0 {
+            continue;
+        }
+
+        let job = JobBlock {
+            id: format!(
+                "{}-{}-{}-{}",
+                p_num,
+                date,
+                shift,
+                chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+            ),
+            part_number: p_num,
+            shift: shift.clone(),
+            target_qty: target,
+            processing_time_mins: p_time,
+            standard_batch_size: b_size,
+            batch_index: 0,
+            is_batch_split: false,
+        };
+
+        unassigned.push(job);
+    }
+
+    // Populate day/shift slots for each machine
+    for (m_id, m_sched) in &mut machine_schedules {
+        if let Some(m_caps) = capacities.get(m_id) {
+            for (date, shifts) in m_caps {
+                let mut day_slots = std::collections::HashMap::new();
+                for (shift, hrs) in shifts {
+                    day_slots.insert(
+                        shift.clone(),
+                        ShiftSchedule {
+                            jobs: Vec::new(),
+                            capacity_hrs: *hrs,
+                            total_assigned_hours: 0.0,
+                        },
+                    );
+                }
+                m_sched.schedule.insert(date.clone(), day_slots);
+            }
+        }
+    }
+
+    Ok(SchedulerState {
+        unassigned,
+        machines: machine_schedules,
+    })
+}
+
+#[tauri::command]
+async fn update_job_machine_assignment(req: JobAssignment) -> Result<(), String> {
+    println!(
+        "Assigning job {} to machine {:?} on {}",
+        req.job_id, req.machine_id, req.date
+    );
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_scheduler_meta(connection_string: String) -> Result<SchedulerMeta, String> {
+    let mut client = create_client(&connection_string).await?;
+
+    // Get Active Weeks
+    let week_query =
+        "SELECT DISTINCT WeekIdentifier FROM dbo.DeliveryData ORDER BY WeekIdentifier DESC";
+    let rows = client
+        .query(week_query, &[])
+        .await
+        .map_err(|e| e.to_string())?
+        .into_first_result()
+        .await
+        .map_err(|e| e.to_string())?;
+    let active_weeks = rows
+        .iter()
+        .map(|r| {
+            r.get::<&str, _>("WeekIdentifier")
+                .unwrap_or_default()
+                .trim()
+                .to_string()
+        })
+        .collect();
+
+    // Get Process Hierarchy (Department -> Machines)
+    let proc_query =
+        "SELECT DISTINCT ProcessName, MachineID FROM dbo.ProcessInfo WHERE MachineID IS NOT NULL";
+    let rows = client
+        .query(proc_query, &[])
+        .await
+        .map_err(|e| e.to_string())?
+        .into_first_result()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut hierarchy: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    for row in rows {
+        let p = row
+            .get::<&str, _>("ProcessName")
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        let m = row
+            .get::<&str, _>("MachineID")
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        hierarchy.entry(p).or_default().push(m);
+    }
+
+    Ok(SchedulerMeta {
+        active_weeks,
+        process_hierarchy: hierarchy,
+    })
+}
+
+#[tauri::command]
+async fn save_scheduler_state(_state: SchedulerState) -> Result<(), String> {
+    Ok(())
+}
+
+#[tauri::command]
+async fn save_csv_file(_content: String, _default_path: String) -> Result<(), String> {
+    Ok(())
+}
+
+#[tauri::command]
+async fn save_csv_file_with_handle(
+    app_handle: tauri::AppHandle,
+    content: String,
+    default_path: String,
+) -> Result<(), String> {
+    use tauri_plugin_dialog::DialogExt;
+    let file_path = app_handle
+        .dialog()
+        .file()
+        .set_file_name(&default_path)
+        .add_filter("CSV", &["csv"])
+        .blocking_save_file();
+
+    if let Some(path) = file_path {
+        let path_buf = path.into_path().map_err(|e| e.to_string())?;
+        std::fs::write(path_buf, content).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_store::Builder::new().build())
+        .plugin(tauri_plugin_log::Builder::default().build())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_store::Builder::default().build())
         .manage(DbState {
             connection_string: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
+            get_machine_utilization,
+            update_job_machine_assignment,
+            get_scheduler_meta,
+            save_scheduler_state,
             get_scorecard_data,
             upsert_scorecard_data,
             replace_delivery_data,
@@ -1905,18 +2303,11 @@ pub fn run() {
             get_active_weeks,
             get_machines_by_process,
             get_rolling_gaps,
-            calculate_demand_distribution
+            calculate_demand_distribution,
+            save_csv_file,
+            save_csv_file_with_handle
         ])
-        .setup(|app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
-            Ok(())
-        })
+        .setup(|_app| Ok(()))
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

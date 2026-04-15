@@ -12,19 +12,19 @@ export interface ShiftAttainmentData {
  * Records with Target = 0 or null are excluded.
  */
 export function calculateShiftAttainment(weekData: WeeklyScorecard | null): ShiftAttainmentData[] {
-  if (!weekData || !weekData.parts) return [];
+  if (!weekData || !weekData.Parts) return [];
 
   const shiftTotals: Record<string, { cappedActual: number; totalTarget: number }> = {};
 
-  weekData.parts.forEach(part => {
-    const shift = part.shift || 'Unknown';
+  weekData.Parts.forEach(part => {
+    const shift = part.Shift || 'Unknown';
     if (!shiftTotals[shift]) {
       shiftTotals[shift] = { cappedActual: 0, totalTarget: 0 };
     }
 
-    part.dailyRecords.forEach(record => {
-      const actual = record.actual;
-      const target = record.target ?? 0;
+    part.DailyRecords.forEach(record => {
+      const actual = record.Actual;
+      const target = record.Target ?? 0;
 
       // STRICT RULE: Only include day if actual is recorded (not null)
       // This ensures WTD (Week-to-Date) attainment doesn't penalize 

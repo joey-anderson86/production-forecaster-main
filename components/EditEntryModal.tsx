@@ -45,9 +45,9 @@ export function EditEntryModal({
   dayOfWeek,
   initialData
 }: EditEntryModalProps) {
-  const [target, setTarget] = useState<number | string>(initialData.target ?? '');
-  const [actual, setActual] = useState<number | string>(initialData.actual ?? '');
-  const [reasonCode, setReasonCode] = useState<string>(initialData.reasonCode || '');
+  const [target, setTarget] = useState<number | string>(initialData.Target ?? '');
+  const [actual, setActual] = useState<number | string>(initialData.Actual ?? '');
+  const [reasonCode, setReasonCode] = useState<string>(initialData.ReasonCode || '');
   const [isSaving, setIsSaving] = useState(false);
 
   const updateStore = useScorecardStore((state) => state.updateDailyRecord);
@@ -73,9 +73,9 @@ export function EditEntryModal({
   // Reset local state when initialData changes or modal opens
   useEffect(() => {
     if (opened) {
-      setTarget(initialData.target ?? '');
-      setActual(initialData.actual ?? '');
-      setReasonCode(initialData.reasonCode || '');
+      setTarget(initialData.Target ?? '');
+      setActual(initialData.Actual ?? '');
+      setReasonCode(initialData.ReasonCode || '');
     }
   }, [opened, initialData]);
 
@@ -102,9 +102,9 @@ export function EditEntryModal({
       const actualVal = actual === '' ? null : Number(actual);
 
       // 1. Update Zustand store (UI updates immediately)
-      updateStore(departmentName, weekId, rowId, dayOfWeek, 'target', targetVal);
-      updateStore(departmentName, weekId, rowId, dayOfWeek, 'actual', actualVal);
-      updateStore(departmentName, weekId, rowId, dayOfWeek, 'reasonCode', reasonCode.trim() || null);
+      updateStore(departmentName, weekId, rowId, dayOfWeek, 'Target', targetVal);
+      updateStore(departmentName, weekId, rowId, dayOfWeek, 'Actual', actualVal);
+      updateStore(departmentName, weekId, rowId, dayOfWeek, 'ReasonCode', reasonCode.trim() || null);
 
       // 2. Sync to DB if connection is available
       if (connectionString) {

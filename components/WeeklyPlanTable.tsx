@@ -14,18 +14,18 @@ import { PartScorecard, useScorecardStore } from '@/lib/scorecardStore';
 import { ProductionDisplayUnit } from '@/hooks/useProductionDisplayUnit';
 
 export interface ProcessInfoRecord {
-  process: string;
-  date: string;
-  hoursAvailable: number;
-  machineId: string;
-  shift: string;
+  ProcessName: string;
+  Date: string;
+  HoursAvailable: number;
+  MachineID: string;
+  Shift: string;
 }
 
 export interface PartInfoRecord {
-  partNumber: string;
-  process: string;
-  processingTime: number; // Processing time in minutes
-  batchSize?: number;
+  PartNumber: string;
+  ProcessName: string;
+  ProcessingTime: number; // Processing time in minutes
+  BatchSize?: number;
 }
 
 export interface ShiftMetric {
@@ -60,8 +60,8 @@ interface WeeklyPlanTableProps {
   weekId: string;
   parts: PartScorecard[];
   availableParts: string[];
-  onUpdateRecord: (rowId: string, day: DayOfWeek, field: 'target', value: number | null) => void;
-  onBatchUpdateRecords?: (updates: { rowId: string, day: DayOfWeek, field: 'target' | 'actual', value: number | null }[]) => void;
+  onUpdateRecord: (rowId: string, day: DayOfWeek, field: 'Target' | 'Actual', value: number | null) => void;
+  onBatchUpdateRecords?: (updates: { rowId: string, day: DayOfWeek, field: 'Target' | 'Actual', value: number | null }[]) => void;
   onRemovePartGroup: (groupKey: string) => void;
   onUpdatePartIdentity: (rowId: string, updates: { partNumber?: string, shift?: string }) => void;
   onUpdatePartGroupIdentity: (groupId: string, partNumber: string) => void;
@@ -110,8 +110,8 @@ const ParentRow = ({
   const dailyTotals = useMemo(() => {
     return DAYS_OF_WEEK.map(day => 
       childRows.reduce((sum, part) => {
-        const record = part.dailyRecords.find(r => r.dayOfWeek === day);
-        return sum + (record?.target || 0);
+        const record = part.DailyRecords.find(r => r.DayOfWeek === day);
+        return sum + (record?.Target || 0);
       }, 0)
     );
   }, [childRows]);
@@ -122,7 +122,7 @@ const ParentRow = ({
   const displayedGrandTotal = displayUnit === 'pieces' ? grandTotal * batchSize : grandTotal;
   
   // Check if this is a "New Batch" (no part number)
-  const groupId = childRows[0]?.groupId;
+  const groupId = childRows[0]?.GroupId;
   const isNewBatch = !partNumber;
 
   return (
@@ -151,7 +151,7 @@ const ParentRow = ({
                     onUpdatePartGroupIdentity(groupId, val);
                   } else {
                     // Fallback: This group doesn't have a groupId, update all child rows individually
-                    childRows.forEach(row => onUpdatePartIdentity(row.id, { partNumber: val }));
+                    childRows.forEach(row => onUpdatePartIdentity(row.Id, { partNumber: val }));
                   }
                 }}
                 styles={{ 
@@ -235,7 +235,7 @@ const ParentRow = ({
                 size="sm"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onRemovePartGroup(partNumber || childRows[0].groupId || 'Unassigned');
+                  onRemovePartGroup(partNumber || childRows[0].GroupId || 'Unassigned');
                 }}
               >
                 <IconTrash size={14} />
@@ -269,8 +269,8 @@ const PlanRow = memo(({
 }) => {
   const theme = useMantineTheme();
   const rowTotal = useMemo(() => {
-    return part.dailyRecords.reduce((sum, rec) => sum + (rec.target || 0), 0);
-  }, [part.dailyRecords]);
+    return part.DailyRecords.reduce((sum, rec) => sum + (rec.Target || 0), 0);
+  }, [part.DailyRecords]);
 
   const displayedRowTotal = displayUnit === 'pieces' ? rowTotal * batchSize : rowTotal;
 
@@ -278,16 +278,16 @@ const PlanRow = memo(({
     <Table.Tr>
       <Table.Td pl={50} style={{ minWidth: 200 }}>
         <Text size="xs" fw={500} c="dimmed">
-          {part.partNumber || "Not assigned"}
+          {part.PartNumber || "Not assigned"}
         </Text>
       </Table.Td>
 
       <Table.Td style={{ width: 100 }}>
         <Select
           data={['A', 'B', 'C', 'D']}
-          value={part.shift}
+          value={part.Shift}
           placeholder="Shift"
-          onChange={(val) => onUpdatePartIdentity(part.id, { shift: val || '' })}
+          onChange={(val) => onUpdatePartIdentity(part.Id, { shift: val || '' })}
           comboboxProps={{ withinPortal: true }}
           variant="unstyled"
           styles={{ input: { fontWeight: 700, textAlign: 'center', fontSize: '13px' } }}
@@ -297,12 +297,12 @@ const PlanRow = memo(({
       <Table.Td></Table.Td>
 
       {DAYS_OF_WEEK.map((day, idx) => {
-        const record = part.dailyRecords.find(r => r.dayOfWeek === day);
+        const record = part.DailyRecords.find(r => r.DayOfWeek === day);
         const date = weekDates[idx];
-        const isWorking = date ? isWorkingDay(date, shiftSettings[part.shift] || '') : true;
+        const isWorking = date ? isWorkingDay(date, shiftSettings[part.Shift] || '') : true;
         const isDisabled = !isWorking;
 
-        const showEmDash = isDisabled && (record?.target === 0 || record?.target === null);
+        const showEmDash = isDisabled && (record?.Target === 0 || record?.Target === null);
 
         return (
           <Table.Td 
@@ -315,7 +315,7 @@ const PlanRow = memo(({
             }}
           >
             <Tooltip 
-              label={isDisabled ? `Shift ${part.shift} is OFF on this day` : ""} 
+              label={isDisabled ? `Shift ${part.Shift} is OFF on this day` : ""} 
               disabled={!isDisabled}
               position="top"
               withinPortal
@@ -325,13 +325,13 @@ const PlanRow = memo(({
                   <Text c="dimmed" size="sm" fw={400}>—</Text>
                 ) : (
                   <NumberInput
-                    value={record?.target !== null && record?.target !== undefined ? (displayUnit === 'pieces' ? record.target * batchSize : record.target) : ''}
+                    value={record?.Target !== null && record?.Target !== undefined ? (displayUnit === 'pieces' ? record.Target * batchSize : record.Target) : ''}
                     onChange={(val) => {
                       if (typeof val === 'number') {
                         const batchVal = displayUnit === 'pieces' ? Math.round(val / batchSize) : val;
-                        onUpdateRecord(part.id, day, 'target', batchVal);
+                        onUpdateRecord(part.Id, day, 'Target', batchVal);
                       } else {
-                        onUpdateRecord(part.id, day, 'target', null);
+                        onUpdateRecord(part.Id, day, 'Target', null);
                       }
                     }}
                     hideControls
@@ -401,7 +401,7 @@ export default function WeeklyPlanTable({
   const groupedParts = useMemo(() => {
     const groups: Record<string, PartScorecard[]> = {};
     parts.forEach(part => {
-      const key = part.partNumber || part.groupId || 'Unassigned';
+      const key = part.PartNumber || part.GroupId || 'Unassigned';
       if (!groups[key]) groups[key] = [];
       groups[key].push(part);
     });
@@ -454,8 +454,8 @@ export default function WeeklyPlanTable({
     const map = new Map<string, number>();
     if (partInfo) {
       partInfo.forEach(p => {
-        if (p.process === department) {
-          map.set(p.partNumber, p.batchSize || 1);
+        if (p.ProcessName === department) {
+          map.set(p.PartNumber, p.BatchSize || 1);
         }
       });
     }
@@ -469,14 +469,14 @@ export default function WeeklyPlanTable({
     const shiftCapacityMap = new Map<string, Map<string, number>>();
     if (processInfo) {
       processInfo.forEach(record => {
-        if (record.process === department && record.date) {
-          if (!shiftCapacityMap.has(record.date)) {
-            shiftCapacityMap.set(record.date, new Map());
+        if (record.ProcessName === department && record.Date) {
+          if (!shiftCapacityMap.has(record.Date)) {
+            shiftCapacityMap.set(record.Date, new Map());
           }
-          const shiftMap = shiftCapacityMap.get(record.date)!;
-          const shiftKey = record.shift || 'A';
+          const shiftMap = shiftCapacityMap.get(record.Date)!;
+          const shiftKey = record.Shift || 'A';
           const currentHours = shiftMap.get(shiftKey) || 0;
-          shiftMap.set(shiftKey, currentHours + (record.hoursAvailable || 0));
+          shiftMap.set(shiftKey, currentHours + (record.HoursAvailable || 0));
         }
       });
     }
@@ -517,21 +517,21 @@ export default function WeeklyPlanTable({
     const partMap = new Map<string, number>();
     if (partInfo) {
       partInfo.forEach(p => {
-        if (p.process === department) {
-          partMap.set(p.partNumber, p.processingTime);
+        if (p.ProcessName === department) {
+          partMap.set(p.PartNumber, p.ProcessingTime);
         }
       });
     }
 
     parts.forEach(part => {
-      const processingTimeMins = partMap.get(part.partNumber) || 0;
-      const shift = part.shift || 'A';
+      const processingTimeMins = partMap.get(part.PartNumber) || 0;
+      const shift = part.Shift || 'A';
       
       if (processingTimeMins > 0) {
-        part.dailyRecords.forEach(record => {
-          if (record.target && record.target > 0) {
-            const calculatedHours = (record.target * processingTimeMins) / 60;
-            const dayMetric = metrics[record.dayOfWeek];
+        part.DailyRecords.forEach(record => {
+          if (record.Target && record.Target > 0) {
+            const calculatedHours = (record.Target * processingTimeMins) / 60;
+            const dayMetric = metrics[record.DayOfWeek];
             
             dayMetric.totalLoad += calculatedHours;
             
@@ -539,16 +539,16 @@ export default function WeeklyPlanTable({
             if (dayMetric.shiftBreakdown[shift]) {
               dayMetric.shiftBreakdown[shift].load += calculatedHours;
               
-              const partName = part.partNumber || 'Unassigned';
+              const partName = part.PartNumber || 'Unassigned';
               const existingShiftEntry = dayMetric.shiftBreakdown[shift].breakdown.find(b => b.partNumber === partName);
               
               if (existingShiftEntry) {
-                existingShiftEntry.scheduledQty += record.target;
+                existingShiftEntry.scheduledQty += record.Target;
                 existingShiftEntry.calculatedHours += calculatedHours;
               } else {
                 dayMetric.shiftBreakdown[shift].breakdown.push({
                   partNumber: partName,
-                  scheduledQty: record.target,
+                  scheduledQty: record.Target,
                   processingTimeMin: processingTimeMins,
                   calculatedHours: calculatedHours
                 });
@@ -556,16 +556,16 @@ export default function WeeklyPlanTable({
             }
             
             // Still populate the general breakdown for backward compatibility/summary
-            const partName = part.partNumber || 'Unassigned';
+            const partName = part.PartNumber || 'Unassigned';
             const existingEntry = dayMetric.breakdown.find(b => b.partNumber === partName);
             
             if (existingEntry) {
-              existingEntry.scheduledQty += record.target;
+              existingEntry.scheduledQty += record.Target;
               existingEntry.calculatedHours += calculatedHours;
             } else {
               dayMetric.breakdown.push({
                 partNumber: partName,
-                scheduledQty: record.target,
+                scheduledQty: record.Target,
                 processingTimeMin: processingTimeMins,
                 calculatedHours: calculatedHours
               });
@@ -611,13 +611,13 @@ export default function WeeklyPlanTable({
     };
 
     parts.forEach(part => {
-      const batchSize = batchSizeMap.get(part.partNumber) || 1;
+      const batchSize = batchSizeMap.get(part.PartNumber) || 1;
       const multiplier = displayUnit === 'pieces' ? batchSize : 1;
       
-      part.dailyRecords.forEach((record) => {
-        const idx = DAYS_OF_WEEK.indexOf(record.dayOfWeek);
+      part.DailyRecords.forEach((record) => {
+        const idx = DAYS_OF_WEEK.indexOf(record.DayOfWeek);
         if (idx !== -1) {
-          const val = (record.target || 0) * multiplier;
+          const val = (record.Target || 0) * multiplier;
           totals.daily[idx] += val;
           totals.grandTotal += val;
         }
@@ -630,8 +630,8 @@ export default function WeeklyPlanTable({
   const handleLevelLoad = useCallback(async (childRows: PartScorecard[], totalDemand: number) => {
     setIsCalculatingDemand(true);
     try {
-      const partNumber = childRows[0]?.partNumber;
-      const processingTimeMin = partInfo?.find(p => p.partNumber === partNumber)?.processingTime || 0;
+      const partNumber = childRows[0]?.PartNumber;
+      const processingTimeMin = partInfo?.find(p => p.PartNumber === partNumber)?.ProcessingTime || 0;
 
       const weekDateStrings = weekDates.map(d => d ? formatISODate(d) : null);
       
@@ -649,18 +649,23 @@ export default function WeeklyPlanTable({
 
       const { invoke } = await import('@tauri-apps/api/core');
       const req = {
-        totalDemand,
-        childRows: childRows.map(r => ({ id: r.id, shift: r.shift })),
-        weekDates: weekDateStrings,
-        anchorDates: shiftSettings,
-        shiftCapacities,
-        processingTimeMin
+        TotalDemand: totalDemand,
+        ChildRows: childRows.map(r => ({ Id: r.Id, Shift: r.Shift })),
+        WeekDates: weekDateStrings,
+        AnchorDates: shiftSettings,
+        ShiftCapacities: shiftCapacities,
+        ProcessingTimeMin: processingTimeMin
       };
 
       const distributions = await invoke<any[]>('calculate_demand_distribution', { req });
 
       if (onBatchUpdateRecords) {
-        onBatchUpdateRecords(distributions.map(d => ({ ...d, field: 'target' })));
+        onBatchUpdateRecords(distributions.map(d => ({ 
+          rowId: d.RowId, 
+          day: d.Day, 
+          value: d.Value, 
+          field: 'Target' 
+        })));
       }
     } catch (err) {
       console.error("Demand distribution failed:", err);
@@ -725,7 +730,7 @@ export default function WeeklyPlanTable({
           {Object.entries(groupedParts).map(([groupKey, childRows]) => (
             <React.Fragment key={groupKey}>
               <ParentRow 
-                partNumber={childRows[0].partNumber} 
+                partNumber={childRows[0].PartNumber} 
                 childRows={childRows} 
                 isExpanded={expandedParts.has(groupKey)}
                 availableParts={availableParts}
@@ -735,25 +740,25 @@ export default function WeeklyPlanTable({
                 onLevelLoad={handleLevelLoad}
                 onRemovePartGroup={onRemovePartGroup}
                 displayUnit={displayUnit}
-                batchSize={batchSizeMap.get(childRows[0].partNumber) || 1}
+                batchSize={batchSizeMap.get(childRows[0].PartNumber) || 1}
                 isCalculatingDemand={isCalculatingDemand}
               />
               {expandedParts.has(groupKey) && 
                 [...childRows]
                   .sort((a, b) => {
                     const order: Record<string, number> = { 'A': 1, 'B': 2, 'C': 3, 'D': 4 };
-                    return (order[a.shift] || 99) - (order[b.shift] || 99);
+                    return (order[a.Shift] || 99) - (order[b.Shift] || 99);
                   })
-                  .map((part) => (
+                  .map((part, idx) => (
                     <PlanRow 
-                      key={part.id}
+                      key={part.Id || `${part.PartNumber}-${part.Shift}-${idx}`}
                       part={part}
                       onUpdateRecord={onUpdateRecord}
                       onUpdatePartIdentity={onUpdatePartIdentity}
                       weekDates={weekDates}
                       shiftSettings={shiftSettings}
                       displayUnit={displayUnit}
-                      batchSize={batchSizeMap.get(part.partNumber) || 1}
+                      batchSize={batchSizeMap.get(part.PartNumber) || 1}
                     />
                   ))
               }

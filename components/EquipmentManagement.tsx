@@ -77,8 +77,7 @@ export interface ShiftAllocation {
 }
 
 export interface MachineSchedule {
-  id: string;
-  machineId: string;
+  MachineID: string;
   process: string;
   baseAvailableHours: number; // Derived or static
   shifts: ShiftAllocation[];
@@ -95,8 +94,7 @@ export function transformProcessData(rows: ProcessInfoRow[]): MachineSchedule[] 
   rows.forEach((row) => {
     if (!machineMap.has(row.MachineID)) {
       machineMap.set(row.MachineID, {
-        id: row.MachineID, // Using machineId as unique ID for this view
-        machineId: row.MachineID,
+        MachineID: row.MachineID,
         process: row.ProcessName,
         baseAvailableHours: 24, // Default baseline, can be customized
         shifts: (['A', 'B', 'C', 'D'] as const).map((s) => ({
@@ -193,9 +191,9 @@ const ShiftRow = ({
           </Table.Td>
         );
       })}
-      <Table.Td style={{ 
+      <Table.Td style={{
         backgroundColor: 'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-7))',
-        borderLeft: '2px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4))' 
+        borderLeft: '2px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4))'
       }}>
         <Text fw={700} ta="center" size="xs" c={rowTotal > 0 ? 'blue.7' : 'dimmed'}>
           {rowTotal}h
@@ -221,7 +219,7 @@ const MachineRow = ({
   isExpanded: boolean;
   onToggle: () => void;
   onUpdateShiftHour: (shift: 'A' | 'B' | 'C' | 'D', day: DayOfWeek, value: number | null) => void;
-  onDelete: (machineId: string) => void;
+  onDelete: (MachineID: string) => void;
   weekDates: Date[];
   shiftSettings: Record<string, string>;
 }) => {
@@ -237,9 +235,9 @@ const MachineRow = ({
     <>
       <Table.Tr
         onClick={onToggle}
-        style={{ 
-          backgroundColor: isExpanded 
-            ? 'light-dark(var(--mantine-color-blue-0), rgba(24, 100, 171, 0.15))' 
+        style={{
+          backgroundColor: isExpanded
+            ? 'light-dark(var(--mantine-color-blue-0), rgba(24, 100, 171, 0.15))'
             : 'transparent',
           cursor: 'pointer',
           transition: 'background-color 150ms ease'
@@ -252,7 +250,7 @@ const MachineRow = ({
             </ActionIcon>
             <Stack gap={0}>
               <Text fw={700} size="sm">
-                {schedule.machineId}
+                {schedule.MachineID}
               </Text>
               <Text size="10px" c="dimmed">
                 Cap: {schedule.baseAvailableHours}h/day
@@ -272,9 +270,9 @@ const MachineRow = ({
             </Text>
           </Table.Td>
         ))}
-        <Table.Td style={{ 
+        <Table.Td style={{
           backgroundColor: 'light-dark(var(--mantine-color-blue-1), rgba(24, 100, 171, 0.2))',
-          borderLeft: '2px solid light-dark(var(--mantine-color-blue-2), var(--mantine-color-dark-4))' 
+          borderLeft: '2px solid light-dark(var(--mantine-color-blue-2), var(--mantine-color-dark-4))'
         }}>
           <Text fw={800} ta="center" size="sm" c="blue.9">
             {weeklyTotal}h
@@ -283,13 +281,13 @@ const MachineRow = ({
         <Table.Td style={{ width: 50 }}>
           <Group justify="center" wrap="nowrap">
             <Tooltip label="Remove Equipment" position="left" withArrow>
-              <ActionIcon 
-                variant="subtle" 
-                color="red" 
+              <ActionIcon
+                variant="subtle"
+                color="red"
                 size="sm"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onDelete(schedule.machineId);
+                  onDelete(schedule.MachineID);
                 }}
               >
                 <IconTrash size={14} />
@@ -321,16 +319,16 @@ function AddEquipmentModal({
 }: {
   opened: boolean;
   onClose: () => void;
-  onAdd: (machineId: string) => void;
+  onAdd: (MachineID: string) => void;
   activeProcess: string | null;
 }) {
-  const [machineId, setMachineId] = useState<string | null>(null);
+  const [MachineID, setMachineID] = useState<string | null>(null);
   const { machines, isLoading, isError } = useAvailableMachines(activeProcess);
 
   const handleSubmit = () => {
-    if (machineId) {
-      onAdd(machineId);
-      setMachineId(null);
+    if (MachineID) {
+      onAdd(MachineID);
+      setMachineID(null);
       onClose();
     }
   };
@@ -342,8 +340,8 @@ function AddEquipmentModal({
           label={<Text fw={700} size="sm">Machine ID <Text span c="red">*</Text></Text>}
           placeholder={isLoading ? "Loading machines..." : "Select machine"}
           data={machines}
-          value={machineId}
-          onChange={setMachineId}
+          value={MachineID}
+          onChange={setMachineID}
           searchable
           required
           disabled={isLoading}
@@ -353,7 +351,7 @@ function AddEquipmentModal({
         />
         <Group justify="flex-end" mt="xl">
           <Button variant="subtle" onClick={onClose} color="gray">Cancel</Button>
-          <Button onClick={handleSubmit} color="blue" disabled={!machineId || isLoading}>Add Machine</Button>
+          <Button onClick={handleSubmit} color="blue" disabled={!MachineID || isLoading}>Add Machine</Button>
         </Group>
       </Stack>
     </Modal>
@@ -545,7 +543,7 @@ export function EquipmentManagement() {
   };
 
   const handleExpandAll = () => {
-    setExpandedMachines(new Set(schedules.map(m => m.id)));
+    setExpandedMachines(new Set(schedules.map(m => m.MachineID)));
   };
 
   const handleCollapseAll = () => {
@@ -553,7 +551,7 @@ export function EquipmentManagement() {
   };
 
   const handleUpdateShiftHour = (
-    machineId: string,
+    MachineID: string,
     shift: 'A' | 'B' | 'C' | 'D',
     day: DayOfWeek,
     value: number | null
@@ -561,7 +559,7 @@ export function EquipmentManagement() {
     // 1. Optimistic Update (UI updates immediately)
     setSchedules((prev) =>
       prev.map((m) => {
-        if (m.id !== machineId) return m;
+        if (m.MachineID !== MachineID) return m;
         return {
           ...m,
           shifts: m.shifts.map((s) => {
@@ -578,7 +576,7 @@ export function EquipmentManagement() {
     // 2. Debounced Save to DB
     if (!connectionString || !activeTab || !selectedWeek) return;
 
-    const cellKey = `${machineId}-${shift}-${day}`;
+    const cellKey = `${MachineID}-${shift}-${day}`;
     if (autoSaveTimeoutsRef.current[cellKey]) {
       clearTimeout(autoSaveTimeoutsRef.current[cellKey]);
     }
@@ -593,7 +591,7 @@ export function EquipmentManagement() {
           ProcessName: activeTab,
           Date: formatSqlDate(date),
           HoursAvailable: value || 0,
-          MachineID: machineId,
+          MachineID: MachineID,
           Shift: shift,
           WeekIdentifier: selectedWeek,
         };
@@ -603,7 +601,7 @@ export function EquipmentManagement() {
           records: [record],
         });
 
-        console.log(`Auto-saved capacity for ${machineId} on ${day}`);
+        console.log(`Auto-saved capacity for ${MachineID} on ${day}`);
         delete autoSaveTimeoutsRef.current[cellKey];
       } catch (err) {
         console.error('Auto-save failed:', err);
@@ -612,7 +610,7 @@ export function EquipmentManagement() {
     }, 750);
   };
 
-  const handleAddEquipment = async (machineId: string) => {
+  const handleAddEquipment = async (MachineID: string) => {
     if (!connectionString || !activeTab || !selectedWeek) return;
 
     try {
@@ -625,7 +623,7 @@ export function EquipmentManagement() {
             ProcessName: activeTab!,
             Date: formatSqlDate(date),
             HoursAvailable: 0,
-            MachineID: machineId,
+            MachineID: MachineID,
             Shift: shift,
             WeekIdentifier: selectedWeek!,
           });
@@ -643,29 +641,29 @@ export function EquipmentManagement() {
     }
   };
 
-  const handleDeleteEquipment = (machineId: string) => {
+  const handleDeleteEquipment = (MachineID: string) => {
     modals.openConfirmModal({
       title: <Text fw={700}>Remove Equipment</Text>,
       children: (
         <Text size="sm">
-          Are you sure you want to remove <strong>{machineId}</strong> and all its scheduled hours for this week? This action cannot be undone.
+          Are you sure you want to remove <strong>{MachineID}</strong> and all its scheduled hours for this week? This action cannot be undone.
         </Text>
       ),
       labels: { confirm: 'Remove Equipment', cancel: 'Cancel' },
       confirmProps: { color: 'red' },
       onConfirm: async () => {
         if (!connectionString || !activeTab || !selectedWeek) return;
-        
+
         try {
           const dates = getWeekDates(selectedWeek);
           const identifiers: any[] = [];
           dates.forEach(date => {
             (['A', 'B', 'C', 'D'] as const).forEach(shift => {
               identifiers.push({
-                process: activeTab,
-                date: formatSqlDate(date),
-                machine_id: machineId,
-                shift: shift
+                ProcessName: activeTab,
+                Date: formatSqlDate(date),
+                MachineID: MachineID,
+                Shift: shift
               });
             });
           });
@@ -676,11 +674,11 @@ export function EquipmentManagement() {
           });
 
           // Optimistic update
-          setSchedules(prev => prev.filter(m => m.machineId !== machineId));
-          
+          setSchedules(prev => prev.filter(m => m.MachineID !== MachineID));
+
           notifications.show({
             title: 'Equipment Removed',
-            message: `Successfully removed ${machineId} and all associated shifts.`,
+            message: `Successfully removed ${MachineID} and all associated shifts.`,
             color: 'green'
           });
         } catch (err) {
@@ -715,7 +713,7 @@ export function EquipmentManagement() {
           const dayOffset = Math.round(timeDiff / (1000 * 60 * 60 * 24));
 
           const newRows = sourceRows.map(row => {
-            const dateObj = parseISOLocal(row.date);
+            const dateObj = parseISOLocal(row.Date);
             dateObj.setDate(dateObj.getDate() + dayOffset);
             return {
               ...row,
@@ -835,11 +833,11 @@ export function EquipmentManagement() {
         </Alert>
       )}
 
-      <Box style={{ 
-        borderRadius: '8px', 
-        overflow: 'hidden', 
-        border: '1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4))', 
-        position: 'relative' 
+      <Box style={{
+        borderRadius: '8px',
+        overflow: 'hidden',
+        border: '1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4))',
+        position: 'relative'
       }}>
         {isLoading && (
           <Box style={{ position: 'absolute', inset: 0, backgroundColor: 'light-dark(rgba(255,255,255,0.6), rgba(0,0,0,0.4))', zIndex: 20 }}>
@@ -851,8 +849,8 @@ export function EquipmentManagement() {
 
         {selectedWeek ? (
           <Table verticalSpacing="xs" highlightOnHover withTableBorder>
-            <Table.Thead 
-              style={{ 
+            <Table.Thead
+              style={{
                 backgroundColor: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7))',
                 position: 'sticky',
                 top: 0,
@@ -899,11 +897,11 @@ export function EquipmentManagement() {
               ) : (
                 schedules.map((m) => (
                   <MachineRow
-                    key={m.id}
+                    key={m.MachineID}
                     schedule={m}
-                    isExpanded={expandedMachines.has(m.id)}
-                    onToggle={() => toggleMachine(m.id)}
-                    onUpdateShiftHour={(shift, day, val) => handleUpdateShiftHour(m.id, shift, day, val)}
+                    isExpanded={expandedMachines.has(m.MachineID)}
+                    onToggle={() => toggleMachine(m.MachineID)}
+                    onUpdateShiftHour={(shift, day, val) => handleUpdateShiftHour(m.MachineID, shift, day, val)}
                     onDelete={handleDeleteEquipment}
                     weekDates={weekDates}
                     shiftSettings={shiftSettings}
@@ -912,8 +910,8 @@ export function EquipmentManagement() {
               )}
             </Table.Tbody>
 
-            <Table.Tfoot 
-              style={{ 
+            <Table.Tfoot
+              style={{
                 backgroundColor: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7))',
                 position: 'sticky',
                 bottom: 0,
@@ -980,11 +978,11 @@ export function EquipmentManagement() {
         ) : (
           <Center py={60}>
             <Stack align="center" gap="md">
-              <Box 
-                p="xl" 
-                style={{ 
-                  borderRadius: '50%', 
-                  background: 'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6))' 
+              <Box
+                p="xl"
+                style={{
+                  borderRadius: '50%',
+                  background: 'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6))'
                 }}
               >
                 <IconCalendarOff size={48} stroke={1.5} color="var(--mantine-color-blue-4)" />

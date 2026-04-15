@@ -14,10 +14,10 @@ export async function generateSmartCopy(
   // Group total target demand by partNumber
   const demandByPart = new Map<string, number>();
   
-  sourceWeek.parts.forEach(part => {
-    if (!part.partNumber) return;
-    const partSum = part.dailyRecords.reduce((sum, rec) => sum + (rec.target || 0), 0);
-    demandByPart.set(part.partNumber, (demandByPart.get(part.partNumber) || 0) + partSum);
+  sourceWeek.Parts.forEach(part => {
+    if (!part.PartNumber) return;
+    const partSum = part.DailyRecords.reduce((sum, rec) => sum + (rec.Target || 0), 0);
+    demandByPart.set(part.PartNumber, (demandByPart.get(part.PartNumber) || 0) + partSum);
   });
 
   const dbRecordsToUpsert: any[] = [];
@@ -39,29 +39,29 @@ export async function generateSmartCopy(
     
     // Generate the 4-shift child rows
     const childRows: PartScorecard[] = ['A', 'B', 'C', 'D'].map(shift => {
-      const dailyRecords: DailyScorecardRecord[] = (['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const).map(day => ({
-        dayOfWeek: day,
-        actual: null,
-        target: null,
-        date: getISODateForDay(targetWeekId, day),
+      const DailyRecords: DailyScorecardRecord[] = (['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const).map(day => ({
+        DayOfWeek: day,
+        Actual: null,
+        Target: null,
+        Date: getISODateForDay(targetWeekId, day),
       }));
 
       return {
-        id: crypto.randomUUID(),
-        partNumber,
-        shift,
-        groupId,
-        dailyRecords
+        Id: crypto.randomUUID(),
+        PartNumber: partNumber,
+        Shift: shift,
+        GroupId: groupId,
+        DailyRecords: DailyRecords
       };
     });
 
     // Level-load if there is demand
     if (totalDemand > 0) {
-      const processingTimeMin = partInfo.find(p => p.partNumber === partNumber && p.process === departmentName)?.processingTime || 0;
+      const processingTimeMin = partInfo.find(p => p.PartNumber === partNumber && p.Process === departmentName)?.ProcessingTime || 0;
       
       const req = {
          totalDemand: Math.floor(totalDemand),
-         childRows: childRows.map(r => ({ id: r.id, shift: r.shift })),
+         childRows: childRows.map(r => ({ id: r.Id, shift: r.Shift })),
          weekDates: weekDateStrings,
          anchorDates,
          shiftCapacities,
@@ -72,11 +72,11 @@ export async function generateSmartCopy(
 
       // Apply distribution back to the child rows
       distributions.forEach(d => {
-        const row = childRows.find(r => r.id === d.rowId);
+        const row = childRows.find(r => r.Id === d.rowId);
         if (row) {
-          const rec = row.dailyRecords.find(r => r.dayOfWeek === d.day);
+          const rec = row.DailyRecords.find(r => r.DayOfWeek === d.day);
           if (rec) {
-             rec.target = d.value;
+             rec.Target = d.value;
           }
         }
       });
@@ -84,17 +84,17 @@ export async function generateSmartCopy(
 
     // Prepare flat payload for database upsert
     childRows.forEach(part => {
-      part.dailyRecords.forEach(record => {
+      part.DailyRecords.forEach(record => {
         dbRecordsToUpsert.push({
           Department: departmentName,
           WeekIdentifier: targetWeekId,
-          PartNumber: part.partNumber,
-          DayOfWeek: record.dayOfWeek,
-          Target: record.target,
-          Actual: record.actual,
-          Date: record.date,
-          Shift: part.shift,
-          ReasonCode: record.reasonCode || null
+          PartNumber: part.PartNumber,
+          DayOfWeek: record.DayOfWeek,
+          Target: record.Target,
+          Actual: record.Actual,
+          Date: record.Date,
+          Shift: part.Shift,
+          ReasonCode: record.ReasonCode || null
         });
       });
     });
