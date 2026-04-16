@@ -343,10 +343,6 @@ export default function DeliveryScorecardDisplay() {
   return (
     <Stack gap="md" className="w-full">
       <Group justify="space-between" align="center">
-        <Stack gap={4}>
-          <Title order={2}>Delivery Scorecard & Loss Pareto</Title>
-          <Text c="dimmed" size="sm">Daily performance tracking and root cause analysis.</Text>
-        </Stack>
         <Group>
           <Group gap={4}>
             <Tooltip label="Expand All Rows" withArrow position="bottom">

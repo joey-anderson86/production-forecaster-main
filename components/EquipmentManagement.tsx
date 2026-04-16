@@ -757,9 +757,8 @@ export function EquipmentManagement() {
   }, [schedules]);
 
   return (
-    <Stack gap="md" p="md">
+    <Stack gap="md">
       <Group justify="space-between">
-        <Title order={2}>Equipment Management</Title>
         <Group>
           <Group gap={4}>
             <Tooltip label="Expand All Rows" withArrow position="bottom">
@@ -792,7 +791,7 @@ export function EquipmentManagement() {
         </Group>
       </Group>
 
-      <Paper withBorder p="sm" radius="md" style={{ backgroundColor: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))' }}>
+      <Box>
         <Group justify="space-between">
           <Tabs value={activeTab} onChange={setActiveTab} variant="pills">
             <Tabs.List>
@@ -825,7 +824,7 @@ export function EquipmentManagement() {
             </Button>
           </Group>
         </Group>
-      </Paper>
+      </Box>
 
       {fetchError && (
         <Alert variant="light" color="red" title="Data Load Error" icon={<IconAlertCircle size={18} />}>

@@ -475,7 +475,6 @@ export default function DeliveryScorecardManagement() {
   return (
     <Stack gap="md" className="w-full">
       <Group justify="space-between" align="center">
-        <Title order={2}>Production Planner</Title>
         <Group>
           <SyncStatusIndicator />
           <Group gap={4}>
@@ -519,7 +518,7 @@ export default function DeliveryScorecardManagement() {
         </Group>
       </Group>
 
-      <Paper withBorder p="sm" radius="md" className="bg-gray-50/30">
+      <Box className="bg-gray-50/10">
         <Stack gap="md">
           <Group justify="space-between" align="center">
             <Tabs value={activeTab} onChange={setActiveTab} variant="pills">
@@ -674,6 +673,8 @@ export default function DeliveryScorecardManagement() {
               </Stack>
             </Center>
           )}
+        </Stack>
+      </Box>
 
       {/* Add Week Modal */}
       <Modal 
@@ -716,9 +717,6 @@ export default function DeliveryScorecardManagement() {
            </Group>
         </Stack>
       </Modal>
-        </Stack>
-      </Paper>
     </Stack>
-
   );
 }

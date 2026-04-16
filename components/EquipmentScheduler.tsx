@@ -9,6 +9,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { load } from '@tauri-apps/plugin-store';
 import { DAYS_OF_WEEK, DayOfWeek, isWorkingDay, getWeekDates, getCurrentWeekId } from '@/lib/dateUtils';
 import { useScorecardStore } from '@/lib/scorecardStore';
+import { useProcessStore } from '@/lib/processStore';
 
 // --- Interfaces ---
 
@@ -324,7 +325,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
   const shiftSettings = useScorecardStore(state => state.shiftSettings);
 
   const [currentWeekId, setCurrentWeekId] = useState(initialWeekId || getCurrentWeekId());
-  const [processName, setProcessName] = useState(initialProcessName || 'All Processes');
+  const { processes, activeProcess: processName, setActiveProcess: setProcessName } = useProcessStore();
   const [backlogDay, setBacklogDay] = useState<DayOfWeek | 'All'>('Mon');
   const [meta, setMeta] = useState<SchedulerMeta | null>(null);
   const [previewData, setPreviewData] = useState<{ jobId: string, qty: number } | null>(null);
@@ -751,7 +752,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
     });
 
     const csvContent = rows.join("\n");
-    const safeProcessName = processName.replace(/[^a-zA-Z0-9]/g, '_');
+    const safeProcessName = (processName || 'Process').replace(/[^a-zA-Z0-9]/g, '_');
     const filename = `Changeover_Schedule_${currentWeekId}_${safeProcessName}.csv`;
 
     try {
@@ -794,13 +795,9 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
   }, [data, weekDates, shiftSettings]);
 
   return (
-    <Box p={0} style={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--mantine-color-gray-0)' }}>
-      <Paper shadow="sm" p="sm" mb="md" withBorder style={{ borderRadius: '12px' }}>
-        <Group justify="space-between">
-          <Stack gap={0}>
-            <Title order={3} fw={900} c="indigo.9">Machine Scheduler</Title>
-            <Text size="xs" c="dimmed" fw={600}>DRAFT MODE: Granular Batch Scheduling</Text>
-          </Stack>
+    <Box p={0} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <Box mb="md">
+        <Group justify="end">
 
           <Group gap="xl">
             <Group gap="xs">
@@ -817,14 +814,14 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                 />
               </Stack>
               <Stack gap={0} align="flex-end">
-                <Text size="xs" fw={700} c="dimmed">PROCESS LINE</Text>
+                <Text size="xs" fw={700} c="dimmed">PROCESS AREA</Text>
                 <Select
-                  data={['All Processes', ...Object.keys(meta?.ProcessHierarchy || {})]}
+                  data={processes}
                   value={processName}
                   onChange={(val) => val && setProcessName(val)}
                   size="xs"
                   variant="filled"
-                  style={{ width: 160 }}
+                  style={{ width: 180 }}
                   styles={{ input: { fontWeight: 800 } }}
                 />
               </Stack>
@@ -873,7 +870,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
             </Group>
           </Group>
         </Group>
-      </Paper>
+      </Box>
 
       <DragDropContext onDragEnd={onDragEnd}>
         {loading || !data ? (

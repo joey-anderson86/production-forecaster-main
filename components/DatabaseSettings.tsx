@@ -20,6 +20,8 @@ import {
   NumberInput,
   FileButton,
   Grid,
+  Box,
+  Divider,
 } from "@mantine/core";
 import { DatePickerInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
@@ -1136,10 +1138,9 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
   };
 
   return (
-    <Stack gap="lg">
-      <Card shadow="sm" p="lg" radius="md" withBorder>
+    <Stack gap="xl">
+      <Box>
         <Stack gap="md">
-          <Title order={3}>Database Settings</Title>
           <Text size="sm" c="dimmed">
             Configure the Microsoft SQL Server connection for the application backend.
             Ensure that your connection string follows the standard ADO.NET format.
@@ -1163,10 +1164,12 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
             </Button>
           </Group>
         </Stack>
-      </Card>
+      </Box>
+
+      <Divider label={<Text size="xs" fw={700} c="dimmed">APPLICATION CONFIGURATION</Text>} labelPosition="center" />
 
       {/* Work Shift Schedule Section */}
-      <Card shadow="sm" p="lg" radius="md" withBorder>
+      <Box>
         <Stack gap="md">
           <Group justify="space-between" align="flex-start">
             <Stack gap={4}>
@@ -1221,11 +1224,13 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
             </Grid.Col>
           </Grid>
         </Stack>
-      </Card>
+      </Box>
 
       {roleMode === 'planner' && (
-        <Card shadow="sm" p="lg" radius="md" withBorder>
-        <Stack gap="md">
+        <>
+          <Divider label={<Text size="xs" fw={700} c="dimmed">MANUFACTURING RECORDS</Text>} labelPosition="center" />
+          <Box>
+            <Stack gap="md">
           <Group justify="space-between">
             <Group gap="xs">
               <IconTable size={20} color="var(--mantine-color-indigo-6)" />
@@ -1351,7 +1356,8 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
             </Tabs.Panel>
           </Tabs>
         </Stack>
-        </Card>
+      </Box>
+      </>
       )}
     </Stack>
   );

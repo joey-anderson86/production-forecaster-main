@@ -50,43 +50,54 @@ export default function Home() {
         {/* Tab Content Rendering */}
         <main className="transition-all duration-300">
           {mainTab === 'forecaster' && (
-            <ProductionForecaster />
+            <DashboardCard title="Production Forecaster">
+              <ProductionForecaster />
+            </DashboardCard>
           )}
 
           {mainTab === 'scorecard-mgmt' && roleMode === 'planner' && (
-            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
+            <DashboardCard title="Production Planner">
               <DeliveryScorecardManagement />
-            </div>
+            </DashboardCard>
           )}
 
           {mainTab === 'equipment-mgmt' && roleMode === 'planner' && (
-            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
+            <DashboardCard title="Equipment Management">
               <EquipmentManagement />
-            </div>
+            </DashboardCard>
           )}
 
           {mainTab === 'scorecard-dash' && (
-            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
+            <DashboardCard title="Delivery Dashboard">
               <DeliveryScorecardDisplay />
-            </div>
+            </DashboardCard>
           )}
 
           {mainTab === 'equipment-scheduler' && (
-            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 min-h-[600px]">
-              <EquipmentScheduler 
-                initialProcessName={activeProcess || undefined} 
-                initialWeekId={selectedWeekId || undefined} 
-              />
-            </div>
+            <DashboardCard title="Equipment Scheduler">
+              <div className="min-h-[600px]">
+                <EquipmentScheduler 
+                  initialProcessName={activeProcess || undefined} 
+                  initialWeekId={selectedWeekId || undefined} 
+                />
+              </div>
+            </DashboardCard>
           )}
 
           {mainTab === 'settings' && (
             <div className="max-w-7xl mx-auto w-full mt-4 space-y-8">
-              <DatabaseSettings roleMode={roleMode} />
+              <DashboardCard title="Database Settings">
+                <DatabaseSettings roleMode={roleMode} />
+              </DashboardCard>
+              
               {roleMode === 'planner' && (
                 <>
-                  <PipelineDataPreview />
-                  <PlanDataPreview />
+                  <DashboardCard title="Pipeline Data Preview">
+                    <PipelineDataPreview />
+                  </DashboardCard>
+                  <DashboardCard title="Plan Data Preview">
+                    <PlanDataPreview />
+                  </DashboardCard>
                 </>
               )}
               {roleMode === 'supervisor' && (
@@ -110,6 +121,22 @@ export default function Home() {
           closeAuthModal();
         }}
       />
+    </div>
+  );
+}
+
+/**
+ * Standardized card wrapper for all dashboard tabs to ensure UI consistency.
+ */
+function DashboardCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+      <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
+        <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">{title}</h2>
+      </div>
+      <div className="p-6">
+        {children}
+      </div>
     </div>
   );
 }

@@ -92,8 +92,8 @@ export function ProductionForecaster() {
 
         const locatorBreakdown: Record<string, number> = {};
         partPipeline.forEach(p => {
-          if ((locatorMapping[p.WIPLocator] || 0) <= day) {
-            locatorBreakdown[p.WIPLocator] = (locatorBreakdown[p.WIPLocator] || 0) + (typeof p.Qty === 'number' ? p.Qty : 0);
+          if (p.WIPLocator && (locatorMapping[p.WIPLocator] || 0) <= day) {
+            locatorBreakdown[p.WIPLocator] = (locatorBreakdown[p.WIPLocator] || 0) + (Number(p.Qty) || 0);
           }
         });
 
