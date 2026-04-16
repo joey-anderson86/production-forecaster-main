@@ -127,11 +127,11 @@ const ParentRow = ({
 
   return (
     <Table.Tr 
-      bg={`light-dark(indigo.0, ${rgba(theme.colors.indigo[9], 0.15)})`} 
+      bg={isExpanded ? `light-dark(indigo.0, ${rgba(theme.colors.indigo[9], 0.15)})` : 'transparent'} 
       style={{ cursor: 'pointer' }} 
       onClick={onToggle}
     >
-      <Table.Td>
+      <Table.Td style={{ width: 220 }}>
         <Group gap="xs" wrap="nowrap">
           <ActionIcon variant="subtle" size="sm" color="indigo" onClick={(e) => { e.stopPropagation(); onToggle(); }}>
             {isExpanded ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
@@ -170,10 +170,10 @@ const ParentRow = ({
           )}
         </Group>
       </Table.Td>
-      <Table.Td ta="center">
+      <Table.Td style={{ width: 100 }} ta="center">
         <Badge variant="light" color="indigo" size="sm">ALL SHIFTS</Badge>
       </Table.Td>
-      <Table.Td ta="center">
+      <Table.Td style={{ width: 140 }} ta="center">
         <Group gap={4} justify="center" wrap="nowrap">
           <NumberInput
             value={weeklyTarget}
@@ -276,7 +276,7 @@ const PlanRow = memo(({
 
   return (
     <Table.Tr>
-      <Table.Td pl={50} style={{ minWidth: 200 }}>
+      <Table.Td pl={50} style={{ width: 220 }}>
         <Text size="xs" fw={500} c="dimmed">
           {part.PartNumber || "Not assigned"}
         </Text>
@@ -294,7 +294,7 @@ const PlanRow = memo(({
         />
       </Table.Td>
       
-      <Table.Td></Table.Td>
+      <Table.Td style={{ width: 140 }}></Table.Td>
 
       {DAYS_OF_WEEK.map((day, idx) => {
         const record = part.DailyRecords.find(r => r.DayOfWeek === day);
@@ -702,9 +702,9 @@ export default function WeeklyPlanTable({
         >
           <Table.Thead>
           <Table.Tr>
-            <Table.Th key="part"><Text size="xs" fw={700} c="dimmed">PART NUMBER</Text></Table.Th>
-            <Table.Th key="shift" ta="center"><Text size="xs" fw={700} c="dimmed">SHIFT</Text></Table.Th>
-            <Table.Th key="weekly-target" ta="center"><Text size="xs" fw={700} c="dimmed">WEEKLY TARGET</Text></Table.Th>
+            <Table.Th key="part" style={{ width: 220 }}><Text size="xs" fw={700} c="dimmed">PART NUMBER</Text></Table.Th>
+            <Table.Th key="shift" style={{ width: 100 }} ta="center"><Text size="xs" fw={700} c="dimmed">SHIFT</Text></Table.Th>
+            <Table.Th key="weekly-target" style={{ width: 140 }} ta="center"><Text size="xs" fw={700} c="dimmed">WEEKLY TARGET</Text></Table.Th>
             {DAYS_OF_WEEK.map((day, idx) => {
               const dateStr = weekDates[idx] ? weekDates[idx].toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }) : '';
               return (
@@ -779,7 +779,7 @@ export default function WeeklyPlanTable({
 
         <Table.Tfoot>
           <Table.Tr fw={700}>
-            <Table.Td colSpan={3}>
+            <Table.Td colSpan={3} style={{ width: 220 + 100 + 140 }}>
               <Text size="sm" fw={800}>GRAND TOTAL ({displayUnit === 'batches' ? 'Batches' : 'Pieces'})</Text>
             </Table.Td>
             {calculatedTotals.daily.map((total, idx) => (
@@ -797,7 +797,7 @@ export default function WeeklyPlanTable({
             <Table.Td></Table.Td>
           </Table.Tr>
           <Table.Tr bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7))" style={{ borderTop: `2px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4))` }}>
-            <Table.Td colSpan={3}>
+            <Table.Td colSpan={3} style={{ width: 220 + 100 + 140 }}>
               <Group justify="flex-end" px="sm">
                 <Text size="xs" fw={800} c="dimmed">DAILY CAPACITY UTILIZATION</Text>
               </Group>

@@ -66,8 +66,10 @@ export interface PipelineRow {
   Customer: string;
   "Customer City": string;
   Date: string;
+  Qty?: number | string;
+  WIPLocator?: string;
   // Index signature for dynamic locator columns (e.g. "LOC1": 50, "LOC2": 10)
-  [locator: string]: string | number;
+  [locator: string]: string | number | undefined;
 }
 
 export interface DailyRateRow {
