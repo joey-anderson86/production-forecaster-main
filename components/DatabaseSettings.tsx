@@ -325,7 +325,12 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
       } else if (activeTab === "processInfo") {
         // Handle deletions
         if (deletedProcessInfos.length > 0) {
-          const identifiers = deletedProcessInfos.map(p => ({ process: p.ProcessName, date: p.Date, machine_id: p.MachineID, shift: p.Shift }));
+          const identifiers = deletedProcessInfos.map(p => ({ 
+            ProcessName: p.ProcessName, 
+            Date: p.Date, 
+            MachineID: p.MachineID, 
+            Shift: p.Shift 
+          }));
           await invoke("delete_process_infos", { connectionString, identifiers });
         }
         // Handle upserts
@@ -770,8 +775,8 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
                       variant="unstyled"
                       size="xs"
                       data={globalProcesses}
-                      value={row.Process || ""}
-                      onChange={(val) => updateRecord(i, "Process", val || "")}
+                      value={row.ProcessName || ""}
+                      onChange={(val) => updateRecord(i, "ProcessName", val || "")}
                       searchable
                       clearable
                       placeholder="Select process"
@@ -902,7 +907,7 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
                       variant="unstyled"
                       size="xs"
                       value={parseOrNull(row.Date)}
-                      onChange={(val) => updateRecord(i, "Date", formatIso(val))}
+                      onChange={(val) => updateRecord(i, "Date", formatIso(val as Date | null))}
                     />
                   </Table.Td>
                   <Table.Td>

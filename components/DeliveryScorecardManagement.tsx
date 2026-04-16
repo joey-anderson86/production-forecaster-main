@@ -335,7 +335,7 @@ export default function DeliveryScorecardManagement() {
             Actual: field === 'Actual' ? value : record?.Actual,
             Date: record?.Date,
             Shift: part.Shift,
-            ReasonCode: record?.ReasonCode || ""
+            ReasonCode: record?.ReasonCode ?? null
         });
       }
     });
