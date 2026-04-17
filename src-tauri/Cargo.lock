@@ -93,6 +93,7 @@ dependencies = [
  "tiberius",
  "tokio",
  "tokio-util",
+ "uuid",
 ]
 
 [[package]]

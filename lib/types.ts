@@ -56,6 +56,28 @@ export interface SQLDailyRate {
   Qty: number;
 }
 
+export interface SQLEquipmentSchedule {
+  ScheduleID?: number;
+  WeekIdentifier: string;
+  Department: string;
+  MachineID: string;
+  Date: string;
+  Shift: string;
+  PartNumber: string;
+  Qty: number;
+  RunSequence: number;
+}
+
+export interface JobAssignment {
+  WeekIdentifier: string;
+  PartNumber: string;
+  MachineID: string;
+  Date: string;
+  Shift: string;
+  Qty: number;
+  RunSequence: number;
+}
+
 /**
  * UI State Types
  * Used for frontend data processing and display

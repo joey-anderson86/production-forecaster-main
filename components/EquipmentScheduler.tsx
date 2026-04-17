@@ -10,6 +10,7 @@ import { load } from '@tauri-apps/plugin-store';
 import { DAYS_OF_WEEK, DayOfWeek, isWorkingDay, getWeekDates, getCurrentWeekId } from '@/lib/dateUtils';
 import { useScorecardStore } from '@/lib/scorecardStore';
 import { useProcessStore } from '@/lib/processStore';
+import { JobAssignment } from '@/lib/types';
 
 // --- Interfaces ---
 
@@ -55,13 +56,6 @@ interface SchedulerMeta {
   ProcessHierarchy: Record<string, string[]>;
 }
 
-interface JobAssignment {
-  JobID: string;
-  MachineID: string | null;
-  Date: string;
-  DayOfWeek: string;
-  Qty: number;
-}
 
 // --- Helper Functions ---
 
@@ -137,8 +131,6 @@ const JobCard = ({
   const shiftColor = SHIFT_COLORS[job.Shift] || 'gray.5';
   const processingHrs = ((editQty * (job.ProcessingTimeMins || 0)) / 60).toFixed(1);
 
-  const isWarning = job.StandardBatchSize && job.TargetQty > job.StandardBatchSize;
-  const warningMessage = isWarning ? `Over batch size (${job.StandardBatchSize})` : '';
 
   const jobDateStr = job.Id.split('|')[2];
   const hasMoved = (job.OriginalShift && job.Shift !== job.OriginalShift) || (job.OriginalDate && jobDateStr !== job.OriginalDate);
@@ -166,24 +158,13 @@ const JobCard = ({
                   borderRadius: '6px',
                   borderLeftWidth: '3px',
                   borderLeftStyle: 'solid',
-                  borderLeftColor: isWarning
-                    ? 'var(--mantine-color-red-5)'
-                    : `var(--mantine-color-${shiftColor.replace('.', '-')})`,
-                  outline: isWarning ? '2px dashed var(--mantine-color-red-4)' : undefined,
-                  outlineOffset: isWarning ? '-2px' : undefined,
+                  borderLeftColor: `var(--mantine-color-${shiftColor.replace('.', '-')})`,
                   ...provided.draggableProps.style,
                   zIndex: snapshot.isDragging ? 9999 : 1,
                   // Maintain width when dragging in Portal
                   width: snapshot.isDragging ? '240px' : 'auto',
                 }}
               >
-                {isWarning && (
-                  <Tooltip label={warningMessage} withinPortal>
-                    <Box style={{ position: 'absolute', top: -10, right: -10, zIndex: 10, background: 'white', borderRadius: '50%', boxShadow: 'var(--mantine-shadow-xs)' }}>
-                      <IconAlertTriangle size={14} color="var(--mantine-color-red-6)" fill="white" />
-                    </Box>
-                  </Tooltip>
-                )}
 
                 <Stack gap={2}>
                   <Group gap={4} wrap="nowrap" align="center" style={{ width: '100%' }}>
@@ -430,7 +411,12 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
       // Initialize MaxQty for local tracking
       const initializedState: SchedulerState = {
         ...state,
-        Unassigned: state.Unassigned.map(j => ({ ...j, MaxQty: j.TargetQty, OriginalShift: j.Shift, OriginalDate: j.Id.split('|')[2] })),
+        Unassigned: state.Unassigned.map(j => ({ 
+          ...j, 
+          MaxQty: j.TargetQty, 
+          OriginalShift: j.OriginalShift || j.Shift, 
+          OriginalDate: j.OriginalDate || j.Id.split('|')[2] 
+        })),
         Machines: Object.fromEntries(
           Object.entries(state.Machines).map(([mId, mInfo]) => [
             mId,
@@ -442,7 +428,15 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                   Object.fromEntries(
                     Object.entries(shifts).map(([sId, sData]) => [
                       sId,
-                      { ...sData, Jobs: sData.Jobs.map(j => ({ ...j, MaxQty: j.TargetQty, OriginalShift: j.Shift, OriginalDate: j.Id.split('|')[2] })) }
+                      { 
+                        ...sData, 
+                        Jobs: sData.Jobs.map(j => ({ 
+                          ...j, 
+                          MaxQty: j.TargetQty, 
+                          OriginalShift: j.OriginalShift || j.Shift, 
+                          OriginalDate: j.OriginalDate || (j.Id.includes('|') ? j.Id.split('|')[2] : undefined) 
+                        })) 
+                      }
                     ])
                   )
                 ])
@@ -663,16 +657,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
       if (!connectionString) throw new Error("Connection string not found");
 
       const assignments: JobAssignment[] = [];
-      data.Unassigned.forEach(job => {
-        assignments.push({
-          JobID: job.Id,
-          MachineID: null,
-          Date: job.Id.split('|')[2],
-          DayOfWeek: 'Unassigned',
-          Qty: job.TargetQty
-        });
-      });
-
+      
       Object.entries(data.Machines).forEach(([mId, mInfo]) => {
         Object.entries(mInfo.Schedule).forEach(([day, dayShifts]) => {
           const dayIdx = DAYS_OF_WEEK.indexOf(day as DayOfWeek);
@@ -680,20 +665,22 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
           const dateStr = d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : '';
 
           Object.entries(dayShifts).forEach(([shift, shiftData]) => {
-            shiftData.Jobs.forEach(job => {
+            shiftData.Jobs.forEach((job, index) => {
               assignments.push({
-                JobID: job.Id,
+                WeekIdentifier: currentWeekId,
+                PartNumber: job.PartNumber,
                 MachineID: mId,
                 Date: dateStr,
-                DayOfWeek: day,
-                Qty: job.TargetQty
+                Shift: shift,
+                Qty: job.TargetQty,
+                RunSequence: index
               });
             });
           });
         });
       });
 
-      await invoke('save_scheduler_state', { connectionString, department: processName, assignments });
+      await invoke('save_scheduler_state', { connectionString, department: processName, weekId: currentWeekId, assignments });
       notifications.show({ title: 'Schedule Submitted', message: 'Successfully updated database.', color: 'green' });
       setDirty(false);
       fetchUtilization();
@@ -756,7 +743,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
     const filename = `Changeover_Schedule_${currentWeekId}_${safeProcessName}.csv`;
 
     try {
-      await invoke("save_csv_file", { content: csvContent, filename });
+      await invoke("save_csv_file", { content: csvContent, defaultPath: filename });
       notifications.show({
         title: 'Export Successful',
         message: `Saved to local file system.`,

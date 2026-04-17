@@ -146,6 +146,18 @@ pub struct DistributeDemandResult {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "PascalCase")]
+pub struct JobAssignmentPayload {
+    pub week_identifier: String,
+    pub part_number: String,
+    pub machine_id: String,
+    pub date: String,
+    pub shift: String,
+    pub qty: i32,
+    pub run_sequence: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "PascalCase")]
 pub struct JobBlock {
     pub id: String,
     pub part_number: String,
@@ -155,6 +167,8 @@ pub struct JobBlock {
     pub standard_batch_size: Option<i32>,
     pub batch_index: i32,
     pub is_batch_split: bool,
+    pub original_shift: Option<String>,
+    pub original_date: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
