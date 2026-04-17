@@ -2,9 +2,6 @@ mod models;
 mod db;
 pub mod commands;
 
-use tokio::sync::Mutex;
-use crate::db::DbState;
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -12,9 +9,6 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
-        .manage(DbState {
-            connection_string: Mutex::new(None),
-        })
         .invoke_handler(tauri::generate_handler![
             // Scheduler Commands
             commands::scheduler::get_machine_utilization,

@@ -1,12 +1,6 @@
 use tiberius::{Client, Config, SqlBrowser};
 use tokio::net::TcpStream;
-use tokio::sync::Mutex;
 use tokio_util::compat::TokioAsyncWriteCompatExt;
-
-// State for managing the MSSQL connection status and settings
-pub struct DbState {
-    pub connection_string: Mutex<Option<String>>,
-}
 
 pub async fn create_client(
     connection_string: &str,
