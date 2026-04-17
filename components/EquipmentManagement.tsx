@@ -37,7 +37,8 @@ import {
   IconChevronsUp,
   IconCalendarOff,
   IconDatabaseX,
-  IconTrash
+  IconTrash,
+  IconBolt
 } from '@tabler/icons-react';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
@@ -196,7 +197,7 @@ const ShiftRow = ({
         borderLeft: '2px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4))'
       }}>
         <Text fw={700} ta="center" size="xs" c={rowTotal > 0 ? 'blue.7' : 'dimmed'}>
-          {rowTotal}h
+          {rowTotal.toFixed(1)}h
         </Text>
       </Table.Td>
       <Table.Td style={{ width: 50 }} />
@@ -266,7 +267,7 @@ const MachineRow = ({
         {dailyTotals.map((total, i) => (
           <Table.Td key={i} ta="center" style={{ borderLeft: '1px solid light-dark(var(--mantine-color-blue-1), var(--mantine-color-dark-4))' }}>
             <Text fw={700} size="xs" c={total > 0 ? 'blue.9' : 'dimmed'}>
-              {total > 0 ? `${total}h` : '—'}
+              {total > 0 ? `${total.toFixed(1)}h` : '—'}
             </Text>
           </Table.Td>
         ))}
@@ -275,7 +276,7 @@ const MachineRow = ({
           borderLeft: '2px solid light-dark(var(--mantine-color-blue-2), var(--mantine-color-dark-4))'
         }}>
           <Text fw={800} ta="center" size="sm" c="blue.9">
-            {weeklyTotal}h
+            {weeklyTotal.toFixed(1)}h
           </Text>
         </Table.Td>
         <Table.Td style={{ width: 50 }}>
@@ -315,15 +316,18 @@ function AddEquipmentModal({
   opened,
   onClose,
   onAdd,
-  activeProcess,
+  machines,
+  isLoading,
+  isError,
 }: {
   opened: boolean;
   onClose: () => void;
   onAdd: (MachineID: string) => void;
-  activeProcess: string | null;
+  machines: any[];
+  isLoading: boolean;
+  isError: string | null;
 }) {
   const [MachineID, setMachineID] = useState<string | null>(null);
-  const { machines, isLoading, isError } = useAvailableMachines(activeProcess);
 
   const handleSubmit = () => {
     if (MachineID) {
@@ -352,6 +356,77 @@ function AddEquipmentModal({
         <Group justify="flex-end" mt="xl">
           <Button variant="subtle" onClick={onClose} color="gray">Cancel</Button>
           <Button onClick={handleSubmit} color="blue" disabled={!MachineID || isLoading}>Add Machine</Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+}
+
+// --- Sub-Component: Auto-Schedule Modal ---
+
+function AutoScheduleModal({
+  opened,
+  onClose,
+  onConfirm,
+  machineCount,
+  processName
+}: {
+  opened: boolean;
+  onClose: () => void;
+  onConfirm: (utilization: number, baseHours: number) => void;
+  machineCount: number;
+  processName: string | null;
+}) {
+  const [utilization, setUtilization] = useState<number | string>(85);
+  const [baseHours, setBaseHours] = useState<number | string>(8);
+
+  const handleSubmit = () => {
+    if (typeof utilization === 'number' && typeof baseHours === 'number') {
+      onConfirm(utilization, baseHours);
+      onClose();
+    }
+  };
+
+  return (
+    <Modal opened={opened} onClose={onClose} title={<Text fw={900} size="xl">Auto-Schedule Process</Text>} radius="md">
+      <Stack gap="md">
+        <Alert icon={<IconAlertCircle size={16} />} color="blue" variant="light">
+          This will schedule <strong>{machineCount}</strong> machines for <strong>{processName}</strong>. 
+          It respects your Panama shift schedule (OFF days will be set to 0 hours). Existing entries for this week will be overwritten.
+        </Alert>
+
+        <Group grow>
+          <NumberInput
+            label={<Text fw={700} size="sm">Base Shift Hours</Text>}
+            description="Max hours per shift"
+            value={baseHours}
+            onChange={setBaseHours}
+            min={1}
+            max={24}
+            required
+          />
+          <NumberInput
+            label={<Text fw={700} size="sm">Target Utilization (%)</Text>}
+            description="OEE / Uptime target"
+            value={utilization}
+            onChange={setUtilization}
+            min={1}
+            max={100}
+            required
+            rightSection={<Text size="sm" c="dimmed">%</Text>}
+          />
+        </Group>
+
+        <Group justify="flex-end" mt="xl">
+          <Button variant="subtle" onClick={onClose} color="gray">Cancel</Button>
+          <Button 
+            onClick={handleSubmit} 
+            color="indigo" 
+            disabled={!utilization || !baseHours || machineCount === 0}
+            leftSection={<IconCalculator size={16} />}
+          >
+            Generate Schedule
+          </Button>
         </Group>
       </Stack>
     </Modal>
@@ -439,6 +514,9 @@ export function EquipmentManagement() {
   const [activeWeeks, setActiveWeeks] = useState<string[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEquipModalOpen, setIsEquipModalOpen] = useState(false);
+  const [isAutoScheduleModalOpen, setIsAutoScheduleModalOpen] = useState(false);
+
+  const { machines, isLoading: isMachinesLoading, isError: machinesError } = useAvailableMachines(activeTab);
 
   const [connectionString, setConnectionString] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
@@ -693,6 +771,54 @@ export function EquipmentManagement() {
     });
   };
 
+  const handleAutoSchedule = async (utilizationRate: number, baseShiftHours: number) => {
+    if (!connectionString || !activeTab || !selectedWeek || !machines.length) return;
+
+    try {
+      setIsLoading(true);
+      const newRows: ProcessInfoRow[] = [];
+      const dates = getWeekDates(selectedWeek);
+      const targetHours = baseShiftHours * (utilizationRate / 100);
+
+      const machineIds = machines.map((m: any) => typeof m === 'string' ? m : m.value);
+
+      machineIds.forEach((machineId) => {
+        dates.forEach((date) => {
+          (['A', 'B', 'C', 'D'] as const).forEach((shift) => {
+            const isWorking = isWorkingDay(date, shiftSettings[shift] || '');
+            
+            newRows.push({
+              ProcessName: activeTab,
+              Date: formatSqlDate(date),
+              HoursAvailable: isWorking ? Number(targetHours.toFixed(1)) : 0,
+              MachineID: machineId,
+              Shift: shift,
+              WeekIdentifier: selectedWeek,
+            });
+          });
+        });
+      });
+
+      await invoke('upsert_process_info', {
+        connectionString,
+        records: newRows,
+      });
+
+      await fetchData(); 
+      notifications.show({
+        title: 'Auto-Schedule Complete',
+        message: `Successfully overwrote schedule for ${machineIds.length} machines.`,
+        color: 'green'
+      });
+    } catch (err) {
+      console.error('Failed to auto-schedule:', err);
+      notifications.show({ title: 'Error', message: 'Failed to generate schedule.', color: 'red' });
+    } finally {
+      setIsLoading(false);
+      setIsAutoScheduleModalOpen(false);
+    }
+  };
+
   const handleGeneratePlan = async (data: { weekId: string; displayLabel: string; copyFrom: string | null }) => {
     if (!connectionString || !activeTab) return;
 
@@ -787,6 +913,15 @@ export function EquipmentManagement() {
             disabled={!activeTab || !selectedWeek}
           >
             Add Equipment
+          </Button>
+          <Button
+            variant="light"
+            color="indigo"
+            leftSection={<IconBolt size={16} />}
+            onClick={() => setIsAutoScheduleModalOpen(true)}
+            disabled={!activeTab || !selectedWeek || isLoading}
+          >
+            Auto-Schedule
           </Button>
         </Group>
       </Group>
@@ -943,7 +1078,7 @@ export function EquipmentManagement() {
                               w="100%"
                             />
                             <Text size="10px" fw={700} c="dimmed">
-                              {scheduled}h / {available}h
+                              {scheduled.toFixed(1)}h / {available.toFixed(1)}h
                             </Text>
                           </Stack>
                         </HoverCard.Target>
@@ -952,11 +1087,11 @@ export function EquipmentManagement() {
                             <Text size="sm" fw={700} className="border-b pb-1">Capacity: {day}</Text>
                             <Group justify="space-between">
                               <Text size="xs" c="dimmed">Scheduled:</Text>
-                              <Text size="xs" fw={600}>{scheduled}h</Text>
+                              <Text size="xs" fw={600}>{scheduled.toFixed(1)}h</Text>
                             </Group>
                             <Group justify="space-between">
                               <Text size="xs" c="dimmed">Available:</Text>
-                              <Text size="xs" fw={600}>{available}h</Text>
+                              <Text size="xs" fw={600}>{available.toFixed(1)}h</Text>
                             </Group>
                             <Divider />
                             <Group justify="space-between">
@@ -1006,7 +1141,16 @@ export function EquipmentManagement() {
         opened={isEquipModalOpen}
         onClose={() => setIsEquipModalOpen(false)}
         onAdd={handleAddEquipment}
-        activeProcess={activeTab}
+        machines={machines}
+        isLoading={isMachinesLoading}
+        isError={machinesError}
+      />
+      <AutoScheduleModal
+        opened={isAutoScheduleModalOpen}
+        onClose={() => setIsAutoScheduleModalOpen(false)}
+        onConfirm={handleAutoSchedule}
+        processName={activeTab}
+        machineCount={machines.length}
       />
     </Stack>
   );

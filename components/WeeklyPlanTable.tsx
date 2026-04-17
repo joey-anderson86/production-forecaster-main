@@ -874,7 +874,7 @@ export default function WeeklyPlanTable({
                               w="100%"
                             />
                             <Text size="10px" fw={700} c="dimmed" style={{ whiteSpace: 'nowrap' }}>
-                              {load.toFixed(1)}h / {metric.totalCapacity}h
+                              {load.toFixed(1)}h / {metric.totalCapacity.toFixed(1)}h
                             </Text>
                           </Stack>
                         </Box>
@@ -919,7 +919,7 @@ export default function WeeklyPlanTable({
 
                           <Group justify="space-between" mt={4}>
                             <Text size="xs" c="dimmed">Daily Machinery Cap:</Text>
-                            <Text size="xs" fw={600}>{metric.totalCapacity}h</Text>
+                            <Text size="xs" fw={600}>{metric.totalCapacity.toFixed(1)}h</Text>
                           </Group>
                           
                           <Group justify="space-between" style={{ borderTop: `1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-4))`, paddingTop: 8 }} mt={4}>

@@ -34,6 +34,25 @@ pub fn get_i32_robust(row: &tiberius::Row, col: &str) -> Option<i32> {
     None
 }
 
+pub fn get_f64_robust(row: &tiberius::Row, col: &str) -> Option<f64> {
+    if let Ok(val) = row.try_get::<f64, _>(col) {
+        return val;
+    }
+    if let Ok(val) = row.try_get::<f32, _>(col) {
+        return val.map(|v| v as f64);
+    }
+    if let Ok(val) = row.try_get::<i32, _>(col) {
+        return val.map(|v| v as f64);
+    }
+    if let Ok(val) = row.try_get::<i16, _>(col) {
+        return val.map(|v| v as f64);
+    }
+    if let Ok(val) = row.try_get::<&str, _>(col) {
+        return val.and_then(|s| s.trim().parse::<f64>().ok());
+    }
+    None
+}
+
 #[tauri::command]
 pub async fn test_mssql_connection(connection_string: String) -> Result<String, String> {
     let mut client = create_client(&connection_string).await?;

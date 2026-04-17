@@ -38,7 +38,7 @@ pub struct PartInfo {
 pub struct ProcessInfo {
     pub process_name: Option<String>,
     pub date: Option<String>,
-    pub hours_available: Option<i32>,
+    pub hours_available: Option<f64>,
     #[serde(rename = "MachineID")]
     pub machine_id: Option<String>,
     pub shift: Option<String>,

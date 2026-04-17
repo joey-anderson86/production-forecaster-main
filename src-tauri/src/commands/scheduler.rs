@@ -235,7 +235,7 @@ pub async fn get_machine_utilization(
         let date_str = row.get::<&str, _>("Date").unwrap_or_default().trim().to_string();
         let day_name = get_day_name(&date_str);
         let shift = row.get::<&str, _>("Shift").unwrap_or("A").trim().to_string();
-        let hours = get_i32_robust(&row, "HoursAvailable").unwrap_or(0) as f64;
+        let hours = get_f64_robust(&row, "HoursAvailable").unwrap_or(0.0);
         capacities.entry(m_id).or_default().entry(day_name).or_default().insert(shift, hours);
     }
 

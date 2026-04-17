@@ -82,7 +82,7 @@ pub async fn get_process_info_preview(connection_string: String) -> Result<Vec<P
                 .get::<&str, _>("ProcessName")
                 .map(|s| s.trim().to_string()),
             date: row.get::<&str, _>("Date").map(|s| s.trim().to_string()),
-            hours_available: get_i32_robust(&row, "HoursAvailable"),
+            hours_available: get_f64_robust(&row, "HoursAvailable"),
             machine_id: row
                 .get::<&str, _>("MachineID")
                 .map(|s| s.trim().to_string()),
@@ -123,7 +123,7 @@ pub async fn get_process_info(
                 .get::<&str, _>("ProcessName")
                 .map(|s| s.trim().to_string()),
             date: row.get::<&str, _>("Date").map(|s| s.trim().to_string()),
-            hours_available: get_i32_robust(&row, "HoursAvailable"),
+            hours_available: get_f64_robust(&row, "HoursAvailable"),
             machine_id: row
                 .get::<&str, _>("MachineID")
                 .map(|s| s.trim().to_string()),
