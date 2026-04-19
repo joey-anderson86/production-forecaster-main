@@ -1,7 +1,3 @@
-<div align="center">
-  <img width="1200" height="475" alt="Production Forecaster Banner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
-
 # Production Forecaster & Scheduler
 
 **Production Forecaster** is a comprehensive, desktop-native manufacturing intelligence application. Built to streamline production planning, capacity management, and delivery tracking, the system provides an intuitive interface for managing complex shift schedules, forecasting material shortages, and maintaining a healthy production pipeline.
