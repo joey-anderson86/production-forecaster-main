@@ -101,3 +101,15 @@ CREATE TABLE dbo.DailyRate (
     CONSTRAINT PK_DailyRate PRIMARY KEY (PartNumber, Week, Year)
 );
 GO
+
+-- 8. Create mapping for Part to specific Machines
+IF OBJECT_ID('dbo.PartMachineCapability', 'U') IS NOT NULL
+DROP TABLE dbo.PartMachineCapability;
+GO
+CREATE TABLE dbo.PartMachineCapability (
+    PartNumber NVARCHAR(50) NOT NULL,
+    MachineID NVARCHAR(50) NOT NULL,
+    CONSTRAINT PK_PartMachineCapability PRIMARY KEY (PartNumber, MachineID)
+    -- Optional: Add Foreign Keys referencing PartInfo and Process tables
+);
+GO

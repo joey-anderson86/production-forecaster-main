@@ -774,3 +774,74 @@ pub async fn get_active_weeks(connection_string: String) -> Result<Vec<String>, 
 
     Ok(result)
 }
+
+#[tauri::command]
+pub async fn get_part_machine_capabilities(
+    connection_string: &str,
+) -> Result<Vec<PartMachineCapability>, String> {
+    let mut client = create_client(connection_string).await?;
+    let stream = client
+        .query(
+            "SELECT PartNumber, MachineID FROM dbo.PartMachineCapability ORDER BY PartNumber",
+            &[],
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    
+    let rows = stream
+        .into_first_result()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let result = rows
+        .into_iter()
+        .map(|row| PartMachineCapability {
+            part_number: row
+                .get::<&str, _>("PartNumber")
+                .unwrap_or_default()
+                .trim()
+                .to_string(),
+            machine_id: row
+                .get::<&str, _>("MachineID")
+                .unwrap_or_default()
+                .trim()
+                .to_string(),
+        })
+        .collect();
+
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn add_part_machine_capability(
+    connection_string: &str,
+    part_number: &str,
+    machine_id: &str,
+) -> Result<(), String> {
+    let mut client = create_client(connection_string).await?;
+    client
+        .execute(
+            "INSERT INTO dbo.PartMachineCapability (PartNumber, MachineID) VALUES (@p1, @p2)",
+            &[&part_number, &machine_id],
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_part_machine_capability(
+    connection_string: &str,
+    part_number: &str,
+    machine_id: &str,
+) -> Result<(), String> {
+    let mut client = create_client(connection_string).await?;
+    client
+        .execute(
+            "DELETE FROM dbo.PartMachineCapability WHERE PartNumber = @p1 AND MachineID = @p2",
+            &[&part_number, &machine_id],
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}

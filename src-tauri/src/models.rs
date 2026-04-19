@@ -200,6 +200,7 @@ pub struct SchedulerState {
 pub struct SchedulerMeta {
     pub active_weeks: Vec<String>,
     pub process_hierarchy: HashMap<String, Vec<String>>,
+    pub part_machine_map: HashMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -229,4 +230,12 @@ pub struct ProcessInfoId {
     #[serde(rename = "MachineID")]
     pub machine_id: Option<String>,
     pub shift: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "PascalCase")]
+pub struct PartMachineCapability {
+    pub part_number: String,
+    #[serde(rename = "MachineID")]
+    pub machine_id: String,
 }

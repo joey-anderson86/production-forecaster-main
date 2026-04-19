@@ -43,10 +43,12 @@ import {
   IconDownload,
   IconCalendar,
   IconInfoCircle,
+  IconRoute,
 } from "@tabler/icons-react";
 import { getCurrentWeekId, parseISOLocal, generateWeekLabel, formatISODate } from "@/lib/dateUtils";
 import { useProcessStore } from "@/lib/processStore";
 import { useScorecardStore } from "@/lib/scorecardStore";
+import { PartMachineCapabilityManagement } from "./PartMachineCapabilityManagement";
 
 
 
@@ -1442,6 +1444,9 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
               <Tabs.Tab value="locatorMapping" leftSection={<IconTable size={14} />}>
                 Locator Mapping
               </Tabs.Tab>
+              <Tabs.Tab value="routingConstraints" leftSection={<IconRoute size={14} />}>
+                Routing Constraints
+              </Tabs.Tab>
               <Tabs.Tab value="reasonCode" leftSection={<IconTable size={14} />}>
                 Reason Codes
               </Tabs.Tab>
@@ -1521,6 +1526,10 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
 
             <Tabs.Panel value="locatorMapping">
               {renderTable()}
+            </Tabs.Panel>
+
+            <Tabs.Panel value="routingConstraints">
+              <PartMachineCapabilityManagement connectionString={connectionString} />
             </Tabs.Panel>
 
             <Tabs.Panel value="reasonCode">

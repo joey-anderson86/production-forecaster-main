@@ -466,9 +466,35 @@ pub async fn get_scheduler_meta(connection_string: String) -> Result<SchedulerMe
         hierarchy.entry(p).or_default().push(m);
     }
 
+    // Get Part -> Machine Routing
+    let map_query = "SELECT PartNumber, MachineID FROM dbo.PartMachineCapability WHERE MachineID IS NOT NULL AND PartNumber IS NOT NULL";
+    let rows = client
+        .query(map_query, &[])
+        .await
+        .map_err(|e| e.to_string())?
+        .into_first_result()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut part_machine_map: HashMap<String, Vec<String>> = HashMap::new();
+    for row in rows {
+        let p = row
+            .get::<&str, _>("PartNumber")
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        let m = row
+            .get::<&str, _>("MachineID")
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        part_machine_map.entry(p).or_default().push(m);
+    }
+
     Ok(SchedulerMeta {
         active_weeks,
         process_hierarchy: hierarchy,
+        part_machine_map,
     })
 }
 

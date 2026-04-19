@@ -65,6 +65,9 @@ pub fn run() {
             commands::master_data::delete_reason_codes,
             commands::master_data::replace_reason_codes,
             commands::master_data::get_reason_codes_by_process,
+            commands::master_data::get_part_machine_capabilities,
+            commands::master_data::add_part_machine_capability,
+            commands::master_data::delete_part_machine_capability,
 
             // Daily Rate Commands
             commands::rates::get_daily_rate_preview,

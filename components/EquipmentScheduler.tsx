@@ -54,10 +54,26 @@ interface EquipmentSchedulerProps {
 interface SchedulerMeta {
   ActiveWeeks: string[];
   ProcessHierarchy: Record<string, string[]>;
+  PartMachineMap?: Record<string, string[]>;
 }
 
 
 // --- Helper Functions ---
+
+function findJobPartNumber(jobId: string, state: SchedulerState): string | null {
+  const uIdx = state.Unassigned.findIndex(j => j.Id === jobId);
+  if (uIdx !== -1) return state.Unassigned[uIdx].PartNumber;
+
+  for (const mInfo of Object.values(state.Machines)) {
+    for (const dShifts of Object.values(mInfo.Schedule)) {
+      for (const sData of Object.values(dShifts)) {
+        const jIdx = sData.Jobs.findIndex(j => j.Id === jobId);
+        if (jIdx !== -1) return sData.Jobs[jIdx].PartNumber;
+      }
+    }
+  }
+  return null;
+}
 
 const SHIFT_COLORS: Record<string, string> = {
   'A': 'blue.5',
@@ -310,6 +326,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
   const [backlogDay, setBacklogDay] = useState<DayOfWeek | 'All'>('Mon');
   const [meta, setMeta] = useState<SchedulerMeta | null>(null);
   const [previewData, setPreviewData] = useState<{ jobId: string, qty: number } | null>(null);
+  const [allowedDropMachines, setAllowedDropMachines] = useState<string[] | null>(null);
 
   const consolidateJobsList = useCallback((jobs: JobBlock[]) => {
     const consolidated: JobBlock[] = [];
@@ -574,7 +591,18 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
     fetchUtilization();
   }, [fetchUtilization]);
 
+  const onDragStart = useCallback((initial: any) => {
+    if (!data) return;
+    const partNumber = findJobPartNumber(initial.draggableId, data);
+    if (partNumber && meta?.PartMachineMap && meta.PartMachineMap[partNumber]) {
+      setAllowedDropMachines(meta.PartMachineMap[partNumber]);
+    } else {
+      setAllowedDropMachines(null);
+    }
+  }, [data, meta]);
+
   const onDragEnd = useCallback(async (result: DropResult) => {
+    setAllowedDropMachines(null);
     const { source, destination } = result;
     if (!destination) return;
     if (source.droppableId === destination.droppableId && source.index === destination.index) return;
@@ -645,6 +673,38 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
           };
         }
         const shiftData = newState.Machines[destMachine].Schedule[destDay][destShift];
+
+        // AUTO-SPLIT LOGIC
+        const availableHours = shiftData.CapacityHrs - shiftData.TotalAssignedHours;
+        const neededHours = (movedJob.TargetQty * movedJob.ProcessingTimeMins) / 60;
+
+        if (neededHours > availableHours) {
+          const qtyThatFits = Math.floor((availableHours * 60) / movedJob.ProcessingTimeMins);
+
+          if (qtyThatFits > 0) {
+            const originalQty = movedJob.TargetQty;
+            const leftoverQty = originalQty - qtyThatFits;
+
+            movedJob.TargetQty = qtyThatFits;
+            movedJob.MaxQty = qtyThatFits;
+
+            const remainderJob: JobBlock = {
+              ...movedJob,
+              Id: `${movedJob.Id}|split|${Date.now()}`,
+              TargetQty: leftoverQty,
+              MaxQty: leftoverQty,
+              IsBatchSplit: true
+            };
+
+            newState.Unassigned.push(remainderJob);
+            newState.Unassigned = consolidateJobsList(newState.Unassigned);
+          } else {
+            newState.Unassigned.push(movedJob);
+            newState.Unassigned = consolidateJobsList(newState.Unassigned);
+            notifications.show({ title: 'Shift Full: Card returned to backlog', message: 'Not enough capacity to place this job.', color: 'yellow' });
+            return newState;
+          }
+        }
 
         // AUTO-CONSOLIDATION (MERGE)
         // Check if a card with the exact same part number already exists in this machine/shift
@@ -884,7 +944,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
         </Group>
       </Box>
 
-      <DragDropContext onDragEnd={onDragEnd}>
+      <DragDropContext onDragEnd={onDragEnd} onDragStart={onDragStart}>
         {loading || !data ? (
           <Center style={{ flex: 1 }}><Loader size="lg" /></Center>
         ) : (
@@ -1053,9 +1113,10 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
 
                                       const isOver = shiftData && effectiveHours > (shiftData.CapacityHrs || 0);
                                       const util = shiftData && shiftData.CapacityHrs > 0 ? (effectiveHours / shiftData.CapacityHrs) * 100 : 0;
+                                      const isMachineAllowed = allowedDropMachines === null || allowedDropMachines.includes(machine.MachineID);
 
                                       return (
-                                        <Droppable key={cellId} droppableId={cellId} isDropDisabled={!s.isWorking || (shiftData && shiftData.CapacityHrs === 0)}>
+                                        <Droppable key={cellId} droppableId={cellId} isDropDisabled={!s.isWorking || (shiftData && shiftData.CapacityHrs === 0) || !isMachineAllowed}>
                                           {(provided, snapshot) => (
                                             <Box
                                               ref={provided.innerRef}

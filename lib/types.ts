@@ -78,6 +78,11 @@ export interface JobAssignment {
   RunSequence: number;
 }
 
+export interface SQLPartMachineCapability {
+  PartNumber: string;
+  MachineID: string;
+}
+
 /**
  * UI State Types
  * Used for frontend data processing and display
