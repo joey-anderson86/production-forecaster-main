@@ -233,9 +233,55 @@ pub struct ProcessInfoId {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "PascalCase")]
+#[serde(rename_all = "camelCase")]
 pub struct PartMachineCapability {
-    pub part_number: String,
-    #[serde(rename = "MachineID")]
+    pub part_id: String,
     pub machine_id: String,
+    pub parts_per_hour: f64,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct BacklogItem {
+    pub id: String,
+    pub part_id: String,
+    pub quantity: u32,
+    pub priority: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct MachineState {
+    pub machine_id: String,
+    pub total_capacity_hours: f64,
+    pub current_utilization_pct: f64,
+    pub max_utilization_pct: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ScheduledTask {
+    pub backlog_item_id: String,
+    pub part_id: String,
+    pub machine_id: String,
+    pub quantity: u32,
+    pub estimated_hours: f64,
+    pub added_utilization_pct: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ScheduleRequest {
+    pub backlog_items: Vec<BacklogItem>,
+    pub capabilities: Vec<PartMachineCapability>,
+    pub machine_states: Vec<MachineState>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ScheduleResponse {
+    pub newly_scheduled: Vec<ScheduledTask>,
+    pub remaining_backlog: Vec<BacklogItem>,
+    pub updated_machine_states: Vec<MachineState>,
+}
+

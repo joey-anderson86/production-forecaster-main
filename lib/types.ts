@@ -79,8 +79,8 @@ export interface JobAssignment {
 }
 
 export interface SQLPartMachineCapability {
-  PartNumber: string;
-  MachineID: string;
+  partId: string;
+  machineId: string;
 }
 
 /**
@@ -112,4 +112,47 @@ export interface RawPipelineRow {
   Date: string;
   WIPLocator: string;
   Qty: number;
+}
+
+// --- Scheduler Algorithm Types ---
+
+export interface BacklogItem {
+  id: string;
+  partId: string;
+  quantity: number;
+  priority: number;
+}
+
+export interface PartMachineCapability {
+  partId: string;
+  machineId: string;
+  partsPerHour: number;
+}
+
+export interface MachineState {
+  machineId: string;
+  totalCapacityHours: number;
+  currentUtilizationPct: number;
+  maxUtilizationPct: number;
+}
+
+export interface ScheduledTask {
+  backlogItemId: string;
+  partId: string;
+  machineId: string;
+  quantity: number;
+  estimatedHours: number;
+  addedUtilizationPct: number;
+}
+
+export interface ScheduleRequest {
+  backlogItems: BacklogItem[];
+  capabilities: PartMachineCapability[];
+  machineStates: MachineState[];
+}
+
+export interface ScheduleResponse {
+  newlyScheduled: ScheduledTask[];
+  remainingBacklog: BacklogItem[];
+  updatedMachineStates: MachineState[];
 }

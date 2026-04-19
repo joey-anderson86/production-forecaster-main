@@ -550,3 +550,100 @@ pub async fn save_scheduler_state(
 
     Ok(())
 }
+
+fn calculate_optimal_schedule(mut request: ScheduleRequest) -> ScheduleResponse {
+    // 1. Sort backlog_items by priority (highest first)
+    request.backlog_items.sort_by(|a, b| b.priority.cmp(&a.priority));
+
+    // 2. Index capabilities and machine_states
+    let mut capabilities_map: HashMap<String, Vec<&PartMachineCapability>> = HashMap::new();
+    for cap in &request.capabilities {
+        capabilities_map.entry(cap.part_id.clone()).or_default().push(cap);
+    }
+    
+    // Sort capabilities per part by parts_per_hour (fastest first)
+    for caps in capabilities_map.values_mut() {
+        caps.sort_by(|a, b| b.parts_per_hour.partial_cmp(&a.parts_per_hour).unwrap_or(std::cmp::Ordering::Equal));
+    }
+
+    let mut machine_states_map: HashMap<String, MachineState> = HashMap::new();
+    for state in request.machine_states {
+        machine_states_map.insert(state.machine_id.clone(), state);
+    }
+
+    let mut newly_scheduled: Vec<ScheduledTask> = Vec::new();
+    let mut remaining_backlog: Vec<BacklogItem> = Vec::new();
+
+    // 3. Loop through sorted backlog items
+    for mut item in request.backlog_items {
+        let mut fully_scheduled = false;
+
+        if let Some(eligible_caps) = capabilities_map.get(&item.part_id) {
+            // 4. For each part, finding eligible machines is already sorted by fastest first
+            for cap in eligible_caps {
+                if cap.parts_per_hour <= 0.0 || item.quantity == 0 {
+                    continue;
+                }
+
+                if let Some(machine) = machine_states_map.get_mut(&cap.machine_id) {
+                    if machine.total_capacity_hours <= 0.0 || machine.current_utilization_pct >= machine.max_utilization_pct {
+                        continue;
+                    }
+
+                    // Calculate how many hours we can still assign to this machine
+                    let remaining_pct = machine.max_utilization_pct - machine.current_utilization_pct;
+                    let remaining_hours = (remaining_pct / 100.0) * machine.total_capacity_hours;
+
+                    // Calculate how many parts can fit into the remaining hours
+                    let max_parts_fit = (remaining_hours * cap.parts_per_hour).floor() as u32;
+                    let parts_to_schedule = std::cmp::min(item.quantity, max_parts_fit);
+
+                    if parts_to_schedule > 0 {
+                        // 5. Calculate estimated hours
+                        let estimated_hours = parts_to_schedule as f64 / cap.parts_per_hour;
+
+                        // 6. Calculate utilization impact percentage
+                        let utilization_impact = (estimated_hours / machine.total_capacity_hours) * 100.0;
+
+                        // 8. Assign part to machine
+                        machine.current_utilization_pct += utilization_impact;
+
+                        newly_scheduled.push(ScheduledTask {
+                            backlog_item_id: item.id.clone(),
+                            part_id: item.part_id.clone(),
+                            machine_id: machine.machine_id.clone(),
+                            quantity: parts_to_schedule,
+                            estimated_hours,
+                            added_utilization_pct: utilization_impact,
+                        });
+
+                        item.quantity -= parts_to_schedule;
+
+                        if item.quantity == 0 {
+                            fully_scheduled = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 9. If no machine can accept the rest, push remainder to remaining_backlog
+        if !fully_scheduled && item.quantity > 0 {
+            remaining_backlog.push(item);
+        }
+    }
+
+    let updated_machine_states: Vec<MachineState> = machine_states_map.into_values().collect();
+
+    ScheduleResponse {
+        newly_scheduled,
+        remaining_backlog,
+        updated_machine_states,
+    }
+}
+
+#[tauri::command]
+pub async fn auto_schedule(request: ScheduleRequest) -> Result<ScheduleResponse, String> {
+    Ok(calculate_optimal_schedule(request))
+}

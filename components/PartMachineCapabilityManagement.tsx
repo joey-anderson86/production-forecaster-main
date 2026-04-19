@@ -70,7 +70,7 @@ export function PartMachineCapabilityManagement({ connectionString }: Props) {
     setIsAdding(true);
     try {
       for (const machine of selectedMachines) {
-        const exists = capabilities.some(c => c.PartNumber === selectedPart && c.MachineID === machine);
+        const exists = capabilities.some(c => c.partId === selectedPart && c.machineId === machine);
         if (!exists) {
           await invoke("add_part_machine_capability", {
             connectionString,
@@ -107,8 +107,8 @@ export function PartMachineCapabilityManagement({ connectionString }: Props) {
   const groupedCapabilities = useMemo(() => {
     const map = new Map<string, string[]>();
     capabilities.forEach(c => {
-      if (!map.has(c.PartNumber)) map.set(c.PartNumber, []);
-      map.get(c.PartNumber)!.push(c.MachineID);
+      if (!map.has(c.partId)) map.set(c.partId, []);
+      map.get(c.partId)!.push(c.machineId);
     });
     return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   }, [capabilities]);
@@ -193,7 +193,7 @@ export function PartMachineCapabilityManagement({ connectionString }: Props) {
             </Table.Tr>
           ))}
           {groupedCapabilities.length === 0 && (
-            <Table.Tr>
+            <Table.Tr key="empty-state">
               <Table.Td colSpan={2}><Text ta="center" c="dimmed">No routing constraints defined.</Text></Table.Td>
             </Table.Tr>
           )}

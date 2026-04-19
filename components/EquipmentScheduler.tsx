@@ -845,6 +845,152 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
     }
   };
 
+  const [isAutoScheduling, setIsAutoScheduling] = useState(false);
+  const { autoScheduleOperations } = useProcessStore();
+
+  const handleAutoSchedule = async () => {
+    if (!data || !meta || !meta.PartMachineMap) return;
+    setIsAutoScheduling(true);
+    try {
+      const backlogItems = data.Unassigned.map((job, idx) => ({
+        id: job.Id,
+        partId: job.PartNumber,
+        quantity: job.TargetQty,
+        priority: 1000 - idx
+      }));
+
+      const capabilities: any[] = [];
+      data.Unassigned.forEach(job => {
+        const normalizedJobPart = job.PartNumber.trim().toUpperCase();
+        const machinesKey = Object.keys(meta?.PartMachineMap || {}).find(k => k.trim().toUpperCase() === normalizedJobPart);
+        let machines = machinesKey && meta?.PartMachineMap ? meta.PartMachineMap[machinesKey] : [];
+
+        // Fallback: if no specific routing constraint, allow all machines in the current process
+        if ((!machines || machines.length === 0) && processName && meta?.ProcessHierarchy?.[processName]) {
+            machines = meta.ProcessHierarchy[processName];
+        }
+
+        // Fallback processing time if 0, prevents un-allocatable parts
+        const pTime = job.ProcessingTimeMins > 0 ? job.ProcessingTimeMins : 1.0; 
+
+        machines.forEach(mId => {
+          capabilities.push({
+            partId: job.PartNumber,
+            machineId: mId,
+            partsPerHour: 60.0 / pTime
+          });
+        });
+      });
+
+      const machineStates: any[] = [];
+      Object.entries(data.Machines).forEach(([mId, mInfo]) => {
+        let totalCapHrs = 0;
+        let totalAssignedHrs = 0;
+        Object.values(mInfo.Schedule).forEach(day => {
+          Object.values(day).forEach(shift => {
+            totalCapHrs += shift.CapacityHrs;
+            totalAssignedHrs += shift.TotalAssignedHours;
+          });
+        });
+        machineStates.push({
+          machineId: mId,
+          totalCapacityHours: totalCapHrs,
+          currentUtilizationPct: totalCapHrs > 0 ? (totalAssignedHrs / totalCapHrs) * 100.0 : 0.0,
+          maxUtilizationPct: 100.0
+        });
+      });
+
+      const request = { backlogItems, capabilities, machineStates };
+      const response = await autoScheduleOperations(request);
+
+      setData(prev => {
+        if (!prev) return null;
+        const newState = copyState(prev);
+
+        newState.Unassigned = prev.Unassigned.filter(job => 
+          response.remainingBacklog.some(b => b.id === job.Id)
+        );
+
+        response.newlyScheduled.forEach(task => {
+          const originalJob = prev.Unassigned.find(j => j.Id === task.backlogItemId);
+          if (!originalJob) return;
+
+          let remainingQtyToSchedule = task.quantity;
+          const mInfo = newState.Machines[task.machineId];
+
+          if (mInfo) {
+            for (const [day, dayShifts] of Object.entries(mInfo.Schedule)) {
+               for (const [shift, shiftData] of Object.entries(dayShifts)) {
+                  if (remainingQtyToSchedule <= 0) break;
+                 
+                  const availableHours = shiftData.CapacityHrs - shiftData.TotalAssignedHours;
+                  if (availableHours > 0) {
+                     const maxQtyForShift = Math.floor((availableHours * 60) / originalJob.ProcessingTimeMins);
+                     const qtyToPlace = Math.min(maxQtyForShift, remainingQtyToSchedule);
+
+                     if (qtyToPlace > 0) {
+                        const jobToAdd = {
+                          ...originalJob,
+                          Id: `${originalJob.Id}|${task.machineId}|${day}|${shift}|${Date.now()}`,
+                          TargetQty: qtyToPlace,
+                          Shift: shift
+                        };
+
+                        shiftData.Jobs.push(jobToAdd);
+                        shiftData.TotalAssignedHours = calculateTotalHours(shiftData.Jobs);
+                        remainingQtyToSchedule -= qtyToPlace;
+                     }
+                  }
+               }
+            }
+
+            // If we still have quantity that didn't fit into shifts precisely, push back to backlog
+            if (remainingQtyToSchedule > 0) {
+               newState.Unassigned.push({
+                 ...originalJob,
+                 Id: `${originalJob.Id}|REMAINDER|${Date.now()}`,
+                 TargetQty: remainingQtyToSchedule
+               });
+            }
+          }
+        });
+
+        // Consolidate shifts
+        Object.values(newState.Machines).forEach(m => {
+          Object.values(m.Schedule).forEach(day => {
+            Object.values(day).forEach(shift => {
+               const consolidatedJobs: any[] = [];
+               shift.Jobs.forEach(job => {
+                 const existing = consolidatedJobs.find(j => j.PartNumber === job.PartNumber);
+                 if (existing) {
+                    existing.TargetQty += job.TargetQty;
+                 } else {
+                    consolidatedJobs.push(job);
+                 }
+               });
+               shift.Jobs = consolidatedJobs;
+               shift.TotalAssignedHours = calculateTotalHours(shift.Jobs);
+            });
+          });
+        });
+
+        return newState;
+      });
+
+      notifications.show({ 
+        title: 'Auto-Scheduling Complete', 
+        message: `Successfully scheduled ${response.newlyScheduled.length} operations. ${response.remainingBacklog.length} parts remain in the backlog.`, 
+        color: 'green' 
+      });
+
+      setDirty(true);
+    } catch (e: any) {
+       notifications.show({ title: 'Auto-Scheduling Failed', message: e.toString(), color: 'red' });
+    } finally {
+      setIsAutoScheduling(false);
+    }
+  };
+
   const daysWithShifts = useMemo(() => {
     if (!data) return [];
     const ALL_SHIFTS = ['A', 'B', 'C', 'D'];
@@ -936,6 +1082,17 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                 leftSection={<IconFileExport size={16} />}
               >
                 Generate Changeover Schedule
+              </Button>
+              <Button
+                variant="light"
+                color="blue"
+                size="sm"
+                disabled={isSubmitting || isAutoScheduling || !data?.Unassigned.length}
+                loading={isAutoScheduling}
+                onClick={handleAutoSchedule}
+                leftSection={<IconBolt size={16} />}
+              >
+                Auto-Schedule
               </Button>
               <Button variant="light" color="gray" size="sm" disabled={!dirty || isSubmitting} onClick={() => fetchUtilization()}>Reset</Button>
               <Button variant="filled" color="indigo" size="sm" disabled={!dirty || isSubmitting} loading={isSubmitting} onClick={handleSubmit} leftSection={<IconBolt size={16} />}>Submit Schedule</Button>

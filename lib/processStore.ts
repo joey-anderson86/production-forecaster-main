@@ -2,8 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { invoke } from '@tauri-apps/api/core';
 
-import { SQLProcess } from './types';
-
+import { SQLProcess, ScheduleRequest, ScheduleResponse } from './types';
 interface ProcessState {
   processes: string[];
   activeProcess: string | null;
@@ -17,6 +16,7 @@ interface ProcessActions {
   removeProcess: (connectionString: string, name: string, machineId?: string) => Promise<void>;
   setProcesses: (processes: string[]) => void;
   setActiveProcess: (name: string | null) => void;
+  autoScheduleOperations: (request: ScheduleRequest) => Promise<ScheduleResponse>;
 }
 
 export type ProcessStore = ProcessState & ProcessActions;
@@ -31,6 +31,16 @@ export const useProcessStore = create<ProcessStore>()(
 
       setProcesses: (processes) => set({ processes }),
       setActiveProcess: (name) => set({ activeProcess: name }),
+      
+      autoScheduleOperations: async (request: ScheduleRequest) => {
+        try {
+          const response = await invoke<ScheduleResponse>('auto_schedule', { request });
+          return response;
+        } catch (err: any) {
+          console.error('Failed to auto-schedule:', err);
+          throw err;
+        }
+      },
 
       fetchProcesses: async (connectionString) => {
         if (!connectionString) return;

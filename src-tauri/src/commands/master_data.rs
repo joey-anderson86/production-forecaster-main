@@ -796,7 +796,7 @@ pub async fn get_part_machine_capabilities(
     let result = rows
         .into_iter()
         .map(|row| PartMachineCapability {
-            part_number: row
+            part_id: row
                 .get::<&str, _>("PartNumber")
                 .unwrap_or_default()
                 .trim()
@@ -806,6 +806,7 @@ pub async fn get_part_machine_capabilities(
                 .unwrap_or_default()
                 .trim()
                 .to_string(),
+            parts_per_hour: 0.0,
         })
         .collect();
 
