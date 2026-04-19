@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult, DroppableProvided, DraggableProvided, DraggableStateSnapshot, DroppableStateSnapshot } from '@hello-pangea/dnd';
-import { Portal, Box, Paper, Text, Group, Stack, ScrollArea, Tooltip, HoverCard, Title, Badge, Select, ActionIcon, Divider, Loader, Center, Button, Popover, NumberInput } from '@mantine/core';
+import { Portal, Box, Paper, Text, Group, Stack, ScrollArea, Tooltip, HoverCard, Title, Badge, Select, ActionIcon, Divider, Loader, Center, Button, Popover, NumberInput, Flex, MultiSelect } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconAlertTriangle, IconClock, IconBox, IconBolt, IconFileExport } from '@tabler/icons-react';
 import { invoke } from '@tauri-apps/api/core';
@@ -345,6 +345,31 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
 
   const [data, setData] = useState<SchedulerState | null>(initialState || null);
   const [loading, setLoading] = useState(true);
+
+  const [selectedEquipment, setSelectedEquipment] = useState<string[]>([]);
+
+  const allMachines = useMemo(() => {
+    if (!data || !meta || !meta.ProcessHierarchy) return [];
+    let mList: string[] = [];
+    Object.entries(meta.ProcessHierarchy).forEach(([pName, mIds]) => {
+      if (processName !== 'All Processes' && processName !== pName) return;
+      mIds.forEach(mId => {
+        if (data.Machines[mId] && !mList.includes(mId)) {
+          mList.push(mId);
+        }
+      });
+    });
+    return mList;
+  }, [data, meta, processName]);
+
+  const displayedMachines = useMemo(() => {
+    if (selectedEquipment.length === 0) return allMachines;
+    return allMachines.filter(mId => selectedEquipment.includes(mId));
+  }, [allMachines, selectedEquipment]);
+
+  const multiSelectData = useMemo(() => {
+    return allMachines.map(m => ({ value: m, label: m }));
+  }, [allMachines]);
 
   const aggregateStats = useMemo(() => {
     if (!data) return { totalLoad: 0, totalCapacity: 0, utilization: 0 };
@@ -863,8 +888,75 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
         {loading || !data ? (
           <Center style={{ flex: 1 }}><Loader size="lg" /></Center>
         ) : (
-          <Box style={{ display: 'flex', flex: 1, gap: '16px', overflow: 'hidden' }}>
-            <Paper withBorder style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: '12px', backgroundColor: 'white' }}>
+          <Flex h="calc(100vh - 120px)" wrap="nowrap" gap="md" style={{ overflow: 'hidden' }}>
+            
+            {/* LEFT PANE: Backlog */}
+            <Paper withBorder w={350} style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: '12px' }}>
+              <Box p="md" style={{ borderBottom: '2px solid var(--mantine-color-gray-3)', backgroundColor: 'var(--mantine-color-gray-0)' }}>
+                <Stack gap="xs">
+                  <Group justify="space-between">
+                    <Group gap={8}><IconBox size={20} color="var(--mantine-color-indigo-6)" /><Text fw={800} size="sm">Backlog</Text></Group>
+                    <Badge color="indigo" variant="light">{data.Unassigned.length}</Badge>
+                  </Group>
+                  <Select size="xs" data={['All', ...DAYS_OF_WEEK]} value={backlogDay} onChange={(val) => setBacklogDay(val as any)} label="Filter by planned day:" styles={{ label: { fontSize: '10px', fontWeight: 700, color: 'var(--mantine-color-gray-6)' } }} />
+                </Stack>
+              </Box>
+              <ScrollArea style={{ flex: 1 }}>
+                <Droppable droppableId="unassigned">
+                  {(provided, snapshot) => (
+                    <Box
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
+                      p="md"
+                      style={{
+                        minHeight: '100%',
+                        backgroundColor: snapshot.isDraggingOver ? 'var(--mantine-color-indigo-0)' : 'white',
+                        transition: 'background-color 0.2s ease'
+                      }}
+                    >
+                      {data.Unassigned
+                        .map((job, originalIndex) => ({ job, originalIndex }))
+                        .filter(({ job }) => {
+                          if (backlogDay === 'All') return true;
+                          const jobDateStr = job.Id.split('|')[2];
+                          const dayIdx = weekDates.findIndex(d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` === jobDateStr);
+                          return DAYS_OF_WEEK[dayIdx] === backlogDay;
+                        })
+                        .map(({ job, originalIndex }, filteredIndex) => (
+                          <JobCard
+                            key={job.Id}
+                            job={job}
+                            index={originalIndex}
+                            weekDates={weekDates}
+                            columnIndex={-1}
+                            shiftSettings={shiftSettings}
+                            onUpdateQty={handleUpdateJobQty}
+                            onPreviewChange={(id, qty) => {
+                              if (qty === null) setPreviewData(null);
+                              else setPreviewData({ jobId: id, qty });
+                            }}
+                          />
+                        ))}
+                      {provided.placeholder}
+                    </Box>
+                  )}
+                </Droppable>
+              </ScrollArea>
+            </Paper>
+
+            {/* RIGHT PANE: Equipment Grid */}
+            <Paper withBorder style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: '12px', backgroundColor: 'white' }}>
+              <Box p="sm" style={{ borderBottom: '1px solid var(--mantine-color-gray-3)', backgroundColor: 'var(--mantine-color-gray-0)' }}>
+                <MultiSelect
+                  placeholder="Filter equipment to focus scheduling..."
+                  data={multiSelectData}
+                  value={selectedEquipment}
+                  onChange={setSelectedEquipment}
+                  searchable
+                  clearable
+                  size="xs"
+                />
+              </Box>
               <ScrollArea style={{ flex: 1 }} type="always">
                 <Box style={{ minWidth: 'max-content', width: '100%' }}>
                   {/* --- Header Row --- */}
@@ -907,6 +999,10 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                   <Stack gap={0}>
                     {Object.entries(meta?.ProcessHierarchy || {}).map(([pName, mIds]) => {
                       if (processName !== 'All Processes' && processName !== pName) return null;
+                      
+                      const processDisplayedMachines = mIds.filter(mId => displayedMachines.includes(mId));
+                      if (processDisplayedMachines.length === 0) return null;
+
                       return (
                         <Box key={pName}>
                           <Box px="md" py="xs" style={{
@@ -918,7 +1014,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                           }}>
                             <Text fw={900} size="xs" c="indigo.9" style={{ letterSpacing: '0.05em' }}>{pName.toUpperCase()}</Text>
                           </Box>
-                          {mIds.map((mId) => {
+                          {processDisplayedMachines.map((mId) => {
                             const machine = data.Machines[mId];
                             if (!machine) return null;
                             return (
@@ -1035,60 +1131,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                 </Box>
               </ScrollArea>
             </Paper>
-
-            <Paper withBorder style={{ width: '280px', display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: '12px' }}>
-              <Box p="md" style={{ borderBottom: '2px solid var(--mantine-color-gray-3)', backgroundColor: 'var(--mantine-color-gray-0)' }}>
-                <Stack gap="xs">
-                  <Group justify="space-between">
-                    <Group gap={8}><IconBox size={20} color="var(--mantine-color-indigo-6)" /><Text fw={800} size="sm">Backlog</Text></Group>
-                    <Badge color="indigo" variant="light">{data.Unassigned.length}</Badge>
-                  </Group>
-                  <Select size="xs" data={['All', ...DAYS_OF_WEEK]} value={backlogDay} onChange={(val) => setBacklogDay(val as any)} label="Filter by planned day:" styles={{ label: { fontSize: '10px', fontWeight: 700, color: 'var(--mantine-color-gray-6)' } }} />
-                </Stack>
-              </Box>
-              <ScrollArea style={{ flex: 1 }}>
-                <Droppable droppableId="unassigned">
-                  {(provided, snapshot) => (
-                    <Box
-                      ref={provided.innerRef}
-                      {...provided.droppableProps}
-                      p="md"
-                      style={{
-                        minHeight: '100%',
-                        backgroundColor: snapshot.isDraggingOver ? 'var(--mantine-color-indigo-0)' : 'white',
-                        transition: 'background-color 0.2s ease'
-                      }}
-                    >
-                      {data.Unassigned
-                        .map((job, originalIndex) => ({ job, originalIndex }))
-                        .filter(({ job }) => {
-                          if (backlogDay === 'All') return true;
-                          const jobDateStr = job.Id.split('|')[2];
-                          const dayIdx = weekDates.findIndex(d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` === jobDateStr);
-                          return DAYS_OF_WEEK[dayIdx] === backlogDay;
-                        })
-                        .map(({ job, originalIndex }, filteredIndex) => (
-                          <JobCard
-                            key={job.Id}
-                            job={job}
-                            index={originalIndex}
-                            weekDates={weekDates}
-                            columnIndex={-1}
-                            shiftSettings={shiftSettings}
-                            onUpdateQty={handleUpdateJobQty}
-                            onPreviewChange={(id, qty) => {
-                              if (qty === null) setPreviewData(null);
-                              else setPreviewData({ jobId: id, qty });
-                            }}
-                          />
-                        ))}
-                      {provided.placeholder}
-                    </Box>
-                  )}
-                </Droppable>
-              </ScrollArea>
-            </Paper>
-          </Box>
+          </Flex>
         )}
       </DragDropContext>
     </Box>
