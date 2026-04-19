@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { 
   Tabs, Select, Button, TextInput, NumberInput, Card, Grid, Group, Text, 
-  ActionIcon, Divider, Box, Badge, Tooltip as MantineTooltip, Tooltip, Stack, Modal, Switch, Paper, Title, SegmentedControl, Center
+  ActionIcon, Divider, Box, Badge, Tooltip as MantineTooltip, Tooltip, Stack, Modal, Switch, Paper, Title, SegmentedControl, Center, MultiSelect
 } from '@mantine/core';
 import { useLocalStorage } from '@mantine/hooks';
 import { 
@@ -13,7 +13,8 @@ import {
   IconCloudCheck, IconCloudDownload, IconAlertTriangle,
   IconChevronsDown, IconChevronsUp,
   IconCalendarOff,
-  IconDatabaseX
+  IconDatabaseX,
+  IconSearch
 } from '@tabler/icons-react';
 import { useScorecardStore, DayOfWeek, PartScorecard, BulkImportGroup } from '@/lib/scorecardStore';
 import { useGlobalWeek } from './WeekContext';
@@ -63,6 +64,7 @@ export default function DeliveryScorecardManagement() {
     key: 'production-planner-all-shifts-toggle',
     defaultValue: false
   });
+  const [selectedPartNumbers, setSelectedPartNumbers] = useState<string[]>([]);
 
   // Initialize connection string and fetch data
   useEffect(() => {
@@ -476,6 +478,22 @@ export default function DeliveryScorecardManagement() {
 
   const activeWeek = activeDepartment && selectedWeekId ? activeDepartment.Weeks[selectedWeekId] : null;
 
+  // Filter logic for the planning table
+  const partFilterOptions = React.useMemo(() => {
+    if (!activeWeek) return [];
+    const parts = activeWeek.Parts
+      .map(p => p.PartNumber)
+      .filter(Boolean);
+    return Array.from(new Set(parts)).sort();
+  }, [activeWeek]);
+
+  const filteredParts = React.useMemo(() => {
+    const parts = activeWeek?.Parts || [];
+    if (selectedPartNumbers.length === 0) return parts;
+    // Keep empty/new parts visible in management view for easier entry
+    return parts.filter(p => !p.PartNumber || selectedPartNumbers.includes(p.PartNumber));
+  }, [activeWeek, selectedPartNumbers]);
+
   return (
     <Stack gap="md" className="w-full">
       <Group justify="space-between" align="center">
@@ -540,6 +558,18 @@ export default function DeliveryScorecardManagement() {
             </Tabs>
 
             <Group gap="sm">
+              <MultiSelect
+                placeholder="Filter by Part Number..."
+                leftSection={<IconSearch size={16} />}
+                data={partFilterOptions}
+                value={selectedPartNumbers}
+                onChange={setSelectedPartNumbers}
+                size="sm"
+                w={280}
+                searchable
+                clearable
+                hidePickedOptions
+              />
               <Select
                 placeholder="Select Week"
                 data={weekOptions}
@@ -566,7 +596,7 @@ export default function DeliveryScorecardManagement() {
                 <WeeklyPlanTable 
                   department={activeTab!}
                   weekId={selectedWeekId!}
-                  parts={activeWeek?.Parts || []}
+                  parts={filteredParts}
                   availableParts={availableParts}
                   isLoadingParts={isLoadingParts}
                   processInfo={processInfo}

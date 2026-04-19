@@ -5,7 +5,7 @@ import { useLocalStorage } from '@mantine/hooks';
 import { useScorecardStore, DayOfWeek, DailyScorecardRecord, PartScorecard } from '@/lib/scorecardStore';
 import { 
   Tabs, Select, Table, Card, Text, Group, Badge, Title, Box, Tooltip, Stack, Button, ActionIcon, Paper, SegmentedControl,
-  RingProgress, Divider as MantineDivider, TextInput, Grid, useMantineTheme, rgba, Center
+  RingProgress, Divider as MantineDivider, TextInput, Grid, useMantineTheme, rgba, Center, MultiSelect
 } from '@mantine/core';
 import { 
   IconPlus, IconChevronDown, IconChevronRight, IconSearch, IconArrowsSort, 
@@ -43,7 +43,7 @@ export default function DeliveryScorecardDisplay() {
   const store = useScorecardStore();
   const { selectedWeekId, setSelectedWeekId } = useGlobalWeek();
   const [expandedParts, setExpandedParts] = useState<Set<string>>(new Set());
-  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedPartNumbers, setSelectedPartNumbers] = useState<string[]>([]);
   const [sortConfig, setSortConfig] = useState<{ key: keyof GroupedPartScorecard; direction: 'asc' | 'desc' } | null>({ key: 'partNumber', direction: 'asc' });
   const [connectionString, setConnectionString] = useState<string | null>(null);
   const [partInfo, setPartInfo] = useState<any[]>([]);
@@ -241,6 +241,15 @@ export default function DeliveryScorecardDisplay() {
     setEditModalOpened(true);
   };
 
+  // Extraction of unique part numbers for the MultiSelect filter
+  const partFilterOptions = React.useMemo(() => {
+    if (!activeWeek) return [];
+    const parts = activeWeek.Parts
+      .map(p => p.PartNumber)
+      .filter(Boolean);
+    return Array.from(new Set(parts)).sort();
+  }, [activeWeek]);
+
   // Grouped data transformation
   const groupedParts = React.useMemo(() => {
      if (!activeWeek) return [];
@@ -295,9 +304,9 @@ export default function DeliveryScorecardDisplay() {
 
      let results = Object.values(groups);
 
-     // Apply Filtering
-     if (searchQuery) {
-        results = results.filter(p => p.partNumber.toLowerCase().includes(searchQuery.toLowerCase()));
+     // Apply Filtering - allow multiple selection
+     if (selectedPartNumbers.length > 0) {
+        results = results.filter(p => selectedPartNumbers.includes(p.partNumber));
      }
 
      // Apply Sorting
@@ -321,7 +330,7 @@ export default function DeliveryScorecardDisplay() {
      }
 
      return results;
-  }, [activeWeek, searchQuery, sortConfig, displayUnit, batchSizeMap]);
+  }, [activeWeek, selectedPartNumbers, sortConfig, displayUnit, batchSizeMap]);
 
   const calculatedTotals = React.useMemo(() => {
     const totals = {
@@ -508,13 +517,17 @@ export default function DeliveryScorecardDisplay() {
                   </Tabs>
 
                   <Group gap="sm">
-                    <TextInput
-                      placeholder="Search Part Number..."
+                    <MultiSelect
+                      placeholder="Filter by Part Number..."
                       leftSection={<IconSearch size={16} />}
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.currentTarget.value)}
+                      data={partFilterOptions}
+                      value={selectedPartNumbers}
+                      onChange={setSelectedPartNumbers}
                       size="sm"
-                      w={240}
+                      w={280}
+                      searchable
+                      clearable
+                      hidePickedOptions
                     />
                     <Select
                       placeholder="Select Week"
