@@ -113,3 +113,25 @@ CREATE TABLE dbo.PartMachineCapability (
     -- Optional: Add Foreign Keys referencing PartInfo and Process tables
 );
 GO
+
+IF OBJECT_ID('dbo.EquipmentSchedule', 'U') IS NOT NULL
+DROP TABLE dbo.EquipmentSchedule;
+GO
+
+CREATE TABLE dbo.EquipmentSchedule (
+    ScheduleID INT IDENTITY(1,1) PRIMARY KEY CLUSTERED,
+    WeekIdentifier NVARCHAR(50) NOT NULL,
+    Department NVARCHAR(50) NOT NULL,
+    MachineID NVARCHAR(50) NOT NULL,
+    Date DATE NOT NULL,
+    Shift NVARCHAR(50) NOT NULL,
+    PartNumber NVARCHAR(50) NOT NULL,
+    Qty INT NOT NULL,
+    RunSequence INT NOT NULL -- Tracks the drag-and-drop order
+);
+GO
+
+-- Index for fast querying by week and department during load
+CREATE NONCLUSTERED INDEX IX_EquipmentSchedule_Week_Dept 
+ON dbo.EquipmentSchedule(WeekIdentifier, Department);
+GO

@@ -705,7 +705,9 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
           } else {
             newState.Unassigned.push(movedJob);
             newState.Unassigned = consolidateJobsList(newState.Unassigned);
-            notifications.show({ title: 'Shift Full: Card returned to backlog', message: 'Not enough capacity to place this job.', color: 'yellow' });
+            setTimeout(() => {
+              notifications.show({ title: 'Shift Full: Card returned to backlog', message: 'Not enough capacity to place this job.', color: 'yellow' });
+            }, 0);
             return newState;
           }
         }
