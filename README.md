@@ -1,6 +1,3 @@
-Here is the complete, expanded, and beautifully formatted `README.md` with all sections thoroughly detailed, from the interactive scheduler through the roles and access configurations. 
-
-```markdown
 <div align="center">
   <img width="1200" height="475" alt="Production Forecaster Banner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
@@ -126,5 +123,4 @@ The application operates using a dual-role access model (`roleMode` toggle) to p
 
 ## 📝 License
 
-*(Add your specific project license information here, e.g., MIT License)*
-```
+Pending
