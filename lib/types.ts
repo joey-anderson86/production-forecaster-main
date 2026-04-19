@@ -121,6 +121,7 @@ export interface BacklogItem {
   partId: string;
   quantity: number;
   priority: number;
+  shift: string;
 }
 
 export interface PartMachineCapability {
@@ -131,6 +132,7 @@ export interface PartMachineCapability {
 
 export interface MachineState {
   machineId: string;
+  shift: string;
   totalCapacityHours: number;
   currentUtilizationPct: number;
   maxUtilizationPct: number;
@@ -140,6 +142,7 @@ export interface ScheduledTask {
   backlogItemId: string;
   partId: string;
   machineId: string;
+  shift: string;
   quantity: number;
   estimatedHours: number;
   addedUtilizationPct: number;

@@ -270,14 +270,29 @@ pub async fn get_machine_utilization(
         .await
         .map_err(|e| e.to_string())?;
 
-    let mut remaining_demand: HashMap<String, i32> = HashMap::new(); // Key: Part|Date|Shift
+    struct DemandBucket {
+        date: String,
+        shift: String,
+        quantity: i32,
+    }
+
+    let mut demand_map: HashMap<String, Vec<DemandBucket>> = HashMap::new();
     for row in rows {
         let p_num = row.get::<&str, _>("PartNumber").unwrap_or_default().trim().to_string();
         let date = row.get::<&str, _>("Date").unwrap_or_default().trim().to_string();
         let shift = row.get::<&str, _>("Shift").unwrap_or("A").trim().to_string();
         let target = get_i32_robust(&row, "TotalTarget").unwrap_or(0);
-        let key = format!("{}|{}|{}", p_num, date, shift);
-        remaining_demand.insert(key, target);
+        
+        demand_map.entry(p_num).or_default().push(DemandBucket {
+            date,
+            shift,
+            quantity: target,
+        });
+    }
+
+    // Sort buckets for each part by date then shift for predictable subtraction
+    for buckets in demand_map.values_mut() {
+        buckets.sort_by(|a, b| a.date.cmp(&b.date).then(a.shift.cmp(&b.shift)));
     }
 
     // 4. Load Current Schedule (EquipmentSchedule)
@@ -366,39 +381,55 @@ pub async fn get_machine_utilization(
             shift_sched.total_assigned_hours += (qty as f64 * p_time) / 60.0;
         }
 
-        // Subtract from remaining demand
-        let demand_key = format!("{}|{}|{}", p_num, date_str, shift);
-        if let Some(rem) = remaining_demand.get_mut(&demand_key) {
-            *rem -= qty;
+        // Subtract from remaining demand using flexible weekly reconciliation
+        let mut qty_to_subtract = qty;
+        if let Some(buckets) = demand_map.get_mut(&p_num) {
+            // First pass: Try exact match (Date + Shift)
+            for bucket in buckets.iter_mut() {
+                if bucket.date == date_str && bucket.shift == shift {
+                    let taken = std::cmp::min(qty_to_subtract, bucket.quantity);
+                    bucket.quantity -= taken;
+                    qty_to_subtract -= taken;
+                    break;
+                }
+            }
+            // Second pass: Subtract remaining scheduled qty from any available bucket for this part (earliest first)
+            if qty_to_subtract > 0 {
+                for bucket in buckets.iter_mut() {
+                    if bucket.quantity > 0 {
+                        let taken = std::cmp::min(qty_to_subtract, bucket.quantity);
+                        bucket.quantity -= taken;
+                        qty_to_subtract -= taken;
+                    }
+                    if qty_to_subtract <= 0 { break; }
+                }
+            }
         }
     }
 
     // 5. Generate Unassigned backlog
     let mut unassigned: Vec<JobBlock> = Vec::new();
-    let mut sorted_demand: Vec<_> = remaining_demand.into_iter().filter(|(_, qty)| *qty > 0).collect();
-    sorted_demand.sort_by(|a, b| a.0.cmp(&b.0)); // Simple sort by key for stability
-
-    for (key, qty) in sorted_demand {
-        let parts: Vec<&str> = key.split('|').collect();
-        let p_num = parts[0].to_string();
-        let date = parts[1].to_string();
-        let shift = parts[2].to_string();
-        
-        let (p_time, b_size) = part_meta.get(&p_num).cloned().unwrap_or((0.0, None));
-        
-        unassigned.push(JobBlock {
-            id: format!("{}|{}|{}", p_num, shift, date), // Backend ID for unassigned cards
-            part_number: p_num,
-            shift: shift.clone(),
-            target_qty: qty,
-            processing_time_mins: p_time,
-            standard_batch_size: b_size,
-            batch_index: 0,
-            is_batch_split: false,
-            original_shift: Some(shift),
-            original_date: Some(date),
-        });
+    for (p_num, buckets) in demand_map {
+        for bucket in buckets {
+            if bucket.quantity > 0 {
+                let (p_time, b_size) = part_meta.get(&p_num).cloned().unwrap_or((0.0, None));
+                unassigned.push(JobBlock {
+                    id: format!("{}|{}|{}", p_num, bucket.shift, bucket.date),
+                    part_number: p_num.clone(),
+                    shift: bucket.shift.clone(),
+                    target_qty: bucket.quantity,
+                    processing_time_mins: p_time,
+                    standard_batch_size: b_size,
+                    batch_index: 0,
+                    is_batch_split: false,
+                    original_shift: Some(bucket.shift),
+                    original_date: Some(bucket.date),
+                });
+            }
+        }
     }
+    // Sort for stability in the UI list
+    unassigned.sort_by(|a, b| a.id.cmp(&b.id));
 
     Ok(SchedulerState {
         unassigned,
@@ -566,9 +597,10 @@ fn calculate_optimal_schedule(mut request: ScheduleRequest) -> ScheduleResponse 
         caps.sort_by(|a, b| b.parts_per_hour.partial_cmp(&a.parts_per_hour).unwrap_or(std::cmp::Ordering::Equal));
     }
 
-    let mut machine_states_map: HashMap<String, MachineState> = HashMap::new();
+    // Index machine_states by (machine_id, shift) for shift-strict capacity tracking
+    let mut machine_states_map: HashMap<(String, String), MachineState> = HashMap::new();
     for state in request.machine_states {
-        machine_states_map.insert(state.machine_id.clone(), state);
+        machine_states_map.insert((state.machine_id.clone(), state.shift.clone()), state);
     }
 
     let mut newly_scheduled: Vec<ScheduledTask> = Vec::new();
@@ -585,12 +617,13 @@ fn calculate_optimal_schedule(mut request: ScheduleRequest) -> ScheduleResponse 
                     continue;
                 }
 
-                if let Some(machine) = machine_states_map.get_mut(&cap.machine_id) {
+                // Look up specific Machine + Shift capacity using composite key
+                if let Some(machine) = machine_states_map.get_mut(&(cap.machine_id.clone(), item.shift.clone())) {
                     if machine.total_capacity_hours <= 0.0 || machine.current_utilization_pct >= machine.max_utilization_pct {
                         continue;
                     }
 
-                    // Calculate how many hours we can still assign to this machine
+                    // Calculate how many hours we can still assign to this machine shift
                     let remaining_pct = machine.max_utilization_pct - machine.current_utilization_pct;
                     let remaining_hours = (remaining_pct / 100.0) * machine.total_capacity_hours;
 
@@ -605,13 +638,14 @@ fn calculate_optimal_schedule(mut request: ScheduleRequest) -> ScheduleResponse 
                         // 6. Calculate utilization impact percentage
                         let utilization_impact = (estimated_hours / machine.total_capacity_hours) * 100.0;
 
-                        // 8. Assign part to machine
+                        // 8. Assign part to machine shift
                         machine.current_utilization_pct += utilization_impact;
 
                         newly_scheduled.push(ScheduledTask {
                             backlog_item_id: item.id.clone(),
                             part_id: item.part_id.clone(),
                             machine_id: machine.machine_id.clone(),
+                            shift: machine.shift.clone(),
                             quantity: parts_to_schedule,
                             estimated_hours,
                             added_utilization_pct: utilization_impact,

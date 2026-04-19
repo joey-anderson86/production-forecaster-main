@@ -149,6 +149,7 @@ pub struct DistributeDemandResult {
 pub struct JobAssignmentPayload {
     pub week_identifier: String,
     pub part_number: String,
+    #[serde(rename = "MachineID")]
     pub machine_id: String,
     pub date: String,
     pub shift: String,
@@ -247,12 +248,14 @@ pub struct BacklogItem {
     pub part_id: String,
     pub quantity: u32,
     pub priority: u32,
+    pub shift: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct MachineState {
     pub machine_id: String,
+    pub shift: String,
     pub total_capacity_hours: f64,
     pub current_utilization_pct: f64,
     pub max_utilization_pct: f64,
@@ -264,6 +267,7 @@ pub struct ScheduledTask {
     pub backlog_item_id: String,
     pub part_id: String,
     pub machine_id: String,
+    pub shift: String,
     pub quantity: u32,
     pub estimated_hours: f64,
     pub added_utilization_pct: f64,

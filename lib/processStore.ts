@@ -2,10 +2,20 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { invoke } from '@tauri-apps/api/core';
 
-import { SQLProcess, ScheduleRequest, ScheduleResponse } from './types';
+import { 
+  SQLProcess, 
+  ScheduleRequest, 
+  ScheduleResponse, 
+  BacklogItem, 
+  PartMachineCapability, 
+  MachineState 
+} from './types';
 interface ProcessState {
   processes: string[];
   activeProcess: string | null;
+  backlog: BacklogItem[];
+  capabilities: PartMachineCapability[];
+  machineStates: MachineState[];
   isLoading: boolean;
   error: string | null;
 }
@@ -16,7 +26,8 @@ interface ProcessActions {
   removeProcess: (connectionString: string, name: string, machineId?: string) => Promise<void>;
   setProcesses: (processes: string[]) => void;
   setActiveProcess: (name: string | null) => void;
-  autoScheduleOperations: (request: ScheduleRequest) => Promise<ScheduleResponse>;
+  setSchedulingState: (backlog: BacklogItem[], capabilities: PartMachineCapability[], machineStates: MachineState[]) => void;
+  autoScheduleOperations: () => Promise<ScheduleResponse>;
 }
 
 export type ProcessStore = ProcessState & ProcessActions;
@@ -26,13 +37,26 @@ export const useProcessStore = create<ProcessStore>()(
     (set, get) => ({
       processes: [],
       activeProcess: null,
+      backlog: [],
+      capabilities: [],
+      machineStates: [],
       isLoading: false,
       error: null,
 
       setProcesses: (processes) => set({ processes }),
       setActiveProcess: (name) => set({ activeProcess: name }),
       
-      autoScheduleOperations: async (request: ScheduleRequest) => {
+      setSchedulingState: (backlog, capabilities, machineStates) => set({ backlog, capabilities, machineStates }),
+
+      autoScheduleOperations: async () => {
+        const { backlog, capabilities, machineStates } = get();
+        
+        const request: ScheduleRequest = {
+          backlogItems: backlog,
+          capabilities,
+          machineStates,
+        };
+
         try {
           const response = await invoke<ScheduleResponse>('auto_schedule', { request });
           return response;

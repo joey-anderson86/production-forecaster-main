@@ -10,7 +10,7 @@ import { load } from '@tauri-apps/plugin-store';
 import { DAYS_OF_WEEK, DayOfWeek, isWorkingDay, getWeekDates, getCurrentWeekId } from '@/lib/dateUtils';
 import { useScorecardStore } from '@/lib/scorecardStore';
 import { useProcessStore } from '@/lib/processStore';
-import { JobAssignment } from '@/lib/types';
+import { JobAssignment, BacklogItem, PartMachineCapability, MachineState } from '@/lib/types';
 
 // --- Interfaces ---
 
@@ -286,6 +286,10 @@ const JobCard = ({
                 <Group justify="space-between" mt={4}>
                   <Text size="xs" c="dimmed">Part Number:</Text>
                   <Text size="xs" fw={600}>{job.PartNumber}</Text>
+                </Group>
+                <Group justify="space-between">
+                  <Text size="xs" c="dimmed">Planned Date:</Text>
+                  <Text size="xs" fw={600}>{job.OriginalDate || jobDateStr}</Text>
                 </Group>
                 <Group justify="space-between">
                   <Text size="xs" c="dimmed">Target Qty:</Text>
@@ -852,25 +856,24 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
     if (!data || !meta || !meta.PartMachineMap) return;
     setIsAutoScheduling(true);
     try {
-      const backlogItems = data.Unassigned.map((job, idx) => ({
+      const backlogItems: BacklogItem[] = data.Unassigned.map((job, idx) => ({
         id: job.Id,
         partId: job.PartNumber,
         quantity: job.TargetQty,
-        priority: 1000 - idx
+        priority: 1000 - idx,
+        shift: job.OriginalShift || job.Shift || 'A'
       }));
 
-      const capabilities: any[] = [];
+      const capabilities: PartMachineCapability[] = [];
       data.Unassigned.forEach(job => {
         const normalizedJobPart = job.PartNumber.trim().toUpperCase();
         const machinesKey = Object.keys(meta?.PartMachineMap || {}).find(k => k.trim().toUpperCase() === normalizedJobPart);
         let machines = machinesKey && meta?.PartMachineMap ? meta.PartMachineMap[machinesKey] : [];
 
-        // Fallback: if no specific routing constraint, allow all machines in the current process
         if ((!machines || machines.length === 0) && processName && meta?.ProcessHierarchy?.[processName]) {
             machines = meta.ProcessHierarchy[processName];
         }
 
-        // Fallback processing time if 0, prevents un-allocatable parts
         const pTime = job.ProcessingTimeMins > 0 ? job.ProcessingTimeMins : 1.0; 
 
         machines.forEach(mId => {
@@ -882,26 +885,36 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
         });
       });
 
-      const machineStates: any[] = [];
+      const machineStatesMap: Record<string, MachineState> = {};
       Object.entries(data.Machines).forEach(([mId, mInfo]) => {
-        let totalCapHrs = 0;
-        let totalAssignedHrs = 0;
-        Object.values(mInfo.Schedule).forEach(day => {
-          Object.values(day).forEach(shift => {
-            totalCapHrs += shift.CapacityHrs;
-            totalAssignedHrs += shift.TotalAssignedHours;
+        Object.values(mInfo.Schedule).forEach(dayShifts => {
+          Object.entries(dayShifts).forEach(([sId, sData]) => {
+            const key = `${mId}|${sId}`;
+            if (!machineStatesMap[key]) {
+              machineStatesMap[key] = {
+                machineId: mId,
+                shift: sId,
+                totalCapacityHours: 0,
+                currentUtilizationPct: 0,
+                maxUtilizationPct: 100.0
+              };
+            }
+            machineStatesMap[key].totalCapacityHours += sData.CapacityHrs;
+            // Temporary storage of assigned hours to calculate pct later
+            (machineStatesMap[key] as any).tempAssigned = ((machineStatesMap[key] as any).tempAssigned || 0) + sData.TotalAssignedHours;
           });
-        });
-        machineStates.push({
-          machineId: mId,
-          totalCapacityHours: totalCapHrs,
-          currentUtilizationPct: totalCapHrs > 0 ? (totalAssignedHrs / totalCapHrs) * 100.0 : 0.0,
-          maxUtilizationPct: 100.0
         });
       });
 
-      const request = { backlogItems, capabilities, machineStates };
-      const response = await autoScheduleOperations(request);
+      // Finalize pct
+      const machineStates = Object.values(machineStatesMap).map(ms => ({
+        ...ms,
+        currentUtilizationPct: ms.totalCapacityHours > 0 ? ((ms as any).tempAssigned / ms.totalCapacityHours) * 100.0 : 0
+      }));
+
+      // Use store action
+      useProcessStore.getState().setSchedulingState(backlogItems, capabilities, machineStates);
+      const response = await autoScheduleOperations();
 
       setData(prev => {
         if (!prev) return null;
@@ -919,32 +932,31 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
           const mInfo = newState.Machines[task.machineId];
 
           if (mInfo) {
+            // Distribute across days but strictly in the assigned shift
             for (const [day, dayShifts] of Object.entries(mInfo.Schedule)) {
-               for (const [shift, shiftData] of Object.entries(dayShifts)) {
-                  if (remainingQtyToSchedule <= 0) break;
-                 
-                  const availableHours = shiftData.CapacityHrs - shiftData.TotalAssignedHours;
-                  if (availableHours > 0) {
-                     const maxQtyForShift = Math.floor((availableHours * 60) / originalJob.ProcessingTimeMins);
-                     const qtyToPlace = Math.min(maxQtyForShift, remainingQtyToSchedule);
+                const shiftData = dayShifts[task.shift];
+                if (!shiftData || remainingQtyToSchedule <= 0) continue;
+                
+                const availableHours = shiftData.CapacityHrs - shiftData.TotalAssignedHours;
+                if (availableHours > 0) {
+                   const maxQtyForShift = Math.floor((availableHours * 60) / originalJob.ProcessingTimeMins);
+                   const qtyToPlace = Math.min(maxQtyForShift, remainingQtyToSchedule);
 
-                     if (qtyToPlace > 0) {
-                        const jobToAdd = {
-                          ...originalJob,
-                          Id: `${originalJob.Id}|${task.machineId}|${day}|${shift}|${Date.now()}`,
-                          TargetQty: qtyToPlace,
-                          Shift: shift
-                        };
+                   if (qtyToPlace > 0) {
+                      const jobToAdd = {
+                        ...originalJob,
+                        Id: `${originalJob.Id}|${task.machineId}|${day}|${task.shift}|${Date.now()}`,
+                        TargetQty: qtyToPlace,
+                        Shift: task.shift
+                      };
 
-                        shiftData.Jobs.push(jobToAdd);
-                        shiftData.TotalAssignedHours = calculateTotalHours(shiftData.Jobs);
-                        remainingQtyToSchedule -= qtyToPlace;
-                     }
-                  }
-               }
+                      shiftData.Jobs.push(jobToAdd);
+                      shiftData.TotalAssignedHours = calculateTotalHours(shiftData.Jobs);
+                      remainingQtyToSchedule -= qtyToPlace;
+                   }
+                }
             }
 
-            // If we still have quantity that didn't fit into shifts precisely, push back to backlog
             if (remainingQtyToSchedule > 0) {
                newState.Unassigned.push({
                  ...originalJob,
