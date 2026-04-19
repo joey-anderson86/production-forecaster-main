@@ -35,15 +35,44 @@ pub async fn get_locator_mapping_preview(
 }
 
 #[tauri::command]
-pub async fn get_part_info_preview(connection_string: String) -> Result<Vec<PartInfo>, String> {
+pub async fn get_part_info_preview(
+    connection_string: String,
+    process_filter: Option<String>,
+    part_filter: Vec<String>,
+) -> Result<Vec<PartInfo>, String> {
     let mut client = create_client(&connection_string).await?;
+
+    let mut query_str = String::from("SELECT TOP 2000 PartNumber, ProcessName, BatchSize, ProcessingTime FROM dbo.PartInfo WHERE 1=1");
+    let mut params: Vec<Box<dyn tiberius::ToSql + Send + Sync>> = Vec::new();
+
+    if let Some(ref process) = process_filter {
+        if !process.is_empty() {
+            query_str.push_str(&format!(" AND ProcessName = @p{}", params.len() + 1));
+            params.push(Box::new(process.clone()));
+        }
+    }
+
+    if !part_filter.is_empty() {
+        query_str.push_str(" AND PartNumber IN (");
+        for (i, part) in part_filter.iter().enumerate() {
+            if i > 0 {
+                query_str.push_str(", ");
+            }
+            query_str.push_str(&format!("@p{}", params.len() + 1));
+            params.push(Box::new(part.clone()));
+        }
+        query_str.push_str(")");
+    }
+
+    query_str.push_str(" ORDER BY ProcessName ASC, PartNumber ASC");
+
+    let param_refs: Vec<&dyn tiberius::ToSql> = params.iter().map(|p| p.as_ref() as &dyn tiberius::ToSql).collect();
+
     let stream = client
-        .query(
-            "SELECT TOP 1000 PartNumber, ProcessName, BatchSize, ProcessingTime FROM dbo.PartInfo",
-            &[],
-        )
+        .query(query_str, &param_refs)
         .await
         .map_err(|e| e.to_string())?;
+
     let rows = stream
         .into_first_result()
         .await
@@ -67,9 +96,40 @@ pub async fn get_part_info_preview(connection_string: String) -> Result<Vec<Part
 }
 
 #[tauri::command]
-pub async fn get_process_info_preview(connection_string: String) -> Result<Vec<ProcessInfo>, String> {
+pub async fn get_process_info_preview(
+    connection_string: String,
+    week_filter: Option<String>,
+    process_filter: Option<String>,
+) -> Result<Vec<ProcessInfo>, String> {
     let mut client = create_client(&connection_string).await?;
-    let stream = client.query("SELECT TOP 1000 ProcessName, CONVERT(VARCHAR, Date, 23) as Date, HoursAvailable, MachineID, Shift, WeekIdentifier FROM dbo.ProcessInfo", &[]).await.map_err(|e| e.to_string())?;
+
+    let mut query_str = String::from("SELECT TOP 2000 ProcessName, CONVERT(VARCHAR, Date, 23) as Date, HoursAvailable, MachineID, Shift, WeekIdentifier FROM dbo.ProcessInfo WHERE 1=1");
+    let mut params: Vec<Box<dyn tiberius::ToSql + Send + Sync>> = Vec::new();
+
+    if let Some(ref week) = week_filter {
+        if !week.is_empty() {
+            query_str.push_str(&format!(" AND WeekIdentifier = @p{}", params.len() + 1));
+            params.push(Box::new(week.clone()));
+        }
+    }
+
+    if let Some(ref process) = process_filter {
+        if !process.is_empty() {
+            query_str.push_str(&format!(" AND ProcessName = @p{}", params.len() + 1));
+            params.push(Box::new(process.clone()));
+        }
+    }
+
+    query_str.push_str(" ORDER BY Date DESC, ProcessName ASC");
+
+    // Convert Vec<Box<dyn ToSql...>> to &[&dyn ToSql]
+    let param_refs: Vec<&dyn tiberius::ToSql> = params.iter().map(|p| p.as_ref() as &dyn tiberius::ToSql).collect();
+
+    let stream = client
+        .query(query_str, &param_refs)
+        .await
+        .map_err(|e| e.to_string())?;
+
     let rows = stream
         .into_first_result()
         .await

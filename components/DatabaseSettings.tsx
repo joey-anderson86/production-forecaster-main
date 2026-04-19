@@ -22,6 +22,7 @@ import {
   Grid,
   Box,
   Divider,
+  MultiSelect,
 } from "@mantine/core";
 import { DatePickerInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
@@ -43,7 +44,7 @@ import {
   IconCalendar,
   IconInfoCircle,
 } from "@tabler/icons-react";
-import { getCurrentWeekId, parseISOLocal } from "@/lib/dateUtils";
+import { getCurrentWeekId, parseISOLocal, generateWeekLabel, formatISODate } from "@/lib/dateUtils";
 import { useProcessStore } from "@/lib/processStore";
 import { useScorecardStore } from "@/lib/scorecardStore";
 
@@ -98,6 +99,10 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
 
   // Preview States
   const [activeTab, setActiveTab] = useState<string | null>("process");
+  const [activeWeeks, setActiveWeeks] = useState<string[]>([]);
+  const [selectedWeek, setSelectedWeek] = useState<string | null>(getCurrentWeekId());
+  const [selectedProcess, setSelectedProcess] = useState<string | null>(null);
+  
   const [locatorMappings, setLocatorMappings] = useState<LocatorMapping[]>([]);
   const [partInfos, setPartInfos] = useState<PartInfo[]>([]);
   const [processInfos, setProcessInfos] = useState<ProcessInfo[]>([]);
@@ -105,8 +110,11 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
   const [processes, setProcesses] = useState<Process[]>([]);
   const [reasonCodes, setReasonCodes] = useState<ReasonCodeData[]>([]);
   const [allPartNumbers, setAllPartNumbers] = useState<string[]>([]);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [partScrollTop, setPartScrollTop] = useState(0);
   
-  // Initial states for comparison
+  const [partFilterProcess, setPartFilterProcess] = useState<string | null>(null);
+  const [partFilterParts, setPartFilterParts] = useState<string[]>([]);
   const [initialLocatorMappings, setInitialLocatorMappings] = useState<string>("");
   const [initialPartInfos, setInitialPartInfos] = useState<string>("");
   const [initialProcessInfos, setInitialProcessInfos] = useState<string>("");
@@ -179,8 +187,25 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
         const val = await store.get<string>("db_connection_string");
         if (val) {
           setConnectionString(val);
-          // Fetch immediately on mount once string is found
-          fetchData(activeTab, val); 
+          
+          // Initial data fetch
+          fetchData(activeTab, val);
+          
+          // Fetch metadata options
+          const [weeks, parts] = await Promise.all([
+            invoke<string[]>("get_active_weeks", { connectionString: val }),
+            invoke<string[]>("get_all_part_numbers", { connectionString: val })
+          ]);
+          setActiveWeeks(weeks);
+          setAllPartNumbers(parts);
+          
+          // Default to current week if available, else most recent
+          const current = getCurrentWeekId();
+          if (weeks.includes(current)) {
+            setSelectedWeek(current);
+          } else if (weeks.length > 0) {
+            setSelectedWeek(weeks[0]);
+          }
         }
       } catch (err) {
         console.error("Failed to load store:", err);
@@ -203,12 +228,20 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
         setInitialLocatorMappings(JSON.stringify(data));
         setDeletedLocators([]);
       } else if (tab === "partInfo") {
-        const data = await invoke<PartInfo[]>("get_part_info_preview", { connectionString: activeConnStr });
+        const data = await invoke<PartInfo[]>("get_part_info_preview", { 
+          connectionString: activeConnStr,
+          processFilter: partFilterProcess,
+          partFilter: partFilterParts
+        });
         setPartInfos(data);
         setInitialPartInfos(JSON.stringify(data));
         setDeletedPartInfos([]);
       } else if (tab === "processInfo") {
-        const data = await invoke<ProcessInfo[]>("get_process_info_preview", { connectionString: activeConnStr });
+        const data = await invoke<ProcessInfo[]>("get_process_info_preview", { 
+          connectionString: activeConnStr,
+          weekFilter: selectedWeek,
+          processFilter: selectedProcess
+        });
         setProcessInfos(data);
         setInitialProcessInfos(JSON.stringify(data));
         setDeletedProcessInfos([]);
@@ -238,13 +271,12 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
     } finally {
       setIsLoadingData(false);
     }
-  }, [connectionString]);
+  }, [connectionString, selectedWeek, selectedProcess, partFilterProcess, partFilterParts]);
 
   useEffect(() => {
-    // This handles tab changes. 
-    // We avoid adding connectionString here to prevent fetching on every keystroke.
+    // This handles tab changes and filter changes.
     fetchData(activeTab);
-  }, [activeTab]);
+  }, [activeTab, selectedWeek, selectedProcess, partFilterProcess, partFilterParts]);
 
 
   const handleSaveSettings = async () => {
@@ -723,6 +755,7 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
     return dayjs(date).format("YYYY-MM-DD");
   };
 
+
   const renderTable = () => {
 
 
@@ -809,148 +842,238 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
     }
 
     if (activeTab === "partInfo") {
+      const ROW_HEIGHT = 48;
+      const VISIBLE_COUNT = 12;
+
+      const startIndex = Math.max(0, Math.floor(partScrollTop / ROW_HEIGHT) - 3);
+      const endIndex = Math.min(partInfos.length, startIndex + VISIBLE_COUNT + 6);
+      
+      const visibleRows = partInfos.slice(startIndex, endIndex);
+
+      const gridTemplate = "1fr 1fr 120px 140px 50px";
+
       return (
-        <ScrollArea h={400} mt="md">
-          <Table striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="xs">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Part Number</Table.Th>
-                <Table.Th>Process</Table.Th>
-                <Table.Th>Batch Size</Table.Th>
-                <Table.Th>Processing Time (m)</Table.Th>
-                <Table.Th w={50}></Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {partInfos.map((row, i) => (
-                <Table.Tr key={i}>
-                  <Table.Td>
-                    <TextInput 
-                      variant="unstyled" 
-                      size="xs" 
-                      p={0} 
-                      value={row.PartNumber || ""} 
-                      onChange={(e) => updateRecord(i, "PartNumber", e.currentTarget.value)} 
-                    />
-                  </Table.Td>
-                  <Table.Td>
-                    <Select
-                      variant="unstyled"
-                      size="xs"
-                      data={globalProcesses}
-                      value={row.ProcessName || ""}
-                      onChange={(val) => updateRecord(i, "ProcessName", val || "")}
-                      searchable
-                      clearable
-                    />
-                  </Table.Td>
-                  <Table.Td>
-                    <NumberInput 
-                      variant="unstyled" 
-                      size="xs" 
-                      value={row.BatchSize} 
-                      onChange={(val) => updateRecord(i, "BatchSize", val)} 
-                    />
-                  </Table.Td>
-                  <Table.Td>
-                    <NumberInput 
-                      variant="unstyled" 
-                      size="xs" 
-                      value={row.ProcessingTime} 
-                      onChange={(val) => updateRecord(i, "ProcessingTime", val)} 
-                    />
-                  </Table.Td>
-                  <Table.Td>
-                    <ActionIcon variant="subtle" color="red" onClick={() => removeLocalRecord(i)}>
-                      <IconTrash size={14} />
-                    </ActionIcon>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-              {partInfos.length === 0 && (
-                <Table.Tr><Table.Td colSpan={5}><Text ta="center" c="dimmed">No records found</Text></Table.Td></Table.Tr>
+        <Box mt="md" pos="relative">
+          {/* Header */}
+          <Box 
+            style={{ 
+              display: 'grid', 
+              gridTemplateColumns: gridTemplate,
+              padding: '12px 16px',
+              borderBottom: '1px solid var(--mantine-color-gray-3)',
+              background: 'var(--mantine-color-gray-0)',
+              fontWeight: 700,
+              fontSize: '14px',
+              borderTopLeftRadius: '8px',
+              borderTopRightRadius: '8px',
+              zIndex: 10
+            }}
+          >
+            <Text size="sm" fw={700}>Part Number</Text>
+            <Text size="sm" fw={700}>Process</Text>
+            <Text size="sm" fw={700}>Batch Size</Text>
+            <Text size="sm" fw={700}>Processing Time (m)</Text>
+            <Text size="sm" fw={700}></Text>
+          </Box>
+
+          <ScrollArea 
+            h={500} 
+            onScrollPositionChange={({ y }) => setPartScrollTop(y)}
+            viewportProps={{ style: { position: 'relative' } }}
+          >
+            <Box style={{ height: partInfos.length * ROW_HEIGHT, position: 'relative' }}>
+              {partInfos.length === 0 ? (
+                <Center h={100}><Text c="dimmed">No records found for selected filters</Text></Center>
+              ) : (
+                visibleRows.map((row, i) => {
+                  const actualIndex = startIndex + i;
+                  return (
+                    <Box 
+                      key={actualIndex}
+                      style={{ 
+                        position: 'absolute', 
+                        top: actualIndex * ROW_HEIGHT,
+                        left: 0,
+                        right: 0,
+                        height: ROW_HEIGHT,
+                        display: 'grid',
+                        gridTemplateColumns: gridTemplate,
+                        alignItems: 'center',
+                        padding: '0 16px',
+                        borderBottom: '1px solid var(--mantine-color-gray-1)',
+                        background: actualIndex % 2 === 0 ? 'transparent' : 'var(--mantine-color-gray-0)',
+                      }}
+                    >
+                      <Box>
+                        <TextInput 
+                          variant="unstyled" 
+                          size="xs" 
+                          value={row.PartNumber || ""} 
+                          onChange={(e) => updateRecord(actualIndex, "PartNumber", e.currentTarget.value)} 
+                        />
+                      </Box>
+                      <Box>
+                        <Select
+                          variant="unstyled"
+                          size="xs"
+                          data={globalProcesses}
+                          value={row.ProcessName || ""}
+                          onChange={(val) => updateRecord(actualIndex, "ProcessName", val || "")}
+                          searchable
+                          clearable
+                        />
+                      </Box>
+                      <Box>
+                        <NumberInput 
+                          variant="unstyled" 
+                          size="xs" 
+                          value={row.BatchSize} 
+                          onChange={(val) => updateRecord(actualIndex, "BatchSize", val)} 
+                        />
+                      </Box>
+                      <Box>
+                        <NumberInput 
+                          variant="unstyled" 
+                          size="xs" 
+                          value={row.ProcessingTime} 
+                          onChange={(val) => updateRecord(actualIndex, "ProcessingTime", val)} 
+                        />
+                      </Box>
+                      <Box style={{ textAlign: 'right' }}>
+                        <ActionIcon variant="subtle" color="red" onClick={() => removeLocalRecord(actualIndex)}>
+                          <IconTrash size={14} />
+                        </ActionIcon>
+                      </Box>
+                    </Box>
+                  );
+                })
               )}
-            </Table.Tbody>
-          </Table>
-        </ScrollArea>
+            </Box>
+          </ScrollArea>
+        </Box>
       );
     }
 
     if (activeTab === "processInfo") {
+      const ROW_HEIGHT = 48;
+      const VISIBLE_COUNT = 12;
+
+      const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - 3);
+      const endIndex = Math.min(processInfos.length, startIndex + VISIBLE_COUNT + 6);
+      
+      const visibleRows = processInfos.slice(startIndex, endIndex);
+
+      const gridTemplate = "1fr 1fr 1fr 100px 120px 50px";
+
       return (
-        <ScrollArea h={400} mt="md">
-          <Table striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="xs">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Process</Table.Th>
-                <Table.Th>Date</Table.Th>
-                <Table.Th>Machine ID</Table.Th>
-                <Table.Th>Shift</Table.Th>
-                <Table.Th>Hours Available</Table.Th>
-                <Table.Th w={50}></Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {processInfos.map((row, i) => (
-                <Table.Tr key={i}>
-                  <Table.Td>
-                    <Select
-                      variant="unstyled"
-                      size="xs"
-                      data={globalProcesses}
-                      value={row.ProcessName || ""}
-                      onChange={(val) => updateRecord(i, "ProcessName", val || "")}
-                      searchable
-                      clearable
-                    />
-                  </Table.Td>
-                  <Table.Td>
-                    <DatePickerInput
-                      variant="unstyled"
-                      size="xs"
-                      value={parseOrNull(row.Date)}
-                      onChange={(val) => updateRecord(i, "Date", formatIso(val as Date | null))}
-                    />
-                  </Table.Td>
-                  <Table.Td>
-                    <TextInput 
-                      variant="unstyled" 
-                      size="xs" 
-                      p={0} 
-                      value={row.MachineID || ""} 
-                      onChange={(e) => updateRecord(i, "MachineID", e.currentTarget.value)} 
-                    />
-                  </Table.Td>
-                  <Table.Td>
-                    <Select
-                      variant="unstyled"
-                      size="xs"
-                      data={['A', 'B', 'C', 'D']}
-                      value={row.Shift || ""}
-                      onChange={(val) => updateRecord(i, "Shift", val || "A")}
-                    />
-                  </Table.Td>
-                  <Table.Td>
-                    <NumberInput 
-                      variant="unstyled" 
-                      size="xs" 
-                      value={row.HoursAvailable} 
-                      onChange={(val) => updateRecord(i, "HoursAvailable", val)} 
-                    />
-                  </Table.Td>
-                  <Table.Td>
-                    <ActionIcon variant="subtle" color="red" onClick={() => removeLocalRecord(i)}>
-                      <IconTrash size={14} />
-                    </ActionIcon>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-              {processInfos.length === 0 && (
-                <Table.Tr><Table.Td colSpan={6}><Text ta="center" c="dimmed">No records found</Text></Table.Td></Table.Tr>
+        <Box mt="md" pos="relative">
+          {/* Header */}
+          <Box 
+            style={{ 
+              display: 'grid', 
+              gridTemplateColumns: gridTemplate,
+              padding: '12px 16px',
+              borderBottom: '1px solid var(--mantine-color-gray-3)',
+              background: 'var(--mantine-color-gray-0)',
+              fontWeight: 700,
+              fontSize: '14px',
+              borderTopLeftRadius: '8px',
+              borderTopRightRadius: '8px',
+              zIndex: 10
+            }}
+          >
+            <Text size="sm" fw={700}>Process</Text>
+            <Text size="sm" fw={700}>Date</Text>
+            <Text size="sm" fw={700}>Machine ID</Text>
+            <Text size="sm" fw={700}>Shift</Text>
+            <Text size="sm" fw={700}>Hours</Text>
+            <Text size="sm" fw={700}></Text>
+          </Box>
+
+          <ScrollArea 
+            h={500} 
+            onScrollPositionChange={({ y }) => setScrollTop(y)}
+            viewportProps={{ style: { position: 'relative' } }}
+          >
+            <Box style={{ height: processInfos.length * ROW_HEIGHT, position: 'relative' }}>
+              {processInfos.length === 0 ? (
+                <Center h={100}><Text c="dimmed">No records found for selected filters</Text></Center>
+              ) : (
+                visibleRows.map((row, i) => {
+                  const actualIndex = startIndex + i;
+                  return (
+                    <Box 
+                      key={actualIndex}
+                      style={{ 
+                        position: 'absolute', 
+                        top: actualIndex * ROW_HEIGHT,
+                        left: 0,
+                        right: 0,
+                        height: ROW_HEIGHT,
+                        display: 'grid',
+                        gridTemplateColumns: gridTemplate,
+                        alignItems: 'center',
+                        padding: '0 16px',
+                        borderBottom: '1px solid var(--mantine-color-gray-1)',
+                        background: actualIndex % 2 === 0 ? 'transparent' : 'var(--mantine-color-gray-0)',
+                      }}
+                    >
+                      <Box>
+                        <Select
+                          variant="unstyled"
+                          size="xs"
+                          data={globalProcesses}
+                          value={row.ProcessName || ""}
+                          onChange={(val) => updateRecord(actualIndex, "ProcessName", val || "")}
+                          searchable
+                          clearable
+                        />
+                      </Box>
+                      <Box>
+                        <DatePickerInput
+                          variant="unstyled"
+                          size="xs"
+                          value={parseOrNull(row.Date)}
+                          onChange={(val) => updateRecord(actualIndex, "Date", formatIso(val as Date | null))}
+                        />
+                      </Box>
+                      <Box>
+                        <TextInput 
+                          variant="unstyled" 
+                          size="xs" 
+                          value={row.MachineID || ""} 
+                          onChange={(e) => updateRecord(actualIndex, "MachineID", e.currentTarget.value)} 
+                        />
+                      </Box>
+                      <Box>
+                        <Select
+                          variant="unstyled"
+                          size="xs"
+                          data={['A', 'B', 'C', 'D']}
+                          value={row.Shift || ""}
+                          onChange={(val) => updateRecord(actualIndex, "Shift", val || "A")}
+                        />
+                      </Box>
+                      <Box>
+                        <NumberInput 
+                          variant="unstyled" 
+                          size="xs" 
+                          value={row.HoursAvailable} 
+                          onChange={(val) => updateRecord(actualIndex, "HoursAvailable", val)} 
+                        />
+                      </Box>
+                      <Box style={{ textAlign: 'right' }}>
+                        <ActionIcon variant="subtle" color="red" onClick={() => removeLocalRecord(actualIndex)}>
+                          <IconTrash size={14} />
+                        </ActionIcon>
+                      </Box>
+                    </Box>
+                  );
+                })
               )}
-            </Table.Tbody>
-          </Table>
-        </ScrollArea>
+            </Box>
+          </ScrollArea>
+        </Box>
       );
     }
 
@@ -1332,11 +1455,64 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
             </Tabs.Panel>
 
             <Tabs.Panel value="partInfo">
-              {renderTable()}
+              <Stack gap="md" mt="md">
+                <Group grow>
+                  <MultiSelect
+                    label="Filter by Part Number"
+                    placeholder="Search/Select part numbers"
+                    data={allPartNumbers}
+                    value={partFilterParts}
+                    onChange={setPartFilterParts}
+                    searchable
+                    clearable
+                    hidePickedOptions
+                  />
+                  <Select
+                    label="Filter by Process"
+                    placeholder="All Processes"
+                    data={globalProcesses}
+                    value={partFilterProcess}
+                    onChange={setPartFilterProcess}
+                    clearable
+                    searchable
+                  />
+                  <Box style={{ alignSelf: 'flex-end' }}>
+                     <Text size="xs" c="dimmed">Showing {partInfos.length} records</Text>
+                  </Box>
+                </Group>
+                {renderTable()}
+              </Stack>
             </Tabs.Panel>
 
             <Tabs.Panel value="processInfo">
-              {renderTable()}
+              <Stack gap="md" mt="md">
+                <Group grow>
+                  <Select
+                    label="Filter by Week"
+                    placeholder="Select week"
+                    data={activeWeeks.map(w => ({ value: w, label: generateWeekLabel(w) }))}
+                    value={selectedWeek}
+                    onChange={setSelectedWeek}
+                    clearable
+                    searchable
+                    leftSection={<IconCalendar size={14} />}
+                  />
+                  <Select
+                    label="Filter by Process"
+                    placeholder="All Processes"
+                    data={globalProcesses}
+                    value={selectedProcess}
+                    onChange={setSelectedProcess}
+                    clearable
+                    searchable
+                    leftSection={<IconTable size={14} />}
+                  />
+                  <Box style={{ alignSelf: 'flex-end' }}>
+                     <Text size="xs" c="dimmed">Showing {processInfos.length} records</Text>
+                  </Box>
+                </Group>
+                {renderTable()}
+              </Stack>
             </Tabs.Panel>
 
             <Tabs.Panel value="dailyRate">

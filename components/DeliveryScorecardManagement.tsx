@@ -109,7 +109,11 @@ export default function DeliveryScorecardManagement() {
       if (!connectionString) return;
       try {
         const { invoke } = await import('@tauri-apps/api/core');
-        const parts = await invoke<any[]>("get_part_info_preview", { connectionString });
+        const parts = await invoke<any[]>("get_part_info_preview", { 
+          connectionString,
+          processFilter: null,
+          partFilter: []
+        });
         setPartInfo(parts);
       } catch (err) {
         console.error("Failed to fetch global part info:", err);

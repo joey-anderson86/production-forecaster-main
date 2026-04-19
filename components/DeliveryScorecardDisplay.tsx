@@ -132,7 +132,11 @@ export default function DeliveryScorecardDisplay() {
         
         if (val) {
           const { invoke } = await import('@tauri-apps/api/core');
-          const parts = await invoke<any[]>("get_part_info_preview", { connectionString: val });
+          const parts = await invoke<any[]>("get_part_info_preview", { 
+            connectionString: val,
+            processFilter: null,
+            partFilter: []
+          });
           setPartInfo(parts);
         }
       } catch (err) {
