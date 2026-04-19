@@ -522,7 +522,7 @@ export default function DeliveryScorecardManagement() {
         </Group>
       </Group>
 
-      <Box className="bg-gray-50/10">
+      <Box bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))" p="sm" style={{ borderRadius: 'var(--mantine-radius-md)' }}>
         <Stack gap="md">
           <Group justify="space-between" align="center">
             <Tabs value={activeTab} onChange={setActiveTab} variant="pills">

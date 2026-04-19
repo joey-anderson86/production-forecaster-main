@@ -490,7 +490,7 @@ export default function DeliveryScorecardDisplay() {
               </Card>
             )}
 
-            <Paper withBorder p="sm" radius="md" className="bg-gray-50/30 dark:bg-zinc-900/30" style={isWidescreen ? { flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' } : undefined}>
+            <Paper withBorder p="sm" radius="md" bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8))" style={isWidescreen ? { flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' } : undefined}>
               <Stack gap="md" style={isWidescreen ? { flex: 1, minHeight: 0, overflow: 'hidden' } : undefined}>
                 <Group justify="space-between" align="center">
                   <Tabs value={activeTab} onChange={setActiveTab} variant="pills">
@@ -564,7 +564,7 @@ export default function DeliveryScorecardDisplay() {
                           backgroundColor: 'light-dark(var(--mantine-color-white), var(--mantine-color-dark-7))',
                           minWidth: 140,
                         }}
-                        className="hover:bg-gray-50 dark:hover:bg-dark-6"
+                        className="hover:bg-gray-50 dark:hover:bg-zinc-800"
                       >
                         <Group gap={4} wrap="nowrap">
                           <Text size="xs" fw={700} c="dimmed">PART NUMBER</Text>
@@ -588,7 +588,7 @@ export default function DeliveryScorecardDisplay() {
                         ta="center" 
                         onClick={() => requestSort('totalActual')} 
                         style={{ cursor: 'pointer' }}
-                        className="hover:bg-gray-50"
+                        className="hover:bg-gray-50 dark:hover:bg-zinc-800"
                       >
                         <Group gap={4} justify="center" wrap="nowrap">
                           <Text size="xs" fw={700} c="dimmed">ACTUAL</Text>
@@ -599,7 +599,7 @@ export default function DeliveryScorecardDisplay() {
                         ta="center" 
                         onClick={() => requestSort('totalTarget')} 
                         style={{ cursor: 'pointer' }}
-                        className="hover:bg-gray-50"
+                        className="hover:bg-gray-50 dark:hover:bg-zinc-800"
                       >
                         <Group gap={4} justify="center" wrap="nowrap">
                           <Text size="xs" fw={700} c="dimmed">TARGET</Text>
@@ -610,7 +610,7 @@ export default function DeliveryScorecardDisplay() {
                         ta="center" 
                         onClick={() => requestSort('gap')} 
                         style={{ cursor: 'pointer' }}
-                        className="hover:bg-gray-50"
+                        className="hover:bg-gray-50 dark:hover:bg-zinc-800"
                       >
                         <Group gap={4} justify="center" wrap="nowrap">
                           <Text size="xs" fw={700} c="dimmed">GAP</Text>
@@ -621,7 +621,7 @@ export default function DeliveryScorecardDisplay() {
                         ta="center" 
                         onClick={() => requestSort('rollingGap')} 
                         style={{ cursor: 'pointer' }}
-                        className="hover:bg-gray-50"
+                        className="hover:bg-gray-50 dark:hover:bg-zinc-800"
                       >
                         <Group gap={4} justify="center" wrap="nowrap">
                           <Text size="xs" fw={700} c="dimmed">ROLLING GAP</Text>
