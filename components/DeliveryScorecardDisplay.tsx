@@ -18,6 +18,7 @@ import { EditEntryModal } from './EditEntryModal';
 import { ShiftProductionEntryModal } from './ShiftProductionEntryModal';
 import { DeliveryLossPareto } from './DeliveryLossPareto';
 import { ShiftAttainmentChart } from './ShiftAttainmentChart';
+import { PartAttainmentChart } from './PartAttainmentChart';
 import { notifications } from '@mantine/notifications';
 import { DAYS_OF_WEEK, getTodayNumeric, getWeekDates, isWorkingDay, parseISOLocal, generateWeekLabel } from '@/lib/dateUtils';
 import { useProcessStore } from '@/lib/processStore';
@@ -55,6 +56,7 @@ export default function DeliveryScorecardDisplay() {
   const isWidescreen = layoutMode === 'widescreen';
 
   const [rollingGaps, setRollingGaps] = useState<Record<string, number>>({});
+  const [activePlotTab, setActivePlotTab] = useState<string | null>('pareto');
 
   useEffect(() => {
     async function loadRollingGaps() {
@@ -966,10 +968,17 @@ export default function DeliveryScorecardDisplay() {
           />
 
           {activeTab && (
-            <Tabs defaultValue="pareto" variant="outline">
+            <Tabs 
+              value={activePlotTab} 
+              onChange={setActivePlotTab} 
+              variant="pills" 
+              color="indigo" 
+              radius="md"
+            >
               <Tabs.List>
                 <Tabs.Tab value="pareto" leftSection={<IconChartBar size={16} />}>Loss Pareto</Tabs.Tab>
                 <Tabs.Tab value="attainment" leftSection={<IconTarget size={16} />}>Shift Attainment</Tabs.Tab>
+                <Tabs.Tab value="part-attainment" leftSection={<IconTarget size={16} />}>Capped Attainment</Tabs.Tab>
               </Tabs.List>
 
               <Tabs.Panel value="pareto">
@@ -984,6 +993,14 @@ export default function DeliveryScorecardDisplay() {
 
               <Tabs.Panel value="attainment">
                 <ShiftAttainmentChart 
+                  weekData={activeWeek}
+                  departmentName={activeTab}
+                  compact={isWidescreen}
+                />
+              </Tabs.Panel>
+
+              <Tabs.Panel value="part-attainment">
+                <PartAttainmentChart 
                   weekData={activeWeek}
                   departmentName={activeTab}
                   compact={isWidescreen}

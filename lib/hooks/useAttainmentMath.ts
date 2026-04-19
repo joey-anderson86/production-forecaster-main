@@ -6,10 +6,16 @@ export interface ShiftAttainmentData {
   attainment: number;
 }
 
+export interface PartAttainmentData {
+  partNumber: string;
+  attainment: number;
+}
+
 export interface AttainmentMathResult {
   dailyAttainments: (number | null)[];
   cumulativeWTD: number;
   cappedShiftAttainment: ShiftAttainmentData[];
+  cappedPartAttainment: PartAttainmentData[];
   hasData: boolean;
 }
 
@@ -28,6 +34,7 @@ export function useAttainmentMath(parts: PartScorecard[] | null | undefined): At
         dailyAttainments: Array(7).fill(null),
         cumulativeWTD: 0,
         cappedShiftAttainment: [],
+        cappedPartAttainment: [],
         hasData: false
       };
     }
@@ -38,10 +45,19 @@ export function useAttainmentMath(parts: PartScorecard[] | null | undefined): At
     // Shift-specific stats for capped attainment
     const shiftStats: Record<string, { cappedActual: number; totalTarget: number }> = {};
 
+    // Part-specific stats for capped attainment
+    const partStats: Record<string, { totalActual: number; totalTarget: number }> = {};
+
     parts.forEach(part => {
       const shift = part.Shift || 'Unknown';
+      const pn = part.PartNumber;
+
       if (!shiftStats[shift]) {
         shiftStats[shift] = { cappedActual: 0, totalTarget: 0 };
+      }
+
+      if (!partStats[pn]) {
+        partStats[pn] = { totalActual: 0, totalTarget: 0 };
       }
 
       part.DailyRecords.forEach((record, dayIdx) => {
@@ -61,6 +77,10 @@ export function useAttainmentMath(parts: PartScorecard[] | null | undefined): At
             shiftStats[shift].cappedActual += Math.min(actual, target);
             shiftStats[shift].totalTarget += target;
           }
+
+          // Part-level aggregation (un-capped total actual vs planned)
+          partStats[pn].totalActual += actual;
+          partStats[pn].totalTarget += target;
         }
       });
     });
@@ -89,12 +109,24 @@ export function useAttainmentMath(parts: PartScorecard[] | null | undefined): At
       };
     });
 
+    // 4. Calculate Capped Part Attainment for Charts (%)
+    const cappedPartAttainment = Object.entries(partStats)
+      .map(([partNumber, stats]) => {
+        const rawAttainment = stats.totalTarget > 0 ? (stats.totalActual / stats.totalTarget) * 100 : 0;
+        return {
+          partNumber,
+          attainment: parseFloat(Math.min(100, rawAttainment).toFixed(1))
+        };
+      })
+      .sort((a, b) => b.attainment - a.attainment);
+
     const hasData = dailyStats.some(s => s.hasData);
 
     return {
       dailyAttainments,
       cumulativeWTD: parseFloat(cumulativeWTD.toFixed(1)),
       cappedShiftAttainment,
+      cappedPartAttainment,
       hasData
     };
   }, [parts]);
