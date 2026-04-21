@@ -472,7 +472,7 @@ pub async fn get_scheduler_meta(connection_string: String) -> Result<SchedulerMe
 
     // Get Process Hierarchy (Department -> Machines)
     let proc_query =
-        "SELECT DISTINCT ProcessName, MachineID FROM dbo.ProcessInfo WHERE MachineID IS NOT NULL";
+        "SELECT DISTINCT ProcessName, MachineID FROM dbo.Process WHERE MachineID IS NOT NULL";
     let rows = client
         .query(proc_query, &[])
         .await
