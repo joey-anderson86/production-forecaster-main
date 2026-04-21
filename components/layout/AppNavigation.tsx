@@ -17,9 +17,9 @@ export function AppNavigation({ mainTab, setMainTab, roleMode }: AppNavigationPr
           <Tabs.Tab value="scorecard-dash">Delivery Dashboard</Tabs.Tab>
           {roleMode === 'planner' && (
             <>
+              <Tabs.Tab value="equipment-mgmt">Equipment Management</Tabs.Tab>
               <Tabs.Tab value="scorecard-mgmt">Production Planner</Tabs.Tab>
               <Tabs.Tab value="equipment-scheduler">Equipment Scheduler</Tabs.Tab>
-              <Tabs.Tab value="equipment-mgmt">Equipment Management</Tabs.Tab>
             </>
           )}
           <Tabs.Tab value="forecaster">Production Forecaster</Tabs.Tab>

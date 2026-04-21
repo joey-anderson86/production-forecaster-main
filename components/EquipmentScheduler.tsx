@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult, DroppableProvided, DraggableProvided, DraggableStateSnapshot, DroppableStateSnapshot } from '@hello-pangea/dnd';
-import { Portal, Box, Paper, Text, Group, Stack, ScrollArea, Tooltip, HoverCard, Title, Badge, Select, ActionIcon, Divider, Loader, Center, Button, Popover, NumberInput, Flex, MultiSelect } from '@mantine/core';
+import { Portal, Box, Paper, Text, Group, Stack, ScrollArea, Tooltip, HoverCard, Title, Badge, Select, ActionIcon, Divider, Loader, Center, Button, Popover, NumberInput, Flex, MultiSelect, Modal } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconAlertTriangle, IconClock, IconBox, IconBolt, IconFileExport } from '@tabler/icons-react';
 import { invoke } from '@tauri-apps/api/core';
@@ -355,6 +355,11 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
   }, []);
   const [dirty, setDirty] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+  const [clearModalOpened, setClearModalOpened] = useState(false);
+
+  const [data, setData] = useState<SchedulerState | null>(initialState || null);
+  const [loading, setLoading] = useState(true);
 
   const weekDates = useMemo(() => {
     try {
@@ -364,8 +369,14 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
     }
   }, [currentWeekId]);
 
-  const [data, setData] = useState<SchedulerState | null>(initialState || null);
-  const [loading, setLoading] = useState(true);
+  const hasScheduledJobs = useMemo(() => {
+    if (!data) return false;
+    return Object.values(data.Machines).some(m =>
+      Object.values(m.Schedule).some(d =>
+        Object.values(d).some(s => s.Jobs.length > 0)
+      )
+    );
+  }, [data]);
 
   const [selectedEquipment, setSelectedEquipment] = useState<string[]>([]);
 
@@ -782,6 +793,40 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
     }
   };
 
+  const handleClearSchedule = async () => {
+    try {
+      setIsClearing(true);
+      const store = await load("store.json", { autoSave: false, defaults: {} });
+      const connectionString = await store.get<string>("db_connection_string");
+      if (!connectionString) throw new Error("Connection string not found");
+
+      // Passing an empty array to save_scheduler_state effectively clears the DB for this week/department
+      await invoke('save_scheduler_state', { 
+        connectionString, 
+        department: processName, 
+        weekId: currentWeekId, 
+        assignments: [] 
+      });
+
+      notifications.show({ 
+        title: 'Schedule Cleared', 
+        message: 'All assignments have been removed and parts returned to backlog.', 
+        color: 'green' 
+      });
+      
+      setClearModalOpened(false);
+      await fetchUtilization();
+    } catch (e: any) {
+      notifications.show({ 
+        title: 'Clear Failed', 
+        message: e.toString(), 
+        color: 'red' 
+      });
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
   const handleGenerateChangeover = async () => {
     if (!data) return;
 
@@ -1108,7 +1153,15 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
               >
                 Auto-Schedule
               </Button>
-              <Button variant="light" color="gray" size="sm" disabled={!dirty || isSubmitting} onClick={() => fetchUtilization()}>Reset</Button>
+              <Button 
+                variant="light" 
+                color="gray" 
+                size="sm" 
+                disabled={isSubmitting || isClearing || (!dirty && !hasScheduledJobs)} 
+                onClick={() => setClearModalOpened(true)}
+              >
+                Reset Schedule
+              </Button>
               <Button variant="filled" color="indigo" size="sm" disabled={!dirty || isSubmitting} loading={isSubmitting} onClick={handleSubmit} leftSection={<IconBolt size={16} />}>Submit Schedule</Button>
             </Group>
           </Group>
@@ -1366,6 +1419,42 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
           </Flex>
         )}
       </DragDropContext>
+      <Modal
+        opened={clearModalOpened}
+        onClose={() => !isClearing && setClearModalOpened(false)}
+        title={<Group gap="xs"><IconAlertTriangle color="var(--mantine-color-red-6)" size={20} /><Text fw={700}>Clear Schedule Confirmation</Text></Group>}
+        centered
+        size="md"
+        padding="xl"
+        overlayProps={{ backgroundOpacity: 0.55, blur: 3 }}
+        styles={{ title: { width: '100%' } }}
+      >
+        <Stack gap="lg">
+          <Text size="sm" style={{ lineHeight: 1.6 }}>
+            Are you sure you want to reset this week's schedule? This will <strong>delete the current schedule from the database</strong> and move all part cards back into the backlog.
+          </Text>
+          <Text size="sm" c="dimmed" fw={500}>
+            This action cannot be undone.
+          </Text>
+          <Group justify="end" mt="md">
+            <Button 
+              variant="default" 
+              onClick={() => setClearModalOpened(false)} 
+              disabled={isClearing}
+            >
+              Cancel
+            </Button>
+            <Button 
+              color="red" 
+              onClick={handleClearSchedule} 
+              loading={isClearing}
+              leftSection={<IconAlertTriangle size={16} />}
+            >
+              Confirm Reset
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Box>
   );
 }
