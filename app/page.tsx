@@ -33,8 +33,8 @@ export default function Home() {
   const { selectedWeekId } = useGlobalWeek();
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 p-8">
-      <div className="max-w-[1600px] mx-auto space-y-8">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 p-4 md:p-8">
+      <div className="w-full mx-auto space-y-8">
         <AppHeader 
           roleMode={roleMode} 
           setRoleMode={setRoleMode} 
