@@ -1,6 +1,5 @@
 -- Phase 1: Schema Updates for SARGability and Index Utilization
 -- Replace nchar columns with NVARCHAR(50) to prevent space-padding issues.
--- Note: Adjust the definitions to add constraints or keep as per the system's exact field configurations.
 
 -- 1. PartInfo
 IF OBJECT_ID('dbo.PartInfo', 'U') IS NOT NULL
@@ -8,6 +7,7 @@ DROP TABLE dbo.PartInfo;
 GO
 CREATE TABLE dbo.PartInfo (
     PartNumber NVARCHAR(50) NOT NULL,
+    PartName NVARCHAR(255), -- Added to support UI displays and PlanRow descriptions
     ProcessName NVARCHAR(50) NOT NULL,
     BatchSize INT,
     ProcessingTime INT,
@@ -51,13 +51,13 @@ CREATE TABLE dbo.ProcessInfo (
     Date DATE NOT NULL,
     Shift NVARCHAR(50) NOT NULL,
     MachineID NVARCHAR(50) NOT NULL DEFAULT '',
-    HoursAvailable INT,
+    HoursAvailable FLOAT, -- Changed from INT to FLOAT to match f64 in Rust ProcessInfo struct
     WeekIdentifier NVARCHAR(50),
     CONSTRAINT UQ_ProcessInfo UNIQUE NONCLUSTERED (ProcessName, Date, Shift, MachineID)
 );
 GO
 
--- 5. DeliveryData
+-- 5. DeliveryData (Supports ScorecardRow and PlanRow)
 IF OBJECT_ID('dbo.DeliveryData', 'U') IS NOT NULL
 DROP TABLE dbo.DeliveryData;
 GO
@@ -102,7 +102,7 @@ CREATE TABLE dbo.DailyRate (
 );
 GO
 
--- 8. Create mapping for Part to specific Machines
+-- 8. PartMachineCapability (Routing map for the Auto-Scheduler)
 IF OBJECT_ID('dbo.PartMachineCapability', 'U') IS NOT NULL
 DROP TABLE dbo.PartMachineCapability;
 GO
@@ -110,14 +110,13 @@ CREATE TABLE dbo.PartMachineCapability (
     PartNumber NVARCHAR(50) NOT NULL,
     MachineID NVARCHAR(50) NOT NULL,
     CONSTRAINT PK_PartMachineCapability PRIMARY KEY (PartNumber, MachineID)
-    -- Optional: Add Foreign Keys referencing PartInfo and Process tables
 );
 GO
 
+-- 9. EquipmentSchedule (Drag-and-drop schedule state)
 IF OBJECT_ID('dbo.EquipmentSchedule', 'U') IS NOT NULL
 DROP TABLE dbo.EquipmentSchedule;
 GO
-
 CREATE TABLE dbo.EquipmentSchedule (
     ScheduleID INT IDENTITY(1,1) PRIMARY KEY CLUSTERED,
     WeekIdentifier NVARCHAR(50) NOT NULL,
@@ -131,7 +130,28 @@ CREATE TABLE dbo.EquipmentSchedule (
 );
 GO
 
--- Index for fast querying by week and department during load
+-- Index for fast querying by week and department during schedule load
 CREATE NONCLUSTERED INDEX IX_EquipmentSchedule_Week_Dept 
 ON dbo.EquipmentSchedule(WeekIdentifier, Department);
+GO
+
+-- 10. PipelineData (NEW: Added to support Pipeline CSV Imports and the PipelineRow struct)
+IF OBJECT_ID('dbo.PipelineData', 'U') IS NOT NULL
+DROP TABLE dbo.PipelineData;
+GO
+CREATE TABLE dbo.PipelineData (
+    PipelineDataID INT IDENTITY(1,1) PRIMARY KEY CLUSTERED,
+    Date DATE,
+    Customer NVARCHAR(100),
+    CustomerCity NVARCHAR(100),
+    PartNumber NVARCHAR(50) NOT NULL,
+    PartName NVARCHAR(255),
+    WIPLocator NVARCHAR(50),
+    Qty INT
+);
+GO
+
+-- Index for fast Pipeline queries by PartNumber and WIPLocator
+CREATE NONCLUSTERED INDEX IX_PipelineData_Part_Locator 
+ON dbo.PipelineData(PartNumber, WIPLocator);
 GO
