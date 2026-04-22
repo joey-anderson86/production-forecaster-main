@@ -122,6 +122,11 @@ export interface BacklogItem {
   quantity: number;
   priority: number;
   shift: string;
+  /**
+   * The requested or planned date for this item.
+   * This provides date context for the scheduling engine to ensure chronological assignment.
+   */
+  originalDate?: string;
 }
 
 export interface PartMachineCapability {
@@ -132,6 +137,11 @@ export interface PartMachineCapability {
 
 export interface MachineState {
   machineId: string;
+  /**
+   * The date this machine state applies to.
+   * Allows the scheduling engine to assign capacity on specific dates.
+   */
+  date: string;
   shift: string;
   totalCapacityHours: number;
   currentUtilizationPct: number;
@@ -142,6 +152,10 @@ export interface ScheduledTask {
   backlogItemId: string;
   partId: string;
   machineId: string;
+  /**
+   * The date this task was successfully scheduled for.
+   */
+  date: string;
   shift: string;
   quantity: number;
   estimatedHours: number;

@@ -249,12 +249,14 @@ pub struct BacklogItem {
     pub quantity: u32,
     pub priority: u32,
     pub shift: String,
+    pub original_date: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct MachineState {
     pub machine_id: String,
+    pub date: String,
     pub shift: String,
     pub total_capacity_hours: f64,
     pub current_utilization_pct: f64,
@@ -267,6 +269,7 @@ pub struct ScheduledTask {
     pub backlog_item_id: String,
     pub part_id: String,
     pub machine_id: String,
+    pub date: String,
     pub shift: String,
     pub quantity: u32,
     pub estimated_hours: f64,

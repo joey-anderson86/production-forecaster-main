@@ -149,8 +149,14 @@ const JobCard = ({
 
 
   const jobDateStr = job.Id.split('|')[2];
-  const hasMoved = (job.OriginalShift && job.Shift !== job.OriginalShift) || (job.OriginalDate && jobDateStr !== job.OriginalDate);
-  const moveLabel = hasMoved ? `Prior: SH ${job.OriginalShift} on ${job.OriginalDate}` : '';
+  const dateMoved = job.OriginalDate && jobDateStr !== job.OriginalDate;
+  const shiftMoved = job.OriginalShift && job.Shift !== job.OriginalShift;
+  const hasMoved = dateMoved || shiftMoved;
+  
+  let moveLabel = '';
+  if (dateMoved && shiftMoved) moveLabel = `Moved: SH ${job.OriginalShift} on ${job.OriginalDate}`;
+  else if (dateMoved) moveLabel = `Planned Date: ${job.OriginalDate}`;
+  else if (shiftMoved) moveLabel = `Prior Shift: SH ${job.OriginalShift}`;
 
   return (
     <Draggable draggableId={job.Id} index={index}>
@@ -187,7 +193,14 @@ const JobCard = ({
                     <Text fw={800} style={{ fontSize: '11px', lineHeight: 1.2, flex: 1 }} truncate="end">
                       {job.PartNumber}
                     </Text>
-                    {hasMoved && (
+                    {dateMoved && (
+                      <Tooltip label={moveLabel} withinPortal position="top">
+                        <Badge size="xs" color="orange" variant="filled" styles={{ root: { fontSize: '8px', padding: '0 4px', height: 14, fontWeight: 800 } }}>
+                          MOVED
+                        </Badge>
+                      </Tooltip>
+                    )}
+                    {!dateMoved && shiftMoved && (
                       <Tooltip label={moveLabel} withinPortal position="top">
                         <Badge size="xs" color="gray" variant="outline" p={0} styles={{ root: { width: 14, height: 14, minWidth: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' } }}>
                           <IconAlertTriangle size={10} color="var(--mantine-color-orange-6)" />
@@ -908,7 +921,8 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
         partId: job.PartNumber,
         quantity: job.TargetQty,
         priority: 1000 - idx,
-        shift: job.OriginalShift || job.Shift || 'A'
+        shift: job.OriginalShift || job.Shift || 'A',
+        originalDate: job.OriginalDate || job.Id.split('|')[2]
       }));
 
       const capabilities: PartMachineCapability[] = [];
@@ -934,12 +948,18 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
 
       const machineStatesMap: Record<string, MachineState> = {};
       Object.entries(data.Machines).forEach(([mId, mInfo]) => {
-        Object.values(mInfo.Schedule).forEach(dayShifts => {
+        Object.entries(mInfo.Schedule).forEach(([day, dayShifts]) => {
+          // get the date string for the day
+          const dayIdx = DAYS_OF_WEEK.indexOf(day as DayOfWeek);
+          const dateObj = weekDates[dayIdx];
+          const dateStr = dateObj ? `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}` : day;
+
           Object.entries(dayShifts).forEach(([sId, sData]) => {
-            const key = `${mId}|${sId}`;
+            const key = `${mId}|${dateStr}|${sId}`;
             if (!machineStatesMap[key]) {
               machineStatesMap[key] = {
                 machineId: mId,
+                date: dateStr,
                 shift: sId,
                 totalCapacityHours: 0,
                 currentUtilizationPct: 0,
@@ -979,28 +999,34 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
           const mInfo = newState.Machines[task.machineId];
 
           if (mInfo) {
-            // Distribute across days but strictly in the assigned shift
-            for (const [day, dayShifts] of Object.entries(mInfo.Schedule)) {
-                const shiftData = dayShifts[task.shift];
-                if (!shiftData || remainingQtyToSchedule <= 0) continue;
+            const targetDayIdx = weekDates.findIndex(d => {
+               const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+               return ds === task.date;
+            });
+            
+            if (targetDayIdx !== -1) {
+                const dayStr = DAYS_OF_WEEK[targetDayIdx];
+                const shiftData = mInfo.Schedule[dayStr]?.[task.shift];
                 
-                const availableHours = shiftData.CapacityHrs - shiftData.TotalAssignedHours;
-                if (availableHours > 0) {
-                   const maxQtyForShift = Math.floor((availableHours * 60) / originalJob.ProcessingTimeMins);
-                   const qtyToPlace = Math.min(maxQtyForShift, remainingQtyToSchedule);
+                if (shiftData && remainingQtyToSchedule > 0) {
+                    const availableHours = shiftData.CapacityHrs - shiftData.TotalAssignedHours;
+                    if (availableHours > 0) {
+                       const maxQtyForShift = Math.floor((availableHours * 60) / originalJob.ProcessingTimeMins);
+                       const qtyToPlace = Math.min(maxQtyForShift, remainingQtyToSchedule);
 
-                   if (qtyToPlace > 0) {
-                      const jobToAdd = {
-                        ...originalJob,
-                        Id: `${originalJob.Id}|${task.machineId}|${day}|${task.shift}|${Date.now()}`,
-                        TargetQty: qtyToPlace,
-                        Shift: task.shift
-                      };
+                       if (qtyToPlace > 0) {
+                          const jobToAdd = {
+                            ...originalJob,
+                            Id: `${originalJob.Id}|${task.machineId}|${dayStr}|${task.shift}|${Date.now()}`,
+                            TargetQty: qtyToPlace,
+                            Shift: task.shift
+                          };
 
-                      shiftData.Jobs.push(jobToAdd);
-                      shiftData.TotalAssignedHours = calculateTotalHours(shiftData.Jobs);
-                      remainingQtyToSchedule -= qtyToPlace;
-                   }
+                          shiftData.Jobs.push(jobToAdd);
+                          shiftData.TotalAssignedHours = calculateTotalHours(shiftData.Jobs);
+                          remainingQtyToSchedule -= qtyToPlace;
+                       }
+                    }
                 }
             }
 
