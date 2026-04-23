@@ -1,7 +1,24 @@
+//! # Scheduling Engine
+//!
+//! This module contains the core logic for distributing demand and automated production scheduling.
+//! It handles machine capacity tracking, working day patterns, and optimal task assignment
+//! based on machine capabilities and priorities.
+
 use crate::models::*;
 use crate::db::*;
 use std::collections::HashMap;
 
+/// Determines if a specific date is a working day based on a 14-day rolling cycle.
+///
+/// The factory operates on a complex rotation. This function calculates the day of the cycle
+/// relative to an `anchor_date_str`.
+///
+/// # Arguments
+/// * `date_str` - The date to check (YYYY-MM-DD).
+/// * `anchor_date_str` - A reference starting date (YYYY-MM-DD) for the 14-day cycle.
+///
+/// # Returns
+/// `true` if it is a scheduled working day, `false` otherwise. Defaults to `true` if parsing fails.
 pub fn is_working_day(date_str: &str, anchor_date_str: &str) -> bool {
     if anchor_date_str.is_empty() {
         return true;
@@ -47,6 +64,18 @@ pub fn get_day_name(date_str: &str) -> String {
     }
 }
 
+/// Distributes a total weekly demand quantity across valid production slots.
+///
+/// The distribution is proportional to the available capacity hours of each machine/shift.
+/// It ensures that demand is not assigned to non-working days or machines with zero capacity.
+///
+/// # Algorithm
+/// 1. Identifies all "valid" slots (working days with capacity > 0).
+/// 2. Performs an initial proportional allocation: `(capacity / total_capacity) * total_demand`.
+/// 3. Distributes any remainder (due to rounding) by prioritizing slots with the most unused time.
+///
+/// # Errors
+/// Returns an error string if database or parsing operations fail.
 #[tauri::command]
 pub async fn calculate_demand_distribution(
     req: DistributeDemandRequest,
@@ -141,6 +170,13 @@ pub async fn calculate_demand_distribution(
     Ok(result)
 }
 
+/// Persists production records to the database using an atomic MERGE operation.
+///
+/// This command ensures that existing records for the same Part/Date/Shift are updated,
+/// while new records are inserted. The entire operation is wrapped in a SQL transaction.
+///
+/// # Errors
+/// Returns an error if the transaction cannot be started, any MERGE fails, or the COMMIT fails.
 #[tauri::command]
 pub async fn submit_shift_production(
     connection_string: String,
@@ -582,6 +618,13 @@ pub async fn save_scheduler_state(
     Ok(())
 }
 
+/// Internal greedy algorithm for assigning backlog items to available machine slots.
+///
+/// # Logic
+/// - Sorts items by requested date (chronological) and then by priority.
+/// - Iterates through items and attempts to find a machine that can produce the part.
+/// - Prioritizes the requested date but falls back to future dates if capacity is exceeded.
+/// - Respects machine-specific throughput (parts per hour) and max utilization limits.
 fn calculate_optimal_schedule(mut request: ScheduleRequest) -> ScheduleResponse {
     // 1. Sort backlog_items chronologically by requested date, then by priority (highest first)
     request.backlog_items.sort_by(|a, b| {
@@ -697,6 +740,14 @@ fn calculate_optimal_schedule(mut request: ScheduleRequest) -> ScheduleResponse 
     }
 }
 
+/// Entry point for the automated scheduling engine.
+///
+/// # Examples
+/// ```rust
+/// // Assuming valid request object is constructed
+/// let result = auto_schedule(request).await;
+/// assert!(result.is_ok());
+/// ```
 #[tauri::command]
 pub async fn auto_schedule(request: ScheduleRequest) -> Result<ScheduleResponse, String> {
     Ok(calculate_optimal_schedule(request))

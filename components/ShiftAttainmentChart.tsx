@@ -10,12 +10,27 @@ import { IconTarget, IconInfoCircle, IconArrowLeft } from '@tabler/icons-react';
 import { WeeklyScorecard, PartScorecard } from '@/lib/scorecardStore';
 import { useAttainmentMath } from '@/lib/hooks/useAttainmentMath';
 
+/**
+ * Configuration properties for the ShiftAttainmentChart component.
+ */
 interface ShiftAttainmentChartProps {
+  /** The full data set for the target week, containing parts and their daily records. */
   weekData?: WeeklyScorecard | null;
+  /** The name of the department being displayed (for titles and labels). */
   departmentName: string;
+  /** If true, reduces padding and chart height for display in dashboard sidebars. */
   compact?: boolean;
 }
 
+/**
+ * A drill-down bar chart component that visualizes production attainment by shift and part.
+ * 
+ * Performance metrics are "capped" at 100% per run to ensure that over-production
+ * on one shift doesn't mask missed targets in another, providing a more accurate
+ * view of operational consistency.
+ * 
+ * @param props - Component properties including week data and department context.
+ */
 export function ShiftAttainmentChart({ weekData, departmentName, compact = false }: ShiftAttainmentChartProps) {
   const theme = useMantineTheme();
   const chartHeight = compact ? 450 : 350;
@@ -23,12 +38,21 @@ export function ShiftAttainmentChart({ weekData, departmentName, compact = false
   
   const { cappedShiftAttainment: attainmentData, hasData: hookHasData } = useAttainmentMath(weekData?.Parts);
 
-  // Calculate drill-down data when a shift is selected
+  /**
+   * Computes the detailed attainment breakdown for a specific shift when selected.
+   * 
+   * The logic filters all parts by the selected shift and calculates the attainment
+   * for each part number individually. Attainment for each part is capped at 100%
+   * of the target to maintain consistency with the high-level shift metrics.
+   * 
+   * @returns An array of objects containing part numbers and their respective attainment percentages.
+   */
   const drillDownData = useMemo(() => {
     if (!selectedShift || !weekData?.Parts) return [];
     
     const partStats: Record<string, { cappedActual: number; totalTarget: number }> = {};
     
+    // Aggregate stats per part number within the chosen shift
     weekData.Parts
       .filter(p => p.Shift === selectedShift)
       .forEach(part => {
@@ -36,6 +60,7 @@ export function ShiftAttainmentChart({ weekData, departmentName, compact = false
           partStats[part.PartNumber] = { cappedActual: 0, totalTarget: 0 };
         }
         part.DailyRecords.forEach(record => {
+          // Capping logic: Actuals exceeding target are ignored to prevent skewing
           if (record.Actual !== null && record.Actual !== undefined) {
             partStats[part.PartNumber].cappedActual += Math.min(record.Actual, record.Target ?? 0);
             partStats[part.PartNumber].totalTarget += (record.Target ?? 0);

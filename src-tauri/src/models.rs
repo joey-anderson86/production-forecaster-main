@@ -1,43 +1,69 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// Represents a single row from the production scorecard database.
+/// 
+/// This structure captures daily production targets and actual achievements for a specific
+/// part, shift, and department.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct ScorecardRow {
+    /// The organizational department (e.g., 'Brakes', 'Assembly').
     pub department: String,
+    /// Fiscal week identifier (e.g., '2024-W15').
     pub week_identifier: String,
+    /// The unique part number identifier.
     pub part_number: String,
+    /// Day of the week (e.g., 'Monday').
     pub day_of_week: String,
+    /// The production goal for this entry.
     pub target: Option<i32>,
+    /// The quantity actually produced.
     pub actual: Option<i32>,
+    /// Calendar date in ISO 8601 format.
     pub date: Option<String>,
+    /// Production shift (e.g., 'A', 'B').
     pub shift: Option<String>,
+    /// Explanation code for target variances.
     pub reason_code: Option<String>,
 }
 
+/// Maps physical storage or staging locators to manufacturing processes.
+///
+/// Used to determine lead times based on where a part is physically located in the factory.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct LocatorMapping {
+    /// The unique identifier for a physical location.
     #[serde(rename = "WIPLocator")]
     pub wip_locator: Option<String>,
+    /// The process name associated with this location.
     pub process_name: Option<String>,
+    /// Estimated days remaining until shipment from this point in the process.
     pub days_from_shipment: Option<i32>,
 }
 
+/// Static metadata for a manufacturing part.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct PartInfo {
+    /// Unique part identifier.
     pub part_number: Option<String>,
+    /// Name of the primary manufacturing process.
     pub process_name: Option<String>,
+    /// Standard quantity produced per batch.
     pub batch_size: Option<i32>,
+    /// Theoretical time in minutes to produce one unit.
     pub processing_time: Option<i32>,
 }
 
+/// Captures resource availability for a specific machine and shift.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct ProcessInfo {
     pub process_name: Option<String>,
     pub date: Option<String>,
+    /// Total hours available for production on this machine/shift.
     pub hours_available: Option<f64>,
     #[serde(rename = "MachineID")]
     pub machine_id: Option<String>,
@@ -45,6 +71,7 @@ pub struct ProcessInfo {
     pub week_identifier: Option<String>,
 }
 
+/// A row in the production pipeline, representing a customer order and its current status.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct PipelineRow {
@@ -189,10 +216,13 @@ pub struct MachineSchedule {
     pub schedule: HashMap<String, HashMap<String, ShiftSchedule>>,
 }
 
+/// Represents the current state of the automated scheduling engine.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct SchedulerState {
+    /// Tasks that have not yet been assigned to a machine slot.
     pub unassigned: Vec<JobBlock>,
+    /// Map of Machine ID to its respective daily/shift schedule.
     pub machines: HashMap<String, MachineSchedule>,
 }
 
@@ -233,33 +263,41 @@ pub struct ProcessInfoId {
     pub shift: Option<String>,
 }
 
+/// Defines the production capability (units per hour) of a specific machine for a part.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct PartMachineCapability {
     pub part_id: String,
     pub machine_id: String,
+    /// Throughput rate used by the scheduler to estimate job duration.
     pub parts_per_hour: f64,
 }
 
+/// A high-level representation of work needing to be performed.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct BacklogItem {
     pub id: String,
     pub part_id: String,
     pub quantity: u32,
+    /// Numerical priority used to sort items before scheduling (lower = higher priority).
     pub priority: u32,
     pub shift: String,
     pub original_date: Option<String>,
 }
 
+/// Tracks the available and consumed capacity of a machine for a specific window.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct MachineState {
     pub machine_id: String,
     pub date: String,
     pub shift: String,
+    /// Maximum hours available.
     pub total_capacity_hours: f64,
+    /// Current percentage of total_capacity_hours that is occupied by tasks.
     pub current_utilization_pct: f64,
+    /// Upper limit for utilization (e.g., 0.85 for 85%).
     pub max_utilization_pct: f64,
 }
 

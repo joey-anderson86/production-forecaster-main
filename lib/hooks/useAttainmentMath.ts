@@ -1,31 +1,55 @@
 import { useMemo } from 'react';
 import { PartScorecard, DailyScorecardRecord } from '../scorecardStore';
 
+/**
+ * Aggregated attainment data for a specific production shift.
+ */
 export interface ShiftAttainmentData {
+  /** The shift identifier (e.g., 'A', 'B'). */
   shift: string;
+  /** The calculated attainment percentage, capped at 100%. */
   attainment: number;
 }
 
+/**
+ * Aggregated attainment data for a specific part number.
+ */
 export interface PartAttainmentData {
+  /** The unique part number identifier. */
   partNumber: string;
+  /** The calculated attainment percentage. */
   attainment: number;
 }
 
+/**
+ * The results returned by the useAttainmentMath hook.
+ */
 export interface AttainmentMathResult {
+  /** Array of attainment percentages for each day of the week (0-6). Null if no data recorded. */
   dailyAttainments: (number | null)[];
+  /** Cumulative Week-To-Date attainment percentage. */
   cumulativeWTD: number;
+  /** List of shift-level attainment stats for charting. */
   cappedShiftAttainment: ShiftAttainmentData[];
+  /** List of part-level attainment stats for charting. */
   cappedPartAttainment: PartAttainmentData[];
+  /** Indicates if any valid production data was processed. */
   hasData: boolean;
 }
 
 /**
- * Custom hook to calculate production attainment metrics with strict WTD logic.
+ * Custom hook to calculate production attainment metrics with strict Week-To-Date (WTD) logic.
  * 
- * Logic Rules:
- * - Denominator (Target) ONLY includes days where Numerator (Actual) is recorded.
- * - Recorded '0' is valid data.
- * - 'null' or 'undefined' Actual means the shift hasn't happened and is excluded.
+ * This hook centralizes the math used across the dashboard to ensure consistency. It implements
+ * the "Capped Attainment" philosophy: production exceeding 100% of the target for a specific 
+ * slot is ignored in the numerator, preventing over-performance on one item from hiding 
+ * under-performance on another.
+ * 
+ * @param parts - The collection of part scorecard data to analyze.
+ * @returns An object containing daily, shift-level, and part-level performance metrics.
+ * 
+ * @example
+ * const { cumulativeWTD } = useAttainmentMath(weekData.Parts);
  */
 export function useAttainmentMath(parts: PartScorecard[] | null | undefined): AttainmentMathResult {
   return useMemo(() => {

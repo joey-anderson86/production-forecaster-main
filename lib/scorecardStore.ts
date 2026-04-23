@@ -7,26 +7,49 @@ import { SQLDeliveryData } from './types';
 
 export type DayOfWeek = 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat' | 'Sun';
 
+/**
+ * Represents a single day's production entry for a part on a specific shift.
+ */
 export interface DailyScorecardRecord {
+  /** Day of the week identifier. */
   DayOfWeek: DayOfWeek;
+  /** Units actually produced. Null if production has not occurred. */
   Actual: number | null; 
+  /** Units targeted for production. */
   Target: number | null; 
+  /** Optional WIP availability at the start of the day. */
   WipAvailable?: number;
+  /** ISO Date string for the record. */
   Date?: string;       // YYYY-MM-DD
+  /** Reason for target variance (e.g., 'Maintenance', 'Staffing'). */
   ReasonCode?: string | null;
 }
 
+/**
+ * Container for a single part's production performance over a full week.
+ */
 export interface PartScorecard {
+  /** Internal unique identifier (UUID). */
   Id: string; 
+  /** The manufacturing part number. */
   PartNumber: string;
+  /** The production shift (A, B, C, or D). */
   Shift: string;
+  /** Array of 7 records corresponding to each day of the week. */
   DailyRecords: DailyScorecardRecord[]; 
+  /** Optional ID for grouping related parts (e.g., family groupings). */
   GroupId?: string; 
 }
 
+/**
+ * Represents a full collection of parts being tracked for a specific week.
+ */
 export interface WeeklyScorecard {
+  /** Unique week identifier (e.g., '2024-W15'). */
   WeekId: string; 
+  /** Human-readable week label. */
   WeekLabel: string; 
+  /** List of parts and their records for this week. */
   Parts: PartScorecard[];
 }
 
@@ -41,12 +64,21 @@ export interface BulkImportGroup {
   Parts: PartScorecard[];
 }
 
+/**
+ * The internal state of the scorecard management system.
+ */
 export interface ScorecardState {
+  /** Hierarchical map of departments and their weekly data. */
   departments: Record<string, DepartmentScorecard>;
+  /** Global shift configuration (e.g., anchor dates for the Panama schedule). */
   shiftSettings: Record<string, string>; 
+  /** Global loading state for database operations. */
   isLoading: boolean;
+  /** Current synchronization status with the backend. */
   syncStatus: 'saved' | 'saving' | 'error';
+  /** Last encountered error message. */
   error: string | null;
+  /** Tracks modified rows that need to be persisted to the database. */
   dirtyRows: Record<string, boolean>;
 }
 
@@ -106,6 +138,16 @@ const emptyDailyRecords = (weekId: string): DailyScorecardRecord[] => [
   { DayOfWeek: 'Sun', Actual: null, Target: null, Date: getISODateForDay(weekId, 'Sun') },
 ];
 
+/**
+ * Global store for managing production scorecard data, targets, and actuals.
+ * 
+ * This store handles complex state management including:
+ * - Nested hierarchy of Departments > Weeks > Parts > Daily Records.
+ * - Persistent storage via local storage middleware.
+ * - Panama Schedule logic (automatic target clearing on non-working days).
+ * - Bi-directional synchronization with an MSSQL database via Tauri commands.
+ * - Transactional "dirty row" tracking for efficient batch updates.
+ */
 export const useScorecardStore = create<ScorecardStore>()(
   immer(
     persist(
