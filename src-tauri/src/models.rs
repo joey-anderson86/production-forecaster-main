@@ -197,6 +197,7 @@ pub struct JobBlock {
     pub is_batch_split: bool,
     pub original_shift: Option<String>,
     pub original_date: Option<String>,
+    pub sequence_number: Option<i32>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -284,6 +285,7 @@ pub struct BacklogItem {
     pub priority: u32,
     pub shift: String,
     pub original_date: Option<String>,
+    pub sequence_number: Option<i32>,
 }
 
 /// Tracks the available and consumed capacity of a machine for a specific window.
@@ -312,6 +314,7 @@ pub struct ScheduledTask {
     pub quantity: u32,
     pub estimated_hours: f64,
     pub added_utilization_pct: f64,
+    pub sequence_number: Option<i32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -320,6 +323,7 @@ pub struct ScheduleRequest {
     pub backlog_items: Vec<BacklogItem>,
     pub capabilities: Vec<PartMachineCapability>,
     pub machine_states: Vec<MachineState>,
+    pub existing_assignments: Option<Vec<ScheduledTask>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -328,5 +332,28 @@ pub struct ScheduleResponse {
     pub newly_scheduled: Vec<ScheduledTask>,
     pub remaining_backlog: Vec<BacklogItem>,
     pub updated_machine_states: Vec<MachineState>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "PascalCase")]
+pub struct PartRouting {
+    pub routing_id: Option<i32>,
+    pub part_number: String,
+    pub process_name: String,
+    pub sequence_number: i32,
+    pub processing_time_mins: f64,
+    pub batch_size: i32,
+    pub transit_shifts: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "PascalCase")]
+pub struct UpstreamDemandRow {
+    pub demand_id: Option<i32>,
+    pub part_number: String,
+    pub process_name: String,
+    pub target_date: String, // YYYY-MM-DD
+    pub target_shift: String, // A, B, C, D
+    pub required_qty: i32,
 }
 

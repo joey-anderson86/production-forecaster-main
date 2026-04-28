@@ -1,11 +1,11 @@
-//! # Scheduling Engine
+﻿//! # Scheduling Engine
 //!
 //! This module contains the core logic for distributing demand and automated production scheduling.
 //! It handles machine capacity tracking, working day patterns, and optimal task assignment
 //! based on machine capabilities and priorities.
 
-use crate::models::*;
 use crate::db::*;
+use crate::models::*;
 use std::collections::HashMap;
 
 /// Determines if a specific date is a working day based on a 14-day rolling cycle.
@@ -226,6 +226,52 @@ pub async fn submit_shift_production(
 }
 
 #[tauri::command]
+pub async fn get_all_week_assignments(
+    connection_string: String,
+    week_id: String,
+) -> Result<Vec<ScheduledTask>, String> {
+    let mut client = create_client(&connection_string).await?;
+    
+    let query = "
+        SELECT 
+            MachineID, 
+            CONVERT(VARCHAR, Date, 23) as Date, 
+            Shift, 
+            PartNumber, 
+            Qty, 
+            RunSequence
+        FROM dbo.EquipmentSchedule 
+        WHERE WeekIdentifier = @p1";
+
+    let stream = client.query(query, &[&week_id]).await.map_err(|e| e.to_string())?;
+    let rows = stream.into_first_result().await.map_err(|e| e.to_string())?;
+
+    let mut assignments = Vec::new();
+    for row in rows {
+        let machine_id = row.get::<&str, _>("MachineID").unwrap_or_default().trim().to_string();
+        let date = row.get::<&str, _>("Date").unwrap_or_default().trim().to_string();
+        let shift = row.get::<&str, _>("Shift").unwrap_or_default().trim().to_string();
+        let part_id = row.get::<&str, _>("PartNumber").unwrap_or_default().trim().to_string();
+        let qty = get_i32_robust(&row, "Qty").unwrap_or(0);
+        let run_sequence = get_i32_robust(&row, "RunSequence");
+
+        assignments.push(ScheduledTask {
+            backlog_item_id: String::new(),
+            part_id,
+            machine_id,
+            date,
+            shift,
+            quantity: qty as u32,
+            estimated_hours: 0.0,
+            added_utilization_pct: 0.0,
+            sequence_number: run_sequence,
+        });
+    }
+
+    Ok(assignments)
+}
+
+#[tauri::command]
 pub async fn get_machine_utilization(
     connection_string: String,
     week_id: String,
@@ -267,16 +313,37 @@ pub async fn get_machine_utilization(
 
     let mut capacities: HashMap<String, HashMap<String, HashMap<String, f64>>> = HashMap::new();
     for row in rows {
-        let m_id = row.get::<&str, _>("MachineID").unwrap_or("General").trim().to_string();
-        let date_str = row.get::<&str, _>("Date").unwrap_or_default().trim().to_string();
+        let m_id = row
+            .get::<&str, _>("MachineID")
+            .unwrap_or("General")
+            .trim()
+            .to_string();
+        let date_str = row
+            .get::<&str, _>("Date")
+            .unwrap_or_default()
+            .trim()
+            .to_string();
         let day_name = get_day_name(&date_str);
-        let shift = row.get::<&str, _>("Shift").unwrap_or("A").trim().to_string();
+        let shift = row
+            .get::<&str, _>("Shift")
+            .unwrap_or("A")
+            .trim()
+            .to_string();
         let hours = get_f64_robust(&row, "HoursAvailable").unwrap_or(0.0);
-        capacities.entry(m_id).or_default().entry(day_name).or_default().insert(shift, hours);
+        capacities
+            .entry(m_id)
+            .or_default()
+            .entry(day_name)
+            .or_default()
+            .insert(shift, hours);
     }
 
-    // 2. Load Part Info (Processing Time, Batch Size)
-    let part_info_query = "SELECT PartNumber, BatchSize, ProcessingTime FROM dbo.PartInfo WHERE ProcessName = @p1";
+    // 2. Load Part Info (Processing Time, Batch Size, SequenceNumber)
+    let part_info_query = "
+        SELECT p.PartNumber, p.BatchSize, p.ProcessingTime, r.SequenceNumber
+        FROM dbo.PartInfo p
+        LEFT JOIN dbo.PartRoutings r ON p.PartNumber = r.PartNumber AND p.ProcessName = r.ProcessName
+        WHERE p.ProcessName = @p1";
     let rows = client
         .query(part_info_query, &[&process_name])
         .await
@@ -284,17 +351,23 @@ pub async fn get_machine_utilization(
         .into_first_result()
         .await
         .map_err(|e| e.to_string())?;
-    
-    let mut part_meta: HashMap<String, (f64, Option<i32>)> = HashMap::new();
+
+    let mut part_meta: HashMap<String, (f64, Option<i32>, Option<i32>)> = HashMap::new();
     for row in rows {
-        let p_num = row.get::<&str, _>("PartNumber").unwrap_or_default().trim().to_string();
+        let p_num = row
+            .get::<&str, _>("PartNumber")
+            .unwrap_or_default()
+            .trim()
+            .to_string();
         let p_time = get_i32_robust(&row, "ProcessingTime").unwrap_or(0) as f64;
         let b_size = get_i32_robust(&row, "BatchSize");
-        part_meta.insert(p_num, (p_time, b_size));
+        let s_num = get_i32_robust(&row, "SequenceNumber");
+        part_meta.insert(p_num, (p_time, b_size, s_num));
     }
 
     // 3. Load Base Demand (DeliveryData)
-    let demand_query = "SELECT PartNumber, CONVERT(VARCHAR, Date, 23) as Date, Shift, SUM(Target) as TotalTarget 
+    let demand_query =
+        "SELECT PartNumber, CONVERT(VARCHAR, Date, 23) as Date, Shift, SUM(Target) as TotalTarget 
                         FROM dbo.DeliveryData 
                         WHERE Department = @p1 AND WeekIdentifier = @p2 
                         GROUP BY PartNumber, Date, Shift";
@@ -314,11 +387,23 @@ pub async fn get_machine_utilization(
 
     let mut demand_map: HashMap<String, Vec<DemandBucket>> = HashMap::new();
     for row in rows {
-        let p_num = row.get::<&str, _>("PartNumber").unwrap_or_default().trim().to_string();
-        let date = row.get::<&str, _>("Date").unwrap_or_default().trim().to_string();
-        let shift = row.get::<&str, _>("Shift").unwrap_or("A").trim().to_string();
+        let p_num = row
+            .get::<&str, _>("PartNumber")
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        let date = row
+            .get::<&str, _>("Date")
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        let shift = row
+            .get::<&str, _>("Shift")
+            .unwrap_or("A")
+            .trim()
+            .to_string();
         let target = get_i32_robust(&row, "TotalTarget").unwrap_or(0);
-        
+
         demand_map.entry(p_num).or_default().push(DemandBucket {
             date,
             shift,
@@ -332,7 +417,8 @@ pub async fn get_machine_utilization(
     }
 
     // 4. Load Current Schedule (EquipmentSchedule)
-    let schedule_query = "SELECT MachineID, CONVERT(VARCHAR, Date, 23) as Date, Shift, PartNumber, Qty, RunSequence 
+    let schedule_query =
+        "SELECT MachineID, CONVERT(VARCHAR, Date, 23) as Date, Shift, PartNumber, Qty, RunSequence 
                           FROM dbo.EquipmentSchedule 
                           WHERE Department = @p1 AND WeekIdentifier = @p2 
                           ORDER BY MachineID, Date, Shift, RunSequence";
@@ -378,21 +464,41 @@ pub async fn get_machine_utilization(
                         },
                     );
                 }
-                machine_schedules.get_mut(m_id).unwrap().schedule.insert(day_name.clone(), day_slots);
+                machine_schedules
+                    .get_mut(m_id)
+                    .unwrap()
+                    .schedule
+                    .insert(day_name.clone(), day_slots);
             }
         }
     }
 
     for row in rows {
-        let m_id = row.get::<&str, _>("MachineID").unwrap_or("General").trim().to_string();
-        let date_str = row.get::<&str, _>("Date").unwrap_or_default().trim().to_string();
+        let m_id = row
+            .get::<&str, _>("MachineID")
+            .unwrap_or("General")
+            .trim()
+            .to_string();
+        let date_str = row
+            .get::<&str, _>("Date")
+            .unwrap_or_default()
+            .trim()
+            .to_string();
         let day_name = get_day_name(&date_str);
-        let shift = row.get::<&str, _>("Shift").unwrap_or("A").trim().to_string();
-        let p_num = row.get::<&str, _>("PartNumber").unwrap_or_default().trim().to_string();
+        let shift = row
+            .get::<&str, _>("Shift")
+            .unwrap_or("A")
+            .trim()
+            .to_string();
+        let p_num = row
+            .get::<&str, _>("PartNumber")
+            .unwrap_or_default()
+            .trim()
+            .to_string();
         let qty = get_i32_robust(&row, "Qty").unwrap_or(0);
-        
-        let (p_time, b_size) = part_meta.get(&p_num).cloned().unwrap_or((0.0, None));
-        
+
+        let (p_time, b_size, s_num) = part_meta.get(&p_num).cloned().unwrap_or((0.0, None, None));
+
         let job = JobBlock {
             id: uuid::Uuid::new_v4().to_string(),
             part_number: p_num.clone(),
@@ -404,15 +510,18 @@ pub async fn get_machine_utilization(
             is_batch_split: false,
             original_shift: None,
             original_date: None,
+            sequence_number: s_num,
         };
 
         if let Some(m_sched) = machine_schedules.get_mut(&m_id) {
             let day_sched = m_sched.schedule.entry(day_name.clone()).or_default();
-            let shift_sched = day_sched.entry(shift.clone()).or_insert_with(|| ShiftSchedule {
-                jobs: Vec::new(),
-                capacity_hrs: 0.0,
-                total_assigned_hours: 0.0,
-            });
+            let shift_sched = day_sched
+                .entry(shift.clone())
+                .or_insert_with(|| ShiftSchedule {
+                    jobs: Vec::new(),
+                    capacity_hrs: 0.0,
+                    total_assigned_hours: 0.0,
+                });
             shift_sched.jobs.push(job);
             shift_sched.total_assigned_hours += (qty as f64 * p_time) / 60.0;
         }
@@ -437,7 +546,9 @@ pub async fn get_machine_utilization(
                         bucket.quantity -= taken;
                         qty_to_subtract -= taken;
                     }
-                    if qty_to_subtract <= 0 { break; }
+                    if qty_to_subtract <= 0 {
+                        break;
+                    }
                 }
             }
         }
@@ -448,7 +559,8 @@ pub async fn get_machine_utilization(
     for (p_num, buckets) in demand_map {
         for bucket in buckets {
             if bucket.quantity > 0 {
-                let (p_time, b_size) = part_meta.get(&p_num).cloned().unwrap_or((0.0, None));
+                let (p_time, b_size, s_num) =
+                    part_meta.get(&p_num).cloned().unwrap_or((0.0, None, None));
                 unassigned.push(JobBlock {
                     id: format!("{}|{}|{}", p_num, bucket.shift, bucket.date),
                     part_number: p_num.clone(),
@@ -460,6 +572,7 @@ pub async fn get_machine_utilization(
                     is_batch_split: false,
                     original_shift: Some(bucket.shift),
                     original_date: Some(bucket.date),
+                    sequence_number: s_num,
                 });
             }
         }
@@ -517,8 +630,7 @@ pub async fn get_scheduler_meta(connection_string: String) -> Result<SchedulerMe
         .await
         .map_err(|e| e.to_string())?;
 
-    let mut hierarchy: HashMap<String, Vec<String>> =
-        HashMap::new();
+    let mut hierarchy: HashMap<String, Vec<String>> = HashMap::new();
     for row in rows {
         let p = row
             .get::<&str, _>("ProcessName")
@@ -587,7 +699,7 @@ pub async fn save_scheduler_state(
         )
         .await
         .map_err(|e| {
-            // Rollback not strictly necessary if we return error and don't commit, 
+            // Rollback not strictly necessary if we return error and don't commit,
             // but good practice if the client stays open.
             e.to_string()
         })?;
@@ -628,34 +740,75 @@ pub async fn save_scheduler_state(
 fn calculate_optimal_schedule(mut request: ScheduleRequest) -> ScheduleResponse {
     // 1. Sort backlog_items chronologically by requested date, then by priority (highest first)
     request.backlog_items.sort_by(|a, b| {
-        a.original_date.cmp(&b.original_date)
+        a.original_date
+            .cmp(&b.original_date)
             .then(b.priority.cmp(&a.priority))
     });
 
     // 2. Index capabilities and machine_states
     let mut capabilities_map: HashMap<String, Vec<&PartMachineCapability>> = HashMap::new();
     for cap in &request.capabilities {
-        capabilities_map.entry(cap.part_id.clone()).or_default().push(cap);
+        capabilities_map
+            .entry(cap.part_id.clone())
+            .or_default()
+            .push(cap);
     }
-    
+
     // Sort capabilities per part by parts_per_hour (fastest first)
     for caps in capabilities_map.values_mut() {
-        caps.sort_by(|a, b| b.parts_per_hour.partial_cmp(&a.parts_per_hour).unwrap_or(std::cmp::Ordering::Equal));
+        caps.sort_by(|a, b| {
+            b.parts_per_hour
+                .partial_cmp(&a.parts_per_hour)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
     }
 
     // Index machine_states by (machine_id, date, shift) for date-strict capacity tracking
     let mut machine_states_map: HashMap<(String, String, String), MachineState> = HashMap::new();
     for state in request.machine_states {
-        machine_states_map.insert((state.machine_id.clone(), state.date.clone(), state.shift.clone()), state);
+        machine_states_map.insert(
+            (
+                state.machine_id.clone(),
+                state.date.clone(),
+                state.shift.clone(),
+            ),
+            state,
+        );
     }
 
     let mut newly_scheduled: Vec<ScheduledTask> = Vec::new();
     let mut remaining_backlog: Vec<BacklogItem> = Vec::new();
 
     // 3. Extract unique dates from machine states to enable fallback forward-looking search
-    let mut available_dates: Vec<String> = machine_states_map.values().map(|s| s.date.clone()).collect();
+    let mut available_dates: Vec<String> = machine_states_map
+        .values()
+        .map(|s| s.date.clone())
+        .collect();
     available_dates.sort();
     available_dates.dedup();
+
+    // 3a. Index existing assignments by PartNumber to speed up lookup
+    let mut assignments_by_part: HashMap<String, Vec<ScheduledTask>> = HashMap::new();
+    if let Some(existing) = request.existing_assignments {
+        for task in existing {
+            assignments_by_part
+                .entry(task.part_id.clone())
+                .or_default()
+                .push(task);
+        }
+    }
+
+    // Helper to compare date/shift
+    let is_before = |d1: &str, s1: &str, d2: &str, s2: &str| -> bool {
+        if d1 < d2 {
+            return true;
+        }
+        if d1 > d2 {
+            return false;
+        }
+        // Same date, compare shifts. A < B < C < D
+        s1 < s2
+    };
 
     // 4. Loop through sorted backlog items
     for mut item in request.backlog_items {
@@ -664,13 +817,39 @@ fn calculate_optimal_schedule(mut request: ScheduleRequest) -> ScheduleResponse 
 
         if let Some(eligible_caps) = capabilities_map.get(&item.part_id) {
             // Find all dates from requested_date onwards
-            let valid_dates: Vec<&String> = available_dates.iter()
+            let valid_dates: Vec<&String> = available_dates
+                .iter()
                 .filter(|d| *d >= &requested_date)
                 .collect();
 
             // Try scheduling across available forward-looking dates
             for current_date in valid_dates {
-                if fully_scheduled { break; }
+                if fully_scheduled {
+                    break;
+                }
+
+                // Sequence Constraint Check
+                if let (Some(seq), Some(part_tasks)) =
+                    (item.sequence_number, assignments_by_part.get(&item.part_id))
+                {
+                    // Find any assignment for an earlier sequence that is scheduled at or after our target slot
+                    let conflict = part_tasks.iter().any(|t| {
+                        if let Some(t_seq) = t.sequence_number {
+                            if t_seq < seq {
+                                // An EARLIER operation exists. It MUST be completed BEFORE this one starts.
+                                // So we cannot schedule this one if it's NOT after that one.
+                                !is_before(&t.date, &t.shift, current_date, &item.shift)
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                    });
+                    if conflict {
+                        continue; // Skip this date for this item as it violates sequencing
+                    }
+                }
 
                 for cap in eligible_caps {
                     if cap.parts_per_hour <= 0.0 || item.quantity == 0 {
@@ -678,15 +857,23 @@ fn calculate_optimal_schedule(mut request: ScheduleRequest) -> ScheduleResponse 
                     }
 
                     // Look up specific Machine + Date + Shift capacity
-                    let key = (cap.machine_id.clone(), current_date.clone(), item.shift.clone());
+                    let key = (
+                        cap.machine_id.clone(),
+                        current_date.clone(),
+                        item.shift.clone(),
+                    );
                     if let Some(machine) = machine_states_map.get_mut(&key) {
-                        if machine.total_capacity_hours <= 0.0 || machine.current_utilization_pct >= machine.max_utilization_pct {
+                        if machine.total_capacity_hours <= 0.0
+                            || machine.current_utilization_pct >= machine.max_utilization_pct
+                        {
                             continue;
                         }
 
                         // Calculate how many hours we can still assign to this machine shift
-                        let remaining_pct = machine.max_utilization_pct - machine.current_utilization_pct;
-                        let remaining_hours = (remaining_pct / 100.0) * machine.total_capacity_hours;
+                        let remaining_pct =
+                            machine.max_utilization_pct - machine.current_utilization_pct;
+                        let remaining_hours =
+                            (remaining_pct / 100.0) * machine.total_capacity_hours;
 
                         // Calculate how many parts can fit into the remaining hours
                         let max_parts_fit = (remaining_hours * cap.parts_per_hour).floor() as u32;
@@ -697,12 +884,13 @@ fn calculate_optimal_schedule(mut request: ScheduleRequest) -> ScheduleResponse 
                             let estimated_hours = parts_to_schedule as f64 / cap.parts_per_hour;
 
                             // 6. Calculate utilization impact percentage
-                            let utilization_impact = (estimated_hours / machine.total_capacity_hours) * 100.0;
+                            let utilization_impact =
+                                (estimated_hours / machine.total_capacity_hours) * 100.0;
 
                             // 7. Assign part to machine shift
                             machine.current_utilization_pct += utilization_impact;
 
-                            newly_scheduled.push(ScheduledTask {
+                            let new_task = ScheduledTask {
                                 backlog_item_id: item.id.clone(),
                                 part_id: item.part_id.clone(),
                                 machine_id: machine.machine_id.clone(),
@@ -711,7 +899,15 @@ fn calculate_optimal_schedule(mut request: ScheduleRequest) -> ScheduleResponse 
                                 quantity: parts_to_schedule,
                                 estimated_hours,
                                 added_utilization_pct: utilization_impact,
-                            });
+                                sequence_number: item.sequence_number,
+                            };
+
+                            newly_scheduled.push(new_task.clone());
+                            // Add to temporary tracker to prevent self-conflict in later items
+                            assignments_by_part
+                                .entry(item.part_id.clone())
+                                .or_default()
+                                .push(new_task);
 
                             item.quantity -= parts_to_schedule;
 

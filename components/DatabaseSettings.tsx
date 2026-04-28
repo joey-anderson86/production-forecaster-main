@@ -111,6 +111,7 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
   const [dailyRates, setDailyRates] = useState<DailyRate[]>([]);
   const [processes, setProcesses] = useState<Process[]>([]);
   const [reasonCodes, setReasonCodes] = useState<ReasonCodeData[]>([]);
+  const [partRoutings, setPartRoutings] = useState<PartRouting[]>([]);
   const [allPartNumbers, setAllPartNumbers] = useState<string[]>([]);
   const [scrollTop, setScrollTop] = useState(0);
   const [partScrollTop, setPartScrollTop] = useState(0);
@@ -123,6 +124,7 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
   const [initialDailyRates, setInitialDailyRates] = useState<string>("");
   const [initialProcesses, setInitialProcesses] = useState<string>("");
   const [initialReasonCodes, setInitialReasonCodes] = useState<string>("");
+  const [initialPartRoutings, setInitialPartRoutings] = useState<string>("");
 
   // Deletion tracking
   const [deletedLocators, setDeletedLocators] = useState<string[]>([]);
@@ -131,6 +133,7 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
   const [deletedDailyRates, setDeletedDailyRates] = useState<DailyRate[]>([]);
   const [deletedProcesses, setDeletedProcesses] = useState<Process[]>([]);
   const [deletedReasonCodes, setDeletedReasonCodes] = useState<ReasonCodeData[]>([]);
+  const [deletedPartRoutings, setDeletedPartRoutings] = useState<number[]>([]);
 
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [isSavingData, setIsSavingData] = useState(false);
@@ -266,6 +269,11 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
         setReasonCodes(data);
         setInitialReasonCodes(JSON.stringify(data));
         setDeletedReasonCodes([]);
+      } else if (tab === "partRouting") {
+        const data = await invoke<SQLPartRouting[]>("get_part_routings", { connectionString: activeConnStr });
+        setPartRoutings(data as any);
+        setInitialPartRoutings(JSON.stringify(data));
+        setDeletedPartRoutings([]);
       }
     } catch (err) {
       console.error(`Failed to fetch ${tab} data:`, err);
@@ -286,6 +294,7 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
     try {
       const store = await load("store.json", { autoSave: false, defaults: {} });
       await store.set("db_connection_string", connectionString);
+      await store.set("shiftSettings", shiftSettings);
       await store.save();
       notifications.show({
         title: "Success",
@@ -407,6 +416,11 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
          }
          const cleanRecords = reasonCodes.map(r => ({ ProcessName: r.ProcessName || "", ReasonCode: r.ReasonCode || "" }));
          await invoke("upsert_reason_codes", { connectionString, records: cleanRecords });
+      } else if (activeTab === "partRouting") {
+          if (deletedPartRoutings.length > 0) {
+            await invoke("delete_part_routings", { connectionString, routingIds: deletedPartRoutings });
+          }
+          await invoke("upsert_part_routings", { connectionString, records: partRoutings });
       }
       
       notifications.show({
@@ -477,6 +491,8 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
       setProcesses(prev => [...prev, { ProcessName: "", MachineID: "" }]);
     } else if (activeTab === "reasonCode") {
       setReasonCodes(prev => [...prev, { ProcessName: "", ReasonCode: "" }]);
+    } else if (activeTab === "partRouting") {
+      setPartRoutings(prev => [...prev, { PartNumber: "", ProcessName: "", SequenceNumber: 10, ProcessingTimeMins: 0, BatchSize: 1, TransitShifts: 0 }]);
     }
   };
 
@@ -505,6 +521,10 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
       const next = [...reasonCodes];
       next[index] = { ...next[index], [field]: value };
       setReasonCodes(next);
+    } else if (activeTab === "partRouting") {
+      const next = [...partRoutings];
+      next[index] = { ...next[index], [field]: value };
+      setPartRoutings(next);
     }
   };
 
@@ -590,6 +610,12 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
         setDeletedReasonCodes(prev => [...prev, record]);
       }
       setReasonCodes(prev => prev.filter((_, i) => i !== index));
+    } else if (activeTab === "partRouting") {
+      const record = partRoutings[index];
+      if (record.RoutingID) {
+        setDeletedPartRoutings(prev => [...prev, record.RoutingID!]);
+      }
+      setPartRoutings(prev => prev.filter((_, i) => i !== index));
     }
   };
 
@@ -907,11 +933,14 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
                       }}
                     >
                       <Box>
-                        <TextInput 
+                        <Select 
                           variant="unstyled" 
                           size="xs" 
+                          data={allPartNumbers}
                           value={row.PartNumber || ""} 
-                          onChange={(e) => updateRecord(actualIndex, "PartNumber", e.currentTarget.value)} 
+                          onChange={(val) => updateRecord(actualIndex, "PartNumber", val || "")} 
+                          searchable
+                          clearable
                         />
                       </Box>
                       <Box>
@@ -1244,6 +1273,99 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
           </Table>
         </ScrollArea>
       );
+    }
+
+    if (activeTab === "partRouting") {
+      return (
+        <ScrollArea h={400} mt="md">
+          <Table striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="xs">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Part Number</Table.Th>
+                <Table.Th>Process</Table.Th>
+                <Table.Th w={100}>Seq</Table.Th>
+                <Table.Th w={100}>Time (min)</Table.Th>
+                <Table.Th w={100}>Batch</Table.Th>
+                <Table.Th w={100}>Transit</Table.Th>
+                <Table.Th w={50}></Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {partRoutings.map((row, i) => (
+                <Table.Tr key={i}>
+                  <Table.Td>
+                    <Select 
+                      variant="unstyled" 
+                      size="xs" 
+                      data={allPartNumbers}
+                      value={row.PartNumber || ""} 
+                      onChange={(val) => updateRecord(i, "PartNumber", val || "")} 
+                      searchable
+                      clearable
+                    />
+                  </Table.Td>
+                  <Table.Td>
+                    <Select
+                      variant="unstyled"
+                      size="xs"
+                      data={globalProcesses}
+                      value={row.ProcessName || ""}
+                      onChange={(val) => updateRecord(i, "ProcessName", val || "")}
+                      searchable
+                      clearable
+                    />
+                  </Table.Td>
+                  <Table.Td>
+                    <NumberInput
+                      variant="unstyled"
+                      size="xs"
+                      hideControls
+                      value={row.SequenceNumber}
+                      onChange={(val) => updateRecord(i, "SequenceNumber", val)}
+                    />
+                  </Table.Td>
+                  <Table.Td>
+                    <NumberInput
+                      variant="unstyled"
+                      size="xs"
+                      hideControls
+                      decimalScale={2}
+                      value={row.ProcessingTimeMins}
+                      onChange={(val) => updateRecord(i, "ProcessingTimeMins", val)}
+                    />
+                  </Table.Td>
+                  <Table.Td>
+                    <NumberInput
+                      variant="unstyled"
+                      size="xs"
+                      hideControls
+                      value={row.BatchSize}
+                      onChange={(val) => updateRecord(i, "BatchSize", val)}
+                    />
+                  </Table.Td>
+                  <Table.Td>
+                    <NumberInput
+                      variant="unstyled"
+                      size="xs"
+                      hideControls
+                      value={row.TransitShifts}
+                      onChange={(val) => updateRecord(i, "TransitShifts", val)}
+                    />
+                  </Table.Td>
+                  <Table.Td>
+                    <ActionIcon variant="subtle" color="red" onClick={() => removeLocalRecord(i)}>
+                      <IconTrash size={14} />
+                    </ActionIcon>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+              {partRoutings.length === 0 && (
+                <Table.Tr><Table.Td colSpan={7}><Text ta="center" c="dimmed">No records found</Text></Table.Td></Table.Tr>
+              )}
+            </Table.Tbody>
+          </Table>
+        </ScrollArea>
+      );
     } else if (activeTab === "deliveryData") {
       return (
         <Center h={400} mt="md">
@@ -1450,6 +1572,9 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
               <Tabs.Tab value="reasonCode" leftSection={<IconTable size={14} />}>
                 Reason Codes
               </Tabs.Tab>
+              <Tabs.Tab value="partRouting" leftSection={<IconRoute size={14} />}>
+                Part Routings
+              </Tabs.Tab>
               <Tabs.Tab value="deliveryData" leftSection={<IconDatabase size={14} />}>
                 Delivery Data
               </Tabs.Tab>
@@ -1533,6 +1658,10 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
             </Tabs.Panel>
 
             <Tabs.Panel value="reasonCode">
+              {renderTable()}
+            </Tabs.Panel>
+
+            <Tabs.Panel value="partRouting">
               {renderTable()}
             </Tabs.Panel>
 

@@ -26,6 +26,8 @@ export interface JobBlock {
   MaxQty?: number; // Added to track original limit
   OriginalShift?: string;
   OriginalDate?: string;
+  IsOverflow?: boolean; // Track if this is an unscheduled remainder
+  SequenceNumber?: number;
 }
 
 export interface ShiftSchedule {
@@ -173,14 +175,18 @@ const JobCard = ({
                 mb={8}
                 withBorder
                 style={{
-                  backgroundColor: snapshot.isDragging ? 'var(--mantine-color-indigo-0)' : 'white',
+                  backgroundColor: snapshot.isDragging 
+                    ? 'var(--mantine-color-indigo-0)' 
+                    : (job.IsOverflow ? 'var(--mantine-color-red-0)' : 'white'),
                   opacity: snapshot.isDragging ? 0.9 : 1,
                   cursor: 'grab',
                   position: 'relative',
                   borderRadius: '6px',
                   borderLeftWidth: '3px',
                   borderLeftStyle: 'solid',
-                  borderLeftColor: `var(--mantine-color-${shiftColor.replace('.', '-')})`,
+                  borderLeftColor: job.IsOverflow 
+                    ? 'var(--mantine-color-red-6)' 
+                    : `var(--mantine-color-${shiftColor.replace('.', '-')})`,
                   ...provided.draggableProps.style,
                   zIndex: snapshot.isDragging ? 9999 : 1,
                   // Maintain width when dragging in Portal
@@ -190,9 +196,21 @@ const JobCard = ({
 
                 <Stack gap={2}>
                   <Group gap={4} wrap="nowrap" align="center" style={{ width: '100%' }}>
-                    <Text fw={800} style={{ fontSize: '11px', lineHeight: 1.2, flex: 1 }} truncate="end">
+                    <Text 
+                      fw={800} 
+                      style={{ fontSize: '11px', lineHeight: 1.2, flex: 1 }} 
+                      truncate="end"
+                      c={job.IsOverflow ? 'red.8' : undefined}
+                    >
                       {job.PartNumber}
                     </Text>
+                    {job.IsOverflow && (
+                      <Tooltip label="Unable to fit in original schedule" withinPortal position="top">
+                        <Badge size="xs" color="red" variant="filled" styles={{ root: { fontSize: '8px', padding: '0 4px', height: 14, fontWeight: 800 } }}>
+                          SHORTFALL
+                        </Badge>
+                      </Tooltip>
+                    )}
                     {dateMoved && (
                       <Tooltip label={moveLabel} withinPortal position="top">
                         <Badge size="xs" color="orange" variant="filled" styles={{ root: { fontSize: '8px', padding: '0 4px', height: 14, fontWeight: 800 } }}>
@@ -352,7 +370,8 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
       const existingIdx = consolidated.findIndex(j =>
         j.PartNumber.trim().toLowerCase() === item.PartNumber.trim().toLowerCase() &&
         j.Shift === item.Shift &&
-        j.Id.split('|')[2] === itemDate
+        j.Id.split('|')[2] === itemDate &&
+        !!j.IsOverflow === !!item.IsOverflow // Differentiate shortfalls from regular backlog
       );
 
       if (existingIdx !== -1) {
@@ -360,6 +379,9 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
         if (consolidated[existingIdx].MaxQty !== undefined || item.MaxQty !== undefined) {
           consolidated[existingIdx].MaxQty = (consolidated[existingIdx].MaxQty || 0) + (item.MaxQty || item.TargetQty);
         }
+        // Preserve original metadata if available
+        if (!consolidated[existingIdx].OriginalDate) consolidated[existingIdx].OriginalDate = item.OriginalDate;
+        if (!consolidated[existingIdx].OriginalShift) consolidated[existingIdx].OriginalShift = item.OriginalShift;
       } else {
         consolidated.push({ ...item });
       }
@@ -496,18 +518,29 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                 Object.entries(mInfo.Schedule).map(([day, shifts]) => [
                   day,
                   Object.fromEntries(
-                    Object.entries(shifts).map(([sId, sData]) => [
-                      sId,
-                      { 
-                        ...sData, 
-                        Jobs: sData.Jobs.map(j => ({ 
-                          ...j, 
-                          MaxQty: j.TargetQty, 
-                          OriginalShift: j.OriginalShift || j.Shift, 
-                          OriginalDate: j.OriginalDate || (j.Id.includes('|') ? j.Id.split('|')[2] : undefined) 
-                        })) 
-                      }
-                    ])
+                    Object.entries(shifts).map(([sId, sData]) => {
+                      const dayIdx = DAYS_OF_WEEK.indexOf(day as DayOfWeek);
+                      const dateObj = weekDates[dayIdx];
+                      const dateStr = dateObj ? `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}` : '';
+
+                      return [
+                        sId,
+                        { 
+                          ...sData, 
+                          Jobs: sData.Jobs.map(j => {
+                            // Standardize ID to include date so moves can be tracked correctly
+                            const formattedId = j.Id.includes('|') ? j.Id : `${j.PartNumber}|${j.Shift}|${dateStr}|${j.Id}`;
+                            return { 
+                              ...j, 
+                              Id: formattedId,
+                              MaxQty: j.TargetQty, 
+                              OriginalShift: j.OriginalShift || j.Shift, 
+                              OriginalDate: j.OriginalDate || (formattedId.split('|')[2]) 
+                            };
+                          }) 
+                        }
+                      ];
+                    })
                   )
                 ])
               )
@@ -721,7 +754,10 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
               Id: `${movedJob.Id}|split|${Date.now()}`,
               TargetQty: leftoverQty,
               MaxQty: leftoverQty,
-              IsBatchSplit: true
+              IsBatchSplit: true,
+              IsOverflow: true,
+              OriginalDate: movedJob.OriginalDate,
+              OriginalShift: movedJob.OriginalShift
             };
 
             newState.Unassigned.push(remainderJob);
@@ -916,13 +952,18 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
     if (!data || !meta || !meta.PartMachineMap) return;
     setIsAutoScheduling(true);
     try {
-      const backlogItems: BacklogItem[] = data.Unassigned.map((job, idx) => ({
+      const store = await load("store.json", { autoSave: false, defaults: {} });
+      const connectionString = await store.get<string>("db_connection_string");
+      if (!connectionString) throw new Error("Connection string not found");
+
+      const backlogItems: any[] = data.Unassigned.map((job, idx) => ({
         id: job.Id,
         partId: job.PartNumber,
         quantity: job.TargetQty,
         priority: 1000 - idx,
         shift: job.OriginalShift || job.Shift || 'A',
-        originalDate: job.OriginalDate || job.Id.split('|')[2]
+        originalDate: job.OriginalDate || job.Id.split('|')[2],
+        sequenceNumber: job.SequenceNumber
       }));
 
       const capabilities: PartMachineCapability[] = [];
@@ -979,9 +1020,21 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
         currentUtilizationPct: ms.totalCapacityHours > 0 ? ((ms as any).tempAssigned / ms.totalCapacityHours) * 100.0 : 0
       }));
 
-      // Use store action
-      useProcessStore.getState().setSchedulingState(backlogItems, capabilities, machineStates);
-      const response = await autoScheduleOperations();
+      // 1. Fetch all existing assignments for the week to enforce sequencing
+      const existingAssignments = await invoke('get_all_week_assignments', { 
+        connectionString, 
+        weekId: currentWeekId 
+      });
+
+      // 2. Directly invoke auto_schedule with enhanced data
+      const response = await invoke<any>('auto_schedule', { 
+        request: {
+          backlogItems,
+          capabilities,
+          machineStates,
+          existingAssignments
+        }
+      });
 
       setData(prev => {
         if (!prev) return null;
@@ -1034,11 +1087,17 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                newState.Unassigned.push({
                  ...originalJob,
                  Id: `${originalJob.Id}|REMAINDER|${Date.now()}`,
-                 TargetQty: remainingQtyToSchedule
+                 TargetQty: remainingQtyToSchedule,
+                 IsOverflow: true,
+                 OriginalDate: originalJob.OriginalDate,
+                 OriginalShift: originalJob.OriginalShift
                });
             }
           }
         });
+        
+        // Consolidate backlog to merge fragments while keeping shortfalls separate
+        newState.Unassigned = consolidateJobsList(newState.Unassigned);
 
         // Consolidate shifts
         Object.values(newState.Machines).forEach(m => {

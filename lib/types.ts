@@ -111,6 +111,26 @@ export interface SQLDailyRate {
 }
 
 /**
+ * Defines the process routing sequence and lead-time offsetting for a part.
+ */
+export interface SQLPartRouting {
+  /** Primary key. */
+  RoutingID?: number;
+  /** The part number. */
+  PartNumber: string;
+  /** The process name in the sequence. */
+  ProcessName: string;
+  /** The order in which the process occurs (e.g., 10, 20). */
+  SequenceNumber: number;
+  /** Standard time per unit in minutes. */
+  ProcessingTimeMins: number;
+  /** Standard production lot size. */
+  BatchSize: number;
+  /** Number of shifts between this operation and the next. */
+  TransitShifts: number;
+}
+
+/**
  * A persisted entry in the equipment schedule representing an assigned production task.
  */
 export interface SQLEquipmentSchedule {
@@ -219,6 +239,8 @@ export interface BacklogItem {
    * This provides date context for the scheduling engine to ensure chronological assignment.
    */
   originalDate?: string;
+  /** Routing sequence position. */
+  sequenceNumber?: number;
 }
 
 /**
@@ -276,6 +298,8 @@ export interface ScheduledTask {
   estimatedHours: number;
   /** Impact of this task on the machine's utilization percentage. */
   addedUtilizationPct: number;
+  /** Routing sequence position. */
+  sequenceNumber?: number;
 }
 
 /**
@@ -288,6 +312,8 @@ export interface ScheduleRequest {
   capabilities: PartMachineCapability[];
   /** Current availability of machines. */
   machineStates: MachineState[];
+  /** Tasks already scheduled for other processes to ensure sequencing logic. */
+  existingAssignments?: ScheduledTask[];
 }
 
 /**

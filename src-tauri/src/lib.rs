@@ -15,6 +15,7 @@ pub fn run() {
             commands::scheduler::update_job_machine_assignment,
             commands::scheduler::get_scheduler_meta,
             commands::scheduler::save_scheduler_state,
+            commands::scheduler::get_all_week_assignments,
             commands::scheduler::calculate_demand_distribution,
             commands::scheduler::submit_shift_production,
             commands::scheduler::auto_schedule,
@@ -79,6 +80,13 @@ pub fn run() {
             // Export Commands
             commands::export::save_csv_file,
             commands::export::save_csv_file_with_handle,
+
+            // MRP Commands
+            commands::mrp::generate_cascaded_demand,
+            commands::mrp::get_upstream_demand,
+            commands::mrp::get_part_routings,
+            commands::mrp::upsert_part_routings,
+            commands::mrp::delete_part_routings,
 
             // Database Utilities
             db::test_mssql_connection
