@@ -287,12 +287,12 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
         setInitialReasonCodes(JSON.stringify(data));
         setDeletedReasonCodes([]);
       } else if (tab === "partRouting") {
-        const data = await invoke<SQLPartRouting[]>("get_part_routings", { 
+        const data = await invoke<PartRouting[]>("get_part_routings", { 
           connectionString: activeConnStr,
           partFilter: routingFilterParts,
           processFilter: routingFilterProcess
         });
-        setPartRoutings(data as any);
+        setPartRoutings(data);
         setInitialPartRoutings(JSON.stringify(data));
         setDeletedPartRoutings([]);
       }
