@@ -131,6 +131,7 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
   const [partFilterParts, setPartFilterParts] = useState<string[]>([]);
   const [routingFilterProcess, setRoutingFilterProcess] = useState<string | null>(null);
   const [routingFilterParts, setRoutingFilterParts] = useState<string[]>([]);
+  const [processTabFilter, setProcessTabFilter] = useState<string | null>(null);
   const [initialLocatorMappings, setInitialLocatorMappings] = useState<string>("");
   const [initialPartInfos, setInitialPartInfos] = useState<string>("");
   const [initialProcessInfos, setInitialProcessInfos] = useState<string>("");
@@ -273,7 +274,10 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
         const parts = await invoke<string[]>("get_all_part_numbers", { connectionString: activeConnStr });
         setAllPartNumbers(parts);
       } else if (tab === "process") {
-        const data = await invoke<Process[]>("get_processes_preview", { connectionString: activeConnStr });
+        const data = await invoke<Process[]>("get_processes_preview", { 
+          connectionString: activeConnStr,
+          processFilter: processTabFilter 
+        });
         setProcesses(data);
         setInitialProcesses(JSON.stringify(data));
         setDeletedProcesses([]);
@@ -303,7 +307,7 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
   useEffect(() => {
     // This handles tab changes and filter changes.
     fetchData(activeTab);
-  }, [activeTab, selectedWeek, selectedProcess, partFilterProcess, partFilterParts, routingFilterProcess, routingFilterParts]);
+  }, [activeTab, selectedWeek, selectedProcess, partFilterProcess, partFilterParts, routingFilterProcess, routingFilterParts, processTabFilter]);
 
 
   const handleSaveSettings = async () => {
@@ -1600,7 +1604,24 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
             </Tabs.List>
 
             <Tabs.Panel value="process">
-              {renderTable()}
+              <Stack gap="md" mt="md">
+                <Group grow>
+                  <Select
+                    label="Filter by Process"
+                    placeholder="All Processes"
+                    data={globalProcesses}
+                    value={processTabFilter}
+                    onChange={setProcessTabFilter}
+                    clearable
+                    searchable
+                    leftSection={<IconTable size={14} />}
+                  />
+                  <Box style={{ alignSelf: 'flex-end' }}>
+                     <Text size="xs" c="dimmed">Showing {processes.length} records</Text>
+                  </Box>
+                </Group>
+                {renderTable()}
+              </Stack>
             </Tabs.Panel>
 
             <Tabs.Panel value="partInfo">

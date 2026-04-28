@@ -520,16 +520,24 @@ pub async fn replace_process_infos(
 }
 
 #[tauri::command]
-pub async fn get_processes_preview(connection_string: String) -> Result<Vec<Process>, String> {
+pub async fn get_processes_preview(
+    connection_string: String,
+    process_filter: Option<String>,
+) -> Result<Vec<Process>, String> {
     let mut client = create_client(&connection_string).await?;
-    let stream = client
-        .query("SELECT ProcessName, MachineID FROM dbo.Process", &[])
-        .await
-        .map_err(|e| e.to_string())?;
-    let rows = stream
-        .into_first_result()
-        .await
-        .map_err(|e| e.to_string())?;
+    let query = if process_filter.is_some() {
+        "SELECT ProcessName, MachineID FROM dbo.Process WHERE ProcessName = @p1"
+    } else {
+        "SELECT ProcessName, MachineID FROM dbo.Process"
+    };
+
+    let params: Vec<&dyn tiberius::ToSql> = match &process_filter {
+        Some(p) => vec![p],
+        None => vec![],
+    };
+
+    let stream = client.query(query, &params).await.map_err(|e| e.to_string())?;
+    let rows = stream.into_first_result().await.map_err(|e| e.to_string())?;
 
     let result = rows
         .into_iter()
