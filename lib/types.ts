@@ -4,17 +4,13 @@
  */
 
 /**
- * Represents static information about a manufacturing part and its associated process.
+ * Represents the global registry of parts in the Item Master.
  */
-export interface SQLPartInfo {
+export interface SQLItemMaster {
   /** The unique identifier for the part. */
   PartNumber: string;
-  /** The name of the process (e.g., 'Assembly', 'Machining') required for this part. */
-  ProcessName: string;
-  /** The standard quantity produced in a single batch. */
-  BatchSize: number;
-  /** The time in minutes required to process one unit. */
-  ProcessingTime: number;
+  /** The descriptive name of the part. */
+  PartName?: string;
 }
 
 /**

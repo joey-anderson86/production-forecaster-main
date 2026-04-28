@@ -197,23 +197,48 @@ pub async fn get_upstream_demand(
 #[tauri::command]
 pub async fn get_part_routings(
     connection_string: String,
-    part_number: Option<String>,
+    part_filter: Option<Vec<String>>,
+    process_filter: Option<String>,
 ) -> Result<Vec<PartRouting>, String> {
     let mut client = create_client(&connection_string).await?;
-    let query = if part_number.is_some() {
-        "SELECT RoutingID, PartNumber, ProcessName, SequenceNumber, ProcessingTimeMins, BatchSize, TransitShifts 
-         FROM dbo.PartRoutings WHERE PartNumber = @p1 ORDER BY SequenceNumber ASC"
+    
+    let mut conditions = Vec::new();
+    let mut params: Vec<Box<dyn tiberius::ToSql>> = Vec::new();
+
+    if let Some(parts) = part_filter {
+        if !parts.is_empty() {
+            let placeholders: Vec<String> = parts.iter().enumerate().map(|(i, _)| format!("@p{}", i + 1)).collect();
+            conditions.push(format!("PartNumber IN ({})", placeholders.join(", ")));
+            for p in parts {
+                params.push(Box::new(p));
+            }
+        }
+    }
+
+    if let Some(process) = process_filter {
+        if !process.is_empty() {
+            let p_idx = params.len() + 1;
+            conditions.push(format!("ProcessName = @p{}", p_idx));
+            params.push(Box::new(process));
+        }
+    }
+
+    let where_clause = if conditions.is_empty() {
+        "".to_string()
     } else {
+        format!("WHERE {}", conditions.join(" AND "))
+    };
+
+    let query = format!(
         "SELECT RoutingID, PartNumber, ProcessName, SequenceNumber, ProcessingTimeMins, BatchSize, TransitShifts 
-         FROM dbo.PartRoutings ORDER BY PartNumber ASC, SequenceNumber ASC"
-    };
+         FROM dbo.PartRoutings {} ORDER BY PartNumber ASC, SequenceNumber ASC",
+        where_clause
+    );
 
-    let params: Vec<&dyn tiberius::ToSql> = match &part_number {
-        Some(p) => vec![p],
-        None => vec![],
-    };
+    // Convert Vec<Box<dyn ToSql>> to Vec<&dyn ToSql>
+    let param_refs: Vec<&dyn tiberius::ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
-    let stream = client.query(query, &params).await.map_err(|e| e.to_string())?;
+    let stream = client.query(query, &param_refs).await.map_err(|e| e.to_string())?;
     let rows = stream.into_first_result().await.map_err(|e| e.to_string())?;
 
     let result = rows.into_iter().map(|row| PartRouting {

@@ -17,7 +17,7 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { invoke } from "@tauri-apps/api/core";
-import { IconTrash, IconPlus } from "@tabler/icons-react";
+import { IconTrash, IconPlus, IconRefresh } from "@tabler/icons-react";
 import { SQLPartMachineCapability } from "@/lib/types";
 
 interface Props {
@@ -120,38 +120,52 @@ export function PartMachineCapabilityManagement({ connectionString }: Props) {
   return (
     <Stack gap="md" mt="md">
       <Paper withBorder p="md" bg="gray.0">
-        <Group align="flex-end">
-          <Select
-            label="Part Number"
-            placeholder="Select or search part..."
-            data={allParts}
-            value={selectedPart}
-            onChange={setSelectedPart}
-            searchable
-            clearable
-            style={{ flex: 1 }}
-          />
-          <MultiSelect
-            label="Allowed Machines"
-            placeholder="Select valid equipment..."
-            data={allMachines}
-            value={selectedMachines}
-            onChange={setSelectedMachines}
-            searchable
-            clearable
-            hidePickedOptions
-            style={{ flex: 2 }}
-          />
-          <Button 
-            onClick={handleAdd} 
-            loading={isAdding} 
-            disabled={!selectedPart || selectedMachines.length === 0} 
-            leftSection={<IconPlus size={14} />}
-            color="indigo"
-          >
-            Add Routing
-          </Button>
-        </Group>
+        <Stack gap="md">
+          <Group justify="space-between">
+            <Text fw={700} size="sm">Add New Constraint</Text>
+            <Button 
+              variant="subtle" 
+              size="xs" 
+              leftSection={<IconRefresh size={14} />} 
+              onClick={fetchData}
+              loading={loading}
+            >
+              Refresh Data
+            </Button>
+          </Group>
+          <Group align="flex-end">
+            <Select
+              label="Part Number"
+              placeholder="Select or search part..."
+              data={allParts}
+              value={selectedPart}
+              onChange={setSelectedPart}
+              searchable
+              clearable
+              style={{ flex: 1 }}
+            />
+            <MultiSelect
+              label="Allowed Machines"
+              placeholder="Select valid equipment..."
+              data={allMachines}
+              value={selectedMachines}
+              onChange={setSelectedMachines}
+              searchable
+              clearable
+              hidePickedOptions
+              style={{ flex: 2 }}
+            />
+            <Button 
+              onClick={handleAdd} 
+              loading={isAdding} 
+              disabled={!selectedPart || selectedMachines.length === 0} 
+              leftSection={<IconPlus size={14} />}
+              color="indigo"
+            >
+              Add Routing
+            </Button>
+          </Group>
+        </Stack>
       </Paper>
 
       <Table striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="sm">

@@ -23,6 +23,7 @@ import {
   Box,
   Divider,
   MultiSelect,
+  Autocomplete,
 } from "@mantine/core";
 import { DatePickerInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
@@ -90,6 +91,16 @@ interface ReasonCodeData {
   ReasonCode?: string;
 }
 
+interface PartRouting {
+  RoutingID?: number;
+  PartNumber: string;
+  ProcessName: string;
+  SequenceNumber: number;
+  ProcessingTimeMins: number;
+  BatchSize: number;
+  TransitShifts: number;
+}
+
 export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'planner' }) {
   const fetchGlobalProcesses = useProcessStore((state) => state.fetchProcesses);
   const globalProcesses = useProcessStore((state) => state.processes);
@@ -118,6 +129,8 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
   
   const [partFilterProcess, setPartFilterProcess] = useState<string | null>(null);
   const [partFilterParts, setPartFilterParts] = useState<string[]>([]);
+  const [routingFilterProcess, setRoutingFilterProcess] = useState<string | null>(null);
+  const [routingFilterParts, setRoutingFilterParts] = useState<string[]>([]);
   const [initialLocatorMappings, setInitialLocatorMappings] = useState<string>("");
   const [initialPartInfos, setInitialPartInfos] = useState<string>("");
   const [initialProcessInfos, setInitialProcessInfos] = useState<string>("");
@@ -270,7 +283,11 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
         setInitialReasonCodes(JSON.stringify(data));
         setDeletedReasonCodes([]);
       } else if (tab === "partRouting") {
-        const data = await invoke<SQLPartRouting[]>("get_part_routings", { connectionString: activeConnStr });
+        const data = await invoke<SQLPartRouting[]>("get_part_routings", { 
+          connectionString: activeConnStr,
+          partFilter: routingFilterParts,
+          processFilter: routingFilterProcess
+        });
         setPartRoutings(data as any);
         setInitialPartRoutings(JSON.stringify(data));
         setDeletedPartRoutings([]);
@@ -286,7 +303,7 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
   useEffect(() => {
     // This handles tab changes and filter changes.
     fetchData(activeTab);
-  }, [activeTab, selectedWeek, selectedProcess, partFilterProcess, partFilterParts]);
+  }, [activeTab, selectedWeek, selectedProcess, partFilterProcess, partFilterParts, routingFilterProcess, routingFilterParts]);
 
 
   const handleSaveSettings = async () => {
@@ -431,6 +448,10 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
       });
       
       fetchData(activeTab);
+      
+      if (activeTab === "partInfo") {
+        invoke<string[]>("get_all_part_numbers", { connectionString }).then(setAllPartNumbers);
+      }
     } catch (err) {
       notifications.show({
         title: "Save Error",
@@ -933,14 +954,12 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
                       }}
                     >
                       <Box>
-                        <Select 
+                        <Autocomplete 
                           variant="unstyled" 
                           size="xs" 
                           data={allPartNumbers}
                           value={row.PartNumber || ""} 
-                          onChange={(val) => updateRecord(actualIndex, "PartNumber", val || "")} 
-                          searchable
-                          clearable
+                          onChange={(val) => updateRecord(actualIndex, "PartNumber", val)} 
                         />
                       </Box>
                       <Box>
@@ -1662,7 +1681,33 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
             </Tabs.Panel>
 
             <Tabs.Panel value="partRouting">
-              {renderTable()}
+              <Stack gap="md" mt="md">
+                <Group grow>
+                  <MultiSelect
+                    label="Filter by Part Number"
+                    placeholder="Search/Select part numbers"
+                    data={allPartNumbers}
+                    value={routingFilterParts}
+                    onChange={setRoutingFilterParts}
+                    searchable
+                    clearable
+                    hidePickedOptions
+                  />
+                  <Select
+                    label="Filter by Process"
+                    placeholder="All Processes"
+                    data={globalProcesses}
+                    value={routingFilterProcess}
+                    onChange={setRoutingFilterProcess}
+                    clearable
+                    searchable
+                  />
+                  <Box style={{ alignSelf: 'flex-end' }}>
+                     <Text size="xs" c="dimmed">Showing {partRoutings.length} records</Text>
+                  </Box>
+                </Group>
+                {renderTable()}
+              </Stack>
             </Tabs.Panel>
 
             <Tabs.Panel value="deliveryData">
