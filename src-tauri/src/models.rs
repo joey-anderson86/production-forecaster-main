@@ -57,6 +57,7 @@ pub struct PartInfo {
     pub processing_time: Option<i32>,
 }
 
+
 /// Captures resource availability for a specific machine and shift.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
@@ -253,6 +254,7 @@ pub struct PartInfoId {
     pub part_number: String,
     pub process_name: String,
 }
+
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]

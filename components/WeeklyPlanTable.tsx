@@ -337,7 +337,8 @@ const PlanRow = memo(({
                     hideControls
                     variant="unstyled"
                     min={0}
-                    step={displayUnit === 'pieces' ? batchSize : 1}
+                    decimalScale={displayUnit === 'pieces' ? 0 : 2}
+                    step={displayUnit === 'pieces' ? batchSize : 0.1}
                     placeholder={isDisabled ? "" : "-"}
                     disabled={isDisabled}
                     styles={{ 

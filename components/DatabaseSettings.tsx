@@ -117,7 +117,6 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
   const [selectedProcess, setSelectedProcess] = useState<string | null>(null);
   
   const [locatorMappings, setLocatorMappings] = useState<LocatorMapping[]>([]);
-  const [partInfos, setPartInfos] = useState<PartInfo[]>([]);
   const [processInfos, setProcessInfos] = useState<ProcessInfo[]>([]);
   const [dailyRates, setDailyRates] = useState<DailyRate[]>([]);
   const [processes, setProcesses] = useState<Process[]>([]);
@@ -125,15 +124,11 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
   const [partRoutings, setPartRoutings] = useState<PartRouting[]>([]);
   const [allPartNumbers, setAllPartNumbers] = useState<string[]>([]);
   const [scrollTop, setScrollTop] = useState(0);
-  const [partScrollTop, setPartScrollTop] = useState(0);
   
-  const [partFilterProcess, setPartFilterProcess] = useState<string | null>(null);
-  const [partFilterParts, setPartFilterParts] = useState<string[]>([]);
   const [routingFilterProcess, setRoutingFilterProcess] = useState<string | null>(null);
   const [routingFilterParts, setRoutingFilterParts] = useState<string[]>([]);
   const [processTabFilter, setProcessTabFilter] = useState<string | null>(null);
   const [initialLocatorMappings, setInitialLocatorMappings] = useState<string>("");
-  const [initialPartInfos, setInitialPartInfos] = useState<string>("");
   const [initialProcessInfos, setInitialProcessInfos] = useState<string>("");
   const [initialDailyRates, setInitialDailyRates] = useState<string>("");
   const [initialProcesses, setInitialProcesses] = useState<string>("");
@@ -142,7 +137,6 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
 
   // Deletion tracking
   const [deletedLocators, setDeletedLocators] = useState<string[]>([]);
-  const [deletedPartInfos, setDeletedPartInfos] = useState<{PartNumber: string, ProcessName: string}[]>([]);
   const [deletedProcessInfos, setDeletedProcessInfos] = useState<{ProcessName: string, Date: string, MachineID: string, Shift: string}[]>([]);
   const [deletedDailyRates, setDeletedDailyRates] = useState<DailyRate[]>([]);
   const [deletedProcesses, setDeletedProcesses] = useState<Process[]>([]);
@@ -170,8 +164,6 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
     let tableDirty = false;
     if (activeTab === "locatorMapping") {
       tableDirty = !isDeepEqual(locatorMappings, initialLocatorMappings);
-    } else if (activeTab === "partInfo") {
-      tableDirty = !isDeepEqual(partInfos, initialPartInfos);
     } else if (activeTab === "processInfo") {
       tableDirty = !isDeepEqual(processInfos, initialProcessInfos);
     } else if (activeTab === "dailyRate") {
@@ -180,12 +172,12 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
       tableDirty = !isDeepEqual(processes, initialProcesses);
     } else if (activeTab === "reasonCode") {
       tableDirty = !isDeepEqual(reasonCodes, initialReasonCodes);
+    } else if (activeTab === "partRouting") {
+      tableDirty = !isDeepEqual(partRoutings, initialPartRoutings);
     }
 
     const deletionDirty = activeTab === "locatorMapping" 
       ? deletedLocators.length > 0 
-      : activeTab === "partInfo" 
-      ? deletedPartInfos.length > 0
       : activeTab === "processInfo"
       ? deletedProcessInfos.length > 0
       : activeTab === "dailyRate"
@@ -194,10 +186,12 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
       ? deletedProcesses.length > 0
       : activeTab === "reasonCode"
       ? deletedReasonCodes.length > 0
+      : activeTab === "partRouting"
+      ? deletedPartRoutings.length > 0
       : false;
 
     return tableDirty || deletionDirty;
-  }, [activeTab, locatorMappings, partInfos, processInfos, dailyRates, processes, reasonCodes, initialLocatorMappings, initialPartInfos, initialProcessInfos, initialDailyRates, initialProcesses, initialReasonCodes, deletedLocators, deletedPartInfos, deletedProcessInfos, deletedDailyRates, deletedProcesses, deletedReasonCodes]);
+  }, [activeTab, locatorMappings, processInfos, dailyRates, processes, reasonCodes, partRoutings, initialLocatorMappings, initialProcessInfos, initialDailyRates, initialProcesses, initialReasonCodes, initialPartRoutings, deletedLocators, deletedProcessInfos, deletedDailyRates, deletedProcesses, deletedReasonCodes, deletedPartRoutings]);
 
   useEffect(() => {
     async function init() {
@@ -246,15 +240,6 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
         setLocatorMappings(data);
         setInitialLocatorMappings(JSON.stringify(data));
         setDeletedLocators([]);
-      } else if (tab === "partInfo") {
-        const data = await invoke<PartInfo[]>("get_part_info_preview", { 
-          connectionString: activeConnStr,
-          processFilter: partFilterProcess,
-          partFilter: partFilterParts
-        });
-        setPartInfos(data);
-        setInitialPartInfos(JSON.stringify(data));
-        setDeletedPartInfos([]);
       } else if (tab === "processInfo") {
         const data = await invoke<ProcessInfo[]>("get_process_info_preview", { 
           connectionString: activeConnStr,
@@ -302,12 +287,12 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
     } finally {
       setIsLoadingData(false);
     }
-  }, [connectionString, selectedWeek, selectedProcess, partFilterProcess, partFilterParts, routingFilterProcess, routingFilterParts, processTabFilter]);
+  }, [connectionString, selectedWeek, selectedProcess, routingFilterProcess, routingFilterParts, processTabFilter]);
 
   useEffect(() => {
     // This handles tab changes and filter changes.
     fetchData(activeTab);
-  }, [activeTab, selectedWeek, selectedProcess, partFilterProcess, partFilterParts, routingFilterProcess, routingFilterParts, processTabFilter, fetchData]);
+  }, [activeTab, selectedWeek, selectedProcess, routingFilterProcess, routingFilterParts, processTabFilter, fetchData]);
 
 
   const handleSaveSettings = async () => {
@@ -380,14 +365,6 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
         }
         // Handle upserts
         await invoke("upsert_locator_mapping", { connectionString, records: locatorMappings });
-      } else if (activeTab === "partInfo") {
-        // Handle deletions
-        if (deletedPartInfos.length > 0) {
-          const identifiers = deletedPartInfos.map(p => ({ PartNumber: p.PartNumber, ProcessName: p.ProcessName }));
-          await invoke("delete_part_infos", { connectionString, identifiers });
-        }
-        // Handle upserts
-        await invoke("upsert_part_info", { connectionString, records: partInfos });
       } else if (activeTab === "processInfo") {
         // Handle deletions
         if (deletedProcessInfos.length > 0) {
@@ -453,7 +430,7 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
       
       fetchData(activeTab);
       
-      if (activeTab === "partInfo") {
+      if (activeTab === "partRouting") {
         invoke<string[]>("get_all_part_numbers", { connectionString }).then(setAllPartNumbers);
       }
     } catch (err) {
@@ -498,8 +475,6 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
   const addRecord = () => {
     if (activeTab === "locatorMapping") {
       setLocatorMappings(prev => [...prev, { WIPLocator: "", ProcessName: "", DaysFromShipment: 0 }]);
-    } else if (activeTab === "partInfo") {
-      setPartInfos(prev => [...prev, { PartNumber: "", ProcessName: "", BatchSize: 0, ProcessingTime: 0 }]);
     } else if (activeTab === "processInfo") {
       const today = new Date().toISOString().split('T')[0];
       setProcessInfos(prev => [...prev, { ProcessName: "", Date: today, HoursAvailable: 8, MachineID: "", Shift: "A" }]);
@@ -526,10 +501,6 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
       const next = [...locatorMappings];
       next[index] = { ...next[index], [field]: value };
       setLocatorMappings(next);
-    } else if (activeTab === "partInfo") {
-      const next = [...partInfos];
-      next[index] = { ...next[index], [field]: value };
-      setPartInfos(next);
     } else if (activeTab === "processInfo") {
       const next = [...processInfos];
       next[index] = { ...next[index], [field]: value };
@@ -565,18 +536,6 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
         setDeletedLocators(prev => [...prev, record.WIPLocator!]);
       }
       setLocatorMappings(prev => prev.filter((_, i) => i !== index));
-    } else if (activeTab === "partInfo") {
-      const record = partInfos[index];
-      const initial = JSON.parse(initialPartInfos) as PartInfo[];
-      const wasInDb = initial.some(r => 
-        normalize(r.PartNumber) === normalize(record.PartNumber) && 
-        normalize(r.ProcessName) === normalize(record.ProcessName)
-      );
-      
-      if (wasInDb && record.PartNumber && record.ProcessName) {
-        setDeletedPartInfos(prev => [...prev, { PartNumber: record.PartNumber!, ProcessName: record.ProcessName! }]);
-      }
-      setPartInfos(prev => prev.filter((_, i) => i !== index));
     } else if (activeTab === "processInfo") {
       const record = processInfos[index];
       const initial = JSON.parse(initialProcessInfos) as ProcessInfo[];
@@ -663,14 +622,6 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
               DaysFromShipment: parseInt(r.DaysFromShipment || r.daysFromShipment || "0")
             }));
             await invoke("replace_locator_mappings", { connectionString, records: mapped });
-          } else if (activeTab === "partInfo") {
-            const mapped = rawData.map(r => ({
-              PartNumber: r.PartNumber || r.partNumber || "",
-              ProcessName: r.Process || r.process || r.ProcessName || "",
-              BatchSize: parseInt(r.BatchSize || r.batchSize || "0"),
-              ProcessingTime: parseInt(r.ProcessingTime || r.processingTime || "0")
-            }));
-            await invoke("replace_part_infos", { connectionString, records: mapped });
           } else if (activeTab === "processInfo") {
             const mapped = rawData.map(r => ({
               ProcessName: r.Process || r.process || r.ProcessName || "",
@@ -758,9 +709,6 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
     if (activeTab === "locatorMapping") {
       headers = "WIPLocator,Process,DaysFromShipment";
       fileName = "locator_mapping_template.csv";
-    } else if (activeTab === "partInfo") {
-      headers = "PartNumber,Process,BatchSize,ProcessingTime";
-      fileName = "part_information_template.csv";
     } else if (activeTab === "processInfo") {
       headers = "Process,Date,Shift,HoursAvailable,MachineID";
       fileName = "process_information_template.csv";
@@ -894,120 +842,6 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
       );
     }
 
-    if (activeTab === "partInfo") {
-      const ROW_HEIGHT = 48;
-      const VISIBLE_COUNT = 12;
-
-      const startIndex = Math.max(0, Math.floor(partScrollTop / ROW_HEIGHT) - 3);
-      const endIndex = Math.min(partInfos.length, startIndex + VISIBLE_COUNT + 6);
-      
-      const visibleRows = partInfos.slice(startIndex, endIndex);
-
-      const gridTemplate = "1fr 1fr 120px 140px 50px";
-
-      return (
-        <Box mt="md" pos="relative">
-          {/* Header */}
-          <Box 
-            style={{ 
-              display: 'grid', 
-              gridTemplateColumns: gridTemplate,
-              padding: '12px 16px',
-              borderBottom: '1px solid var(--mantine-color-gray-3)',
-              background: 'var(--mantine-color-gray-0)',
-              fontWeight: 700,
-              fontSize: '14px',
-              borderTopLeftRadius: '8px',
-              borderTopRightRadius: '8px',
-              zIndex: 10
-            }}
-          >
-            <Text size="sm" fw={700}>Part Number</Text>
-            <Text size="sm" fw={700}>Process</Text>
-            <Text size="sm" fw={700}>Batch Size</Text>
-            <Text size="sm" fw={700}>Processing Time (m)</Text>
-            <Text size="sm" fw={700}></Text>
-          </Box>
-
-          <ScrollArea 
-            h={500} 
-            onScrollPositionChange={({ y }) => setPartScrollTop(y)}
-            viewportProps={{ style: { position: 'relative' } }}
-          >
-            <Box style={{ height: partInfos.length * ROW_HEIGHT, position: 'relative' }}>
-              {partInfos.length === 0 ? (
-                <Center h={100}><Text c="dimmed">No records found for selected filters</Text></Center>
-              ) : (
-                visibleRows.map((row, i) => {
-                  const actualIndex = startIndex + i;
-                  return (
-                    <Box 
-                      key={actualIndex}
-                      style={{ 
-                        position: 'absolute', 
-                        top: actualIndex * ROW_HEIGHT,
-                        left: 0,
-                        right: 0,
-                        height: ROW_HEIGHT,
-                        display: 'grid',
-                        gridTemplateColumns: gridTemplate,
-                        alignItems: 'center',
-                        padding: '0 16px',
-                        borderBottom: '1px solid var(--mantine-color-gray-1)',
-                        background: actualIndex % 2 === 0 ? 'transparent' : 'var(--mantine-color-gray-0)',
-                      }}
-                    >
-                      <Box>
-                        <Autocomplete 
-                          variant="unstyled" 
-                          size="xs" 
-                          data={allPartNumbers}
-                          value={row.PartNumber || ""} 
-                          onChange={(val) => updateRecord(actualIndex, "PartNumber", val)} 
-                        />
-                      </Box>
-                      <Box>
-                        <Select
-                          variant="unstyled"
-                          size="xs"
-                          data={globalProcesses}
-                          value={row.ProcessName || ""}
-                          onChange={(val) => updateRecord(actualIndex, "ProcessName", val || "")}
-                          searchable
-                          clearable
-                        />
-                      </Box>
-                      <Box>
-                        <NumberInput 
-                          variant="unstyled" 
-                          size="xs" 
-                          value={row.BatchSize} 
-                          onChange={(val) => updateRecord(actualIndex, "BatchSize", val)} 
-                        />
-                      </Box>
-                      <Box>
-                        <NumberInput 
-                          variant="unstyled" 
-                          size="xs" 
-                          value={row.ProcessingTime} 
-                          onChange={(val) => updateRecord(actualIndex, "ProcessingTime", val)} 
-                        />
-                      </Box>
-                      <Box style={{ textAlign: 'right' }}>
-                        <ActionIcon variant="subtle" color="red" onClick={() => removeLocalRecord(actualIndex)}>
-                          <IconTrash size={14} />
-                        </ActionIcon>
-                      </Box>
-                    </Box>
-                  );
-                })
-              )}
-            </Box>
-          </ScrollArea>
-        </Box>
-      );
-    }
-
     if (activeTab === "processInfo") {
       const ROW_HEIGHT = 48;
       const VISIBLE_COUNT = 12;
@@ -1114,6 +948,8 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
                           size="xs" 
                           value={row.HoursAvailable} 
                           onChange={(val) => updateRecord(actualIndex, "HoursAvailable", val)} 
+                          decimalScale={2}
+                          step={0.1}
                         />
                       </Box>
                       <Box style={{ textAlign: 'right' }}>
@@ -1317,14 +1153,12 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
               {partRoutings.map((row, i) => (
                 <Table.Tr key={i}>
                   <Table.Td>
-                    <Select 
+                    <Autocomplete 
                       variant="unstyled" 
                       size="xs" 
                       data={allPartNumbers}
                       value={row.PartNumber || ""} 
                       onChange={(val) => updateRecord(i, "PartNumber", val || "")} 
-                      searchable
-                      clearable
                     />
                   </Table.Td>
                   <Table.Td>
@@ -1352,7 +1186,8 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
                       variant="unstyled"
                       size="xs"
                       hideControls
-                      decimalScale={2}
+                      decimalScale={4}
+                      step={0.001}
                       value={row.ProcessingTimeMins}
                       onChange={(val) => updateRecord(i, "ProcessingTimeMins", val)}
                     />
@@ -1577,8 +1412,8 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
               <Tabs.Tab value="process" leftSection={<IconTable size={14} />}>
                 Processes
               </Tabs.Tab>
-              <Tabs.Tab value="partInfo" leftSection={<IconTable size={14} />}>
-                Part Information
+              <Tabs.Tab value="partRouting" leftSection={<IconRoute size={14} />}>
+                Part Routings
               </Tabs.Tab>
               <Tabs.Tab value="processInfo" leftSection={<IconTable size={14} />}>
                 Process Information
@@ -1594,9 +1429,6 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
               </Tabs.Tab>
               <Tabs.Tab value="reasonCode" leftSection={<IconTable size={14} />}>
                 Reason Codes
-              </Tabs.Tab>
-              <Tabs.Tab value="partRouting" leftSection={<IconRoute size={14} />}>
-                Part Routings
               </Tabs.Tab>
               <Tabs.Tab value="deliveryData" leftSection={<IconDatabase size={14} />}>
                 Delivery Data
@@ -1618,36 +1450,6 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
                   />
                   <Box style={{ alignSelf: 'flex-end' }}>
                      <Text size="xs" c="dimmed">Showing {processes.length} records</Text>
-                  </Box>
-                </Group>
-                {renderTable()}
-              </Stack>
-            </Tabs.Panel>
-
-            <Tabs.Panel value="partInfo">
-              <Stack gap="md" mt="md">
-                <Group grow>
-                  <MultiSelect
-                    label="Filter by Part Number"
-                    placeholder="Search/Select part numbers"
-                    data={allPartNumbers}
-                    value={partFilterParts}
-                    onChange={setPartFilterParts}
-                    searchable
-                    clearable
-                    hidePickedOptions
-                  />
-                  <Select
-                    label="Filter by Process"
-                    placeholder="All Processes"
-                    data={globalProcesses}
-                    value={partFilterProcess}
-                    onChange={setPartFilterProcess}
-                    clearable
-                    searchable
-                  />
-                  <Box style={{ alignSelf: 'flex-end' }}>
-                     <Text size="xs" c="dimmed">Showing {partInfos.length} records</Text>
                   </Box>
                 </Group>
                 {renderTable()}

@@ -169,6 +169,8 @@ const ShiftRow = ({
                   variant="unstyled"
                   min={0}
                   max={24}
+                  decimalScale={1}
+                  step={0.1}
                   placeholder={isDisabled ? "" : "-"}
                   disabled={isDisabled}
                   className="text-center"
@@ -403,6 +405,8 @@ function AutoScheduleModal({
             onChange={setBaseHours}
             min={1}
             max={24}
+            decimalScale={1}
+            step={0.5}
             required
           />
           <NumberInput
@@ -412,6 +416,8 @@ function AutoScheduleModal({
             onChange={setUtilization}
             min={1}
             max={100}
+            decimalScale={1}
+            step={1}
             required
             rightSection={<Text size="sm" c="dimmed">%</Text>}
           />

@@ -261,6 +261,21 @@ pub async fn upsert_part_routings(
 ) -> Result<(), String> {
     let mut client = create_client(&connection_string).await?;
     for rec in records {
+        let pn = rec.part_number.trim();
+        let pr = rec.process_name.trim();
+        
+        if pn.is_empty() || pr.is_empty() {
+            continue;
+        }
+
+        // 1. Ensure part exists in ItemMaster
+        client.execute(
+            "IF NOT EXISTS (SELECT 1 FROM dbo.ItemMaster WHERE PartNumber = @p1)
+             INSERT INTO dbo.ItemMaster (PartNumber) VALUES (@p1)",
+            &[&pn],
+        ).await.map_err(|e| e.to_string())?;
+
+        // 2. Upsert into PartRoutings
         client.execute(
             "MERGE dbo.PartRoutings AS target
              USING (SELECT @p1 as PartNumber, @p2 as SequenceNumber) AS source
@@ -270,7 +285,7 @@ pub async fn upsert_part_routings(
              WHEN NOT MATCHED THEN
                 INSERT (PartNumber, ProcessName, SequenceNumber, ProcessingTimeMins, BatchSize, TransitShifts)
                 VALUES (@p1, @p3, @p2, @p4, @p5, @p6);",
-            &[&rec.part_number, &rec.sequence_number, &rec.process_name, &rec.processing_time_mins, &rec.batch_size, &rec.transit_shifts],
+            &[&pn, &rec.sequence_number, &pr, &rec.processing_time_mins, &rec.batch_size, &rec.transit_shifts],
         ).await.map_err(|e| e.to_string())?;
     }
     Ok(())

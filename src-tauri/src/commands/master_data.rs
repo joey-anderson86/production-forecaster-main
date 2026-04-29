@@ -42,7 +42,7 @@ pub async fn get_part_info_preview(
 ) -> Result<Vec<PartInfo>, String> {
     let mut client = create_client(&connection_string).await?;
 
-    let mut query_str = String::from("SELECT TOP 2000 PartNumber, ProcessName, BatchSize, ProcessingTime FROM dbo.PartInfo WHERE 1=1");
+    let mut query_str = String::from("SELECT TOP 2000 PartNumber, ProcessName, BatchSize, ProcessingTimeMins FROM dbo.PartRoutings WHERE 1=1");
     let mut params: Vec<Box<dyn tiberius::ToSql + Send + Sync>> = Vec::new();
 
     if let Some(ref process) = process_filter {
@@ -88,7 +88,7 @@ pub async fn get_part_info_preview(
                 .get::<&str, _>("ProcessName")
                 .map(|s| s.trim().to_string()),
             batch_size: get_i32_robust(&row, "BatchSize"),
-            processing_time: get_i32_robust(&row, "ProcessingTime"),
+            processing_time: get_f64_robust(&row, "ProcessingTimeMins").map(|v| v as i32),
         })
         .collect();
 
@@ -300,39 +300,6 @@ pub async fn upsert_locator_mapping(
     Ok(())
 }
 
-#[tauri::command]
-pub async fn upsert_part_info(connection_string: String, records: Vec<PartInfo>) -> Result<(), String> {
-    let mut client = create_client(&connection_string).await?;
-    for rec in records {
-        let pn = rec.part_number.as_deref().unwrap_or("").trim();
-        let pr = rec.process_name.as_deref().unwrap_or("").trim();
-        if pn.is_empty() || pr.is_empty() {
-            continue;
-        }
-
-        // 1. Ensure part exists in ItemMaster
-        client.execute(
-            "IF NOT EXISTS (SELECT 1 FROM dbo.ItemMaster WHERE PartNumber = @p1)
-             INSERT INTO dbo.ItemMaster (PartNumber) VALUES (@p1)",
-            &[&pn],
-        ).await.map_err(|e| e.to_string())?;
-
-        // 2. Upsert into PartRoutings
-        // We match by PartNumber and ProcessName to mimic legacy 1:1 behavior while supporting the new schema
-        client.execute(
-            "MERGE dbo.PartRoutings AS target
-             USING (SELECT @p1 as PartNumber, @p2 as ProcessName, @p3 as BatchSize, @p4 as ProcessingTime) AS source
-             ON (target.PartNumber = source.PartNumber AND target.ProcessName = source.ProcessName)
-             WHEN MATCHED THEN
-                UPDATE SET BatchSize = source.BatchSize, ProcessingTimeMins = CAST(source.ProcessingTime AS FLOAT)
-             WHEN NOT MATCHED THEN
-                INSERT (PartNumber, ProcessName, BatchSize, ProcessingTimeMins, SequenceNumber, TransitShifts)
-                VALUES (source.PartNumber, source.ProcessName, source.BatchSize, CAST(source.ProcessingTime AS FLOAT), 10, 0);",
-            &[&pn, &pr, &rec.batch_size, &rec.processing_time],
-        ).await.map_err(|e| e.to_string())?;
-    }
-    Ok(())
-}
 
 #[tauri::command]
 pub async fn upsert_process_info(
@@ -376,23 +343,6 @@ pub async fn delete_locator_mappings(
     Ok(())
 }
 
-#[tauri::command]
-pub async fn delete_part_infos(
-    connection_string: String,
-    identifiers: Vec<PartInfoId>,
-) -> Result<(), String> {
-    let mut client = create_client(&connection_string).await?;
-    for id in identifiers {
-        client
-            .execute(
-                "DELETE FROM dbo.PartRoutings WHERE PartNumber = @p1 AND ProcessName = @p2",
-                &[&id.part_number, &id.process_name],
-            )
-            .await
-            .map_err(|e| e.to_string())?;
-    }
-    Ok(())
-}
 
 #[tauri::command]
 pub async fn delete_process_infos(
@@ -449,44 +399,6 @@ pub async fn replace_locator_mappings(
     Ok(())
 }
 
-#[tauri::command]
-pub async fn replace_part_infos(
-    connection_string: String,
-    records: Vec<PartInfo>,
-) -> Result<(), String> {
-    let mut client = create_client(&connection_string).await?;
-    client
-        .simple_query("BEGIN TRANSACTION")
-        .await
-        .map_err(|e| e.to_string())?;
-
-    // We only clear routings, as ItemMaster is a shared registry
-    client
-        .execute("DELETE FROM dbo.PartRoutings", &[])
-        .await
-        .map_err(|e| e.to_string())?;
-
-    for rec in records {
-        // Ensure part exists in ItemMaster
-        client.execute(
-            "IF NOT EXISTS (SELECT 1 FROM dbo.ItemMaster WHERE PartNumber = @p1)
-             INSERT INTO dbo.ItemMaster (PartNumber) VALUES (@p1)",
-            &[&rec.part_number],
-        ).await.map_err(|e| e.to_string())?;
-
-        client.execute(
-            "INSERT INTO dbo.PartRoutings (PartNumber, ProcessName, BatchSize, ProcessingTimeMins, SequenceNumber, TransitShifts) 
-             VALUES (@p1, @p2, @p3, CAST(@p4 AS FLOAT), 10, 0)",
-            &[&rec.part_number, &rec.process_name, &rec.batch_size, &rec.processing_time],
-        ).await.map_err(|e| e.to_string())?;
-    }
-
-    client
-        .simple_query("COMMIT TRANSACTION")
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
 
 #[tauri::command]
 pub async fn replace_process_infos(
