@@ -302,12 +302,12 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
     } finally {
       setIsLoadingData(false);
     }
-  }, [connectionString, selectedWeek, selectedProcess, partFilterProcess, partFilterParts]);
+  }, [connectionString, selectedWeek, selectedProcess, partFilterProcess, partFilterParts, routingFilterProcess, routingFilterParts, processTabFilter]);
 
   useEffect(() => {
     // This handles tab changes and filter changes.
     fetchData(activeTab);
-  }, [activeTab, selectedWeek, selectedProcess, partFilterProcess, partFilterParts, routingFilterProcess, routingFilterParts, processTabFilter]);
+  }, [activeTab, selectedWeek, selectedProcess, partFilterProcess, partFilterParts, routingFilterProcess, routingFilterParts, processTabFilter, fetchData]);
 
 
   const handleSaveSettings = async () => {

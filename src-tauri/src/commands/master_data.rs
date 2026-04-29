@@ -525,14 +525,16 @@ pub async fn get_processes_preview(
     process_filter: Option<String>,
 ) -> Result<Vec<Process>, String> {
     let mut client = create_client(&connection_string).await?;
-    let query = if process_filter.is_some() {
+    let effective_filter = process_filter.as_deref().filter(|s| !s.is_empty());
+
+    let query = if effective_filter.is_some() {
         "SELECT ProcessName, MachineID FROM dbo.Process WHERE ProcessName = @p1"
     } else {
         "SELECT ProcessName, MachineID FROM dbo.Process"
     };
 
-    let params: Vec<&dyn tiberius::ToSql> = match &process_filter {
-        Some(p) => vec![p],
+    let params: Vec<&dyn tiberius::ToSql> = match &effective_filter {
+        Some(p) => vec![p as &dyn tiberius::ToSql],
         None => vec![],
     };
 
