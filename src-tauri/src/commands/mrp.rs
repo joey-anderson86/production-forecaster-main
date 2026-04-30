@@ -160,6 +160,234 @@ pub async fn generate_cascaded_demand(
 }
 
 #[tauri::command]
+pub async fn generate_cascaded_demand_from_schedule(
+    app: AppHandle,
+    connection_string: String,
+    week_id: String,
+) -> Result<(), String> {
+    let mut client = create_client(&connection_string).await?;
+
+    let mut anchors = HashMap::new();
+    if let Some(store) = app.get_store("store.json") {
+        if let Some(shift_settings_val) = store.get("shiftSettings") {
+            if let Ok(shift_settings) = serde_json::from_value::<HashMap<String, String>>(shift_settings_val) {
+                for (shift, date_str) in shift_settings {
+                    if let Ok(date) = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d") {
+                        anchors.insert(shift, date);
+                    }
+                }
+            }
+        }
+    }
+
+    client.execute("TRUNCATE TABLE dbo.UpstreamDemand", &[]).await.map_err(|e| e.to_string())?;
+
+    let parts: Vec<&str> = week_id.split("-w").collect();
+    if parts.len() != 2 {
+        return Err("Invalid week_id format. Expected YYYY-wWW".to_string());
+    }
+    let year: i32 = parts[0].parse().map_err(|_| "Invalid year in week_id")?;
+    let week: i32 = parts[1].parse().map_err(|_| "Invalid week in week_id")?;
+    let jan4 = NaiveDate::from_ymd_opt(year, 1, 4).unwrap();
+    let day_of_week = jan4.weekday().num_days_from_monday();
+    let monday_wk1 = jan4 - Duration::days(day_of_week as i64);
+    let target_monday = monday_wk1 + Duration::weeks((week - 1) as i64);
+
+    let schedule_query = "
+        SELECT 
+            es.PartNumber, 
+            SUM(es.Qty) as TotalQty, 
+            CONVERT(VARCHAR, es.Date, 23) as TargetDateStr, 
+            es.Shift as TargetShift, 
+            vw.SequenceNumber as TerminalSeq,
+            vw.ProcessName as TerminalProcess
+        FROM dbo.EquipmentSchedule es
+        INNER JOIN dbo.vw_TerminalProcesses vw ON es.PartNumber = vw.PartNumber
+        WHERE es.WeekIdentifier = @p1
+        GROUP BY es.PartNumber, es.Date, es.Shift, vw.SequenceNumber, vw.ProcessName
+    ";
+    let stream = client.query(schedule_query, &[&week_id]).await.map_err(|e| e.to_string())?;
+    let scheduled_rows = stream.into_first_result().await.map_err(|e| e.to_string())?;
+
+    let mut demand_map: HashMap<(String, String, NaiveDate, String), i32> = HashMap::new();
+    let mut missing_routings = Vec::new();
+
+    // Group scheduled rows by PartNumber
+    let mut parts_schedule: HashMap<String, (i32, Vec<(NaiveDate, String, i32)>)> = HashMap::new();
+    for row in scheduled_rows {
+        let part_number = row.get::<&str, _>("PartNumber").unwrap().trim().to_string();
+        let qty = get_i32_robust(&row, "TotalQty").unwrap_or(0);
+        let date_str = row.get::<&str, _>("TargetDateStr").unwrap().trim().to_string();
+        let target_shift = row.get::<&str, _>("TargetShift").unwrap().trim().to_string();
+        let terminal_seq = get_i32_robust(&row, "TerminalSeq").unwrap_or(0);
+
+        if qty <= 0 { continue; }
+        let target_date = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d").unwrap();
+
+        let entry = parts_schedule.entry(part_number).or_insert((terminal_seq, Vec::new()));
+        entry.1.push((target_date, target_shift, qty));
+    }
+
+    for (part_number, (terminal_seq, schedules)) in parts_schedule {
+        let routing_stream = client.query(
+            "SELECT ProcessName, SequenceNumber, ProcessingTimeMins, BatchSize, TransitShifts 
+             FROM dbo.PartRoutings 
+             WHERE PartNumber = @p1 AND SequenceNumber < @p2 
+             ORDER BY SequenceNumber DESC",
+            &[&part_number, &terminal_seq],
+        ).await.map_err(|e| e.to_string())?;
+        let routing_rows = routing_stream.into_first_result().await.map_err(|e| e.to_string())?;
+
+        if routing_rows.is_empty() && terminal_seq == 0 {
+            missing_routings.push(part_number.clone());
+            continue;
+        }
+
+        // Initialize raw demand from the terminal schedule
+        let mut raw_demand: HashMap<(NaiveDate, String), i32> = HashMap::new();
+        for (date, shift, qty) in schedules {
+            *raw_demand.entry((date, shift)).or_insert(0) += qty;
+        }
+
+        for route_row in routing_rows {
+            let process_name = route_row.get::<&str, _>("ProcessName").unwrap().trim().to_string();
+            let transit_shifts = get_i32_robust(&route_row, "TransitShifts").unwrap_or(0);
+            let batch_size = get_i32_robust(&route_row, "BatchSize").unwrap_or(1);
+
+            let mut next_raw_demand: HashMap<(NaiveDate, String), i32> = HashMap::new();
+
+            // Step 1: Offset dates for all demands feeding into this route step
+            for ((date, shift), total_raw_qty) in raw_demand {
+                let mut current_date = date;
+                let mut current_shift = shift.clone();
+                let mut shifts_to_offset = transit_shifts;
+
+                while shifts_to_offset > 0 {
+                    let (prev_date, prev_shift) = get_previous_shift(current_date, &current_shift);
+                    current_date = prev_date;
+                    current_shift = prev_shift;
+
+                    if let Some(anchor) = anchors.get(&current_shift) {
+                        if is_working_day(current_date, *anchor) {
+                            shifts_to_offset -= 1;
+                        }
+                    } else {
+                        shifts_to_offset -= 1;
+                    }
+                }
+
+                if current_date < target_monday {
+                    current_date = target_monday;
+                    current_shift = "A".to_string();
+                }
+
+                *next_raw_demand.entry((current_date, current_shift)).or_insert(0) += total_raw_qty;
+            }
+
+            // Step 2: Apply batch size aggregation
+            let mut output_raw_demand: HashMap<(NaiveDate, String), i32> = HashMap::new();
+            for ((date, shift), total_raw_qty) in next_raw_demand {
+                let batches = (total_raw_qty as f64 / batch_size as f64).ceil() as i32;
+                let produced_qty = batches * batch_size;
+
+                let key = (part_number.clone(), process_name.clone(), date.clone(), shift.clone());
+                *demand_map.entry(key).or_insert(0) += produced_qty;
+
+                *output_raw_demand.entry((date, shift)).or_insert(0) += produced_qty;
+            }
+
+            // The output of this step becomes the raw demand for the next upstream step
+            raw_demand = output_raw_demand;
+        }
+    }
+
+    if !missing_routings.is_empty() {
+        println!("Warning: Missing routings for parts: {:?}", missing_routings);
+    }
+
+    for ((part_number, process_name, target_date, target_shift), required_qty) in demand_map {
+        client.execute(
+            "INSERT INTO dbo.UpstreamDemand (PartNumber, ProcessName, TargetDate, TargetShift, RequiredQty)
+             VALUES (@p1, @p2, @p3, @p4, @p5)",
+            &[&part_number, &process_name, &target_date.format("%Y-%m-%d").to_string(), &target_shift, &required_qty],
+        ).await.map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn commit_mrp_plan(
+    connection_string: String,
+    week_id: String,
+) -> Result<(), String> {
+    let mut client = create_client(&connection_string).await?;
+
+    let demand_stream = client.query(
+        "SELECT PartNumber, ProcessName, CONVERT(VARCHAR, TargetDate, 23) as TargetDate, TargetShift, RequiredQty 
+         FROM dbo.UpstreamDemand",
+        &[],
+    ).await.map_err(|e| e.to_string())?;
+    let demand_rows = demand_stream.into_first_result().await.map_err(|e| e.to_string())?;
+
+    client.simple_query("BEGIN TRANSACTION").await.map_err(|e| e.to_string())?;
+
+    for row in demand_rows {
+        let part_number = row.get::<&str, _>("PartNumber").unwrap().trim().to_string();
+        let department = row.get::<&str, _>("ProcessName").unwrap().trim().to_string();
+        let date_str = row.get::<&str, _>("TargetDate").unwrap().trim().to_string();
+        let shift = row.get::<&str, _>("TargetShift").unwrap().trim().to_string();
+        let qty = get_i32_robust(&row, "RequiredQty").unwrap_or(0);
+
+        client.execute(
+            "MERGE dbo.EquipmentSchedule AS target
+             USING (SELECT @p1 as WeekIdentifier, @p2 as Department, @p3 as Date, @p4 as Shift, @p5 as PartNumber) AS source
+             ON (target.WeekIdentifier = source.WeekIdentifier AND target.Department = source.Department AND target.Date = source.Date AND target.Shift = source.Shift AND target.PartNumber = source.PartNumber)
+             WHEN MATCHED THEN
+                UPDATE SET Qty = target.Qty + @p6
+             WHEN NOT MATCHED THEN
+                INSERT (WeekIdentifier, Department, MachineID, Date, Shift, PartNumber, Qty, RunSequence)
+                VALUES (@p1, @p2, 'General', @p3, @p4, @p5, @p6, 0);",
+            &[&week_id, &department, &date_str, &shift, &part_number, &qty],
+        ).await.map_err(|e| e.to_string())?;
+
+        let day_of_week = match NaiveDate::parse_from_str(&date_str, "%Y-%m-%d") {
+            Ok(d) => match d.weekday() {
+                chrono::Weekday::Mon => "Mon",
+                chrono::Weekday::Tue => "Tue",
+                chrono::Weekday::Wed => "Wed",
+                chrono::Weekday::Thu => "Thu",
+                chrono::Weekday::Fri => "Fri",
+                chrono::Weekday::Sat => "Sat",
+                chrono::Weekday::Sun => "Sun",
+            }.to_string(),
+            Err(_) => "".to_string(),
+        };
+
+        client.execute(
+            "MERGE dbo.DeliveryData AS target
+             USING (SELECT @p1 as Department, @p2 as WeekIdentifier, @p3 as PartNumber, @p4 as DayOfWeek, 
+                           @p5 as Target, CAST(@p6 as DATE) as Date, @p7 as Shift) AS source
+             ON (target.Department = source.Department AND target.PartNumber = source.PartNumber 
+                  AND CAST(target.Date AS DATE) = source.Date 
+                  AND (target.Shift = source.Shift OR (target.Shift IS NULL AND source.Shift = 'A')))
+             WHEN MATCHED THEN
+                UPDATE SET Target = target.Target + source.Target, WeekIdentifier = source.WeekIdentifier, 
+                           DayOfWeek = source.DayOfWeek, Shift = source.Shift
+             WHEN NOT MATCHED THEN
+                INSERT (Department, WeekIdentifier, PartNumber, DayOfWeek, Target, Date, Shift)
+                VALUES (source.Department, source.WeekIdentifier, source.PartNumber, source.DayOfWeek, 
+                        source.Target, source.Date, source.Shift);",
+            &[&department, &week_id, &part_number, &day_of_week, &qty, &date_str, &shift],
+        ).await.map_err(|e| e.to_string())?;
+    }
+
+    client.simple_query("COMMIT TRANSACTION").await.map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn get_upstream_demand(
     connection_string: String,
     process_name: Option<String>,

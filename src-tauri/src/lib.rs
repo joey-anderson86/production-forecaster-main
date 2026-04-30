@@ -80,6 +80,8 @@ pub fn run() {
 
             // MRP Commands
             commands::mrp::generate_cascaded_demand,
+            commands::mrp::generate_cascaded_demand_from_schedule,
+            commands::mrp::commit_mrp_plan,
             commands::mrp::get_upstream_demand,
             commands::mrp::get_part_routings,
             commands::mrp::upsert_part_routings,

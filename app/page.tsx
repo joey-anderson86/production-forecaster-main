@@ -19,6 +19,7 @@ import { DatabaseSettings } from '@/components/DatabaseSettings';
 import { ProductionForecaster } from '@/components/forecaster/ProductionForecaster';
 import { PipelineDataPreview } from '@/components/PipelineDataPreview';
 import { PlanDataPreview } from '@/components/PlanDataPreview';
+import { CascadedPlanPreview } from '@/components/CascadedPlanPreview';
 import { Shield } from 'lucide-react';
 
 export default function Home() {
@@ -81,6 +82,12 @@ export default function Home() {
                   initialWeekId={selectedWeekId || undefined} 
                 />
               </div>
+            </DashboardCard>
+          )}
+
+          {mainTab === 'mrp-plan' && roleMode === 'planner' && (
+            <DashboardCard title="MRP Shadow Plan">
+              <CascadedPlanPreview />
             </DashboardCard>
           )}
 

@@ -339,6 +339,7 @@ pub struct ScheduleResponse {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct PartRouting {
+    #[serde(rename = "RoutingID")]
     pub routing_id: Option<i32>,
     pub part_number: String,
     pub process_name: String,
@@ -351,6 +352,7 @@ pub struct PartRouting {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct UpstreamDemandRow {
+    #[serde(rename = "DemandID")]
     pub demand_id: Option<i32>,
     pub part_number: String,
     pub process_name: String,

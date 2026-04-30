@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Table,
   Select,
@@ -78,14 +78,16 @@ export function CascadedPlanPreview() {
     fetchData();
   }, [fetchData]);
 
+  const [isCommitting, setIsCommitting] = useState(false);
+
   const handleGeneratePlan = async () => {
     if (!connectionString) return;
     setIsGenerating(true);
     try {
       const weekId = getCurrentWeekId();
-      await invoke("generate_cascaded_demand", {
-        connection_string: connectionString,
-        week_id: weekId,
+      await invoke("generate_cascaded_demand_from_schedule", {
+        connectionString: connectionString,
+        weekId: weekId,
       });
       notifications.show({
         title: "Success",
@@ -104,6 +106,40 @@ export function CascadedPlanPreview() {
       setIsGenerating(false);
     }
   };
+
+  const handleCommitPlan = async () => {
+    if (!connectionString) return;
+    setIsCommitting(true);
+    try {
+      const weekId = getCurrentWeekId();
+      await invoke("commit_mrp_plan", {
+        connectionString: connectionString,
+        weekId: weekId,
+      });
+      notifications.show({
+        title: "Success",
+        message: `MRP plan committed for week ${weekId}`,
+        color: "green",
+      });
+    } catch (err) {
+      console.error("Failed to commit plan:", err);
+      notifications.show({
+        title: "Commit Failed",
+        message: typeof err === "string" ? err : "Unknown error",
+        color: "red",
+      });
+    } finally {
+      setIsCommitting(false);
+    }
+  };
+
+  // Group data for the UI
+  const groupedData = data.reduce((acc, row) => {
+    if (!acc[row.ProcessName]) acc[row.ProcessName] = {};
+    if (!acc[row.ProcessName][row.TargetDate]) acc[row.ProcessName][row.TargetDate] = [];
+    acc[row.ProcessName][row.TargetDate].push(row);
+    return acc;
+  }, {} as Record<string, Record<string, UpstreamDemandRow[]>>);
 
   return (
     <Stack gap="md">
@@ -126,6 +162,14 @@ export function CascadedPlanPreview() {
                 leftSection={<IconRefresh size={16} />}
               >
                 Regenerate MRP Plan
+              </Button>
+              <Button 
+                variant="filled" 
+                color="indigo" 
+                onClick={handleCommitPlan} 
+                loading={isCommitting}
+              >
+                Commit MRP Plan
               </Button>
             </Group>
           </Group>
@@ -165,23 +209,41 @@ export function CascadedPlanPreview() {
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                  {data.length > 0 ? (
-                    data.map((row) => (
-                      <Table.Tr key={row.DemandID}>
-                        <Table.Td fw={700}>{row.PartNumber}</Table.Td>
-                        <Table.Td>
-                          <Badge variant="dot" color="indigo">{row.ProcessName}</Badge>
-                        </Table.Td>
-                        <Table.Td>{row.TargetDate}</Table.Td>
-                        <Table.Td>
-                          <Badge variant="outline" color={row.TargetShift === "A" || row.TargetShift === "C" ? "orange" : "grape"}>
-                            Shift {row.TargetShift}
-                          </Badge>
-                        </Table.Td>
-                        <Table.Td style={{ textAlign: "right" }}>
-                          <Text fw={700}>{row.RequiredQty.toLocaleString()}</Text>
-                        </Table.Td>
-                      </Table.Tr>
+                  {Object.keys(groupedData).length > 0 ? (
+                    Object.entries(groupedData).map(([processName, datesMap]) => (
+                      <React.Fragment key={processName}>
+                        <Table.Tr>
+                          <Table.Td colSpan={5} bg="var(--mantine-color-gray-0)">
+                            <Text fw={700} size="sm" c="dimmed">{processName}</Text>
+                          </Table.Td>
+                        </Table.Tr>
+                        {Object.entries(datesMap).map(([targetDate, rows]) => (
+                          <React.Fragment key={targetDate}>
+                            <Table.Tr>
+                              <Table.Td colSpan={5} bg="var(--mantine-color-gray-0)" pl="xl">
+                                <Text fw={600} size="xs" c="dimmed">Date: {targetDate}</Text>
+                              </Table.Td>
+                            </Table.Tr>
+                            {rows.map((row) => (
+                              <Table.Tr key={`${row.PartNumber}-${row.ProcessName}-${row.TargetDate}-${row.TargetShift}`}>
+                                <Table.Td fw={700} pl={40}>{row.PartNumber}</Table.Td>
+                                <Table.Td>
+                                  <Badge variant="dot" color="indigo">{row.ProcessName}</Badge>
+                                </Table.Td>
+                                <Table.Td>{row.TargetDate}</Table.Td>
+                                <Table.Td>
+                                  <Badge variant="outline" color={row.TargetShift === "A" || row.TargetShift === "C" ? "orange" : "grape"}>
+                                    Shift {row.TargetShift}
+                                  </Badge>
+                                </Table.Td>
+                                <Table.Td style={{ textAlign: "right" }}>
+                                  <Text fw={700}>{row.RequiredQty.toLocaleString()}</Text>
+                                </Table.Td>
+                              </Table.Tr>
+                            ))}
+                          </React.Fragment>
+                        ))}
+                      </React.Fragment>
                     ))
                   ) : (
                     <Table.Tr>
