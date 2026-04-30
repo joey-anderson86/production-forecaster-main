@@ -1,4 +1,4 @@
-﻿//! # Scheduling Engine
+//! # Scheduling Engine
 //!
 //! This module contains the core logic for distributing demand and automated production scheduling.
 //! It handles machine capacity tracking, working day patterns, and optimal task assignment
@@ -823,46 +823,60 @@ fn calculate_optimal_schedule(mut request: ScheduleRequest) -> ScheduleResponse 
                 .collect();
 
             // Try scheduling across available forward-looking dates
-            for current_date in valid_dates {
-                if fully_scheduled {
-                    break;
-                }
+                for current_date in valid_dates {
+                    if fully_scheduled {
+                        break;
+                    }
 
-                // Sequence Constraint Check
-                if let (Some(seq), Some(part_tasks)) =
-                    (item.sequence_number, assignments_by_part.get(&item.part_id))
-                {
-                    // Find any assignment for an earlier sequence that is scheduled at or after our target slot
-                    let conflict = part_tasks.iter().any(|t| {
-                        if let Some(t_seq) = t.sequence_number {
-                            if t_seq < seq {
-                                // An EARLIER operation exists. It MUST be completed BEFORE this one starts.
-                                // So we cannot schedule this one if it's NOT after that one.
-                                !is_before(&t.date, &t.shift, current_date, &item.shift)
-                            } else {
-                                false
-                            }
-                        } else {
-                            false
+                    // SHIFT FLEXIBILITY: Try the requested shift first, then fall back to others
+                    let mut shifts_to_try = vec![item.shift.clone()];
+                    for s in &["A", "B", "C", "D"] {
+                        let s_str = s.to_string();
+                        if s_str != item.shift && !shifts_to_try.contains(&s_str) {
+                            shifts_to_try.push(s_str);
                         }
-                    });
-                    if conflict {
-                        continue; // Skip this date for this item as it violates sequencing
-                    }
-                }
-
-                for cap in eligible_caps {
-                    if cap.parts_per_hour <= 0.0 || item.quantity == 0 {
-                        continue;
                     }
 
-                    // Look up specific Machine + Date + Shift capacity
-                    let key = (
-                        cap.machine_id.clone(),
-                        current_date.clone(),
-                        item.shift.clone(),
-                    );
-                    if let Some(machine) = machine_states_map.get_mut(&key) {
+                    for shift_to_check in shifts_to_try {
+                        if fully_scheduled {
+                            break;
+                        }
+
+                        // Sequence Constraint Check
+                        if let (Some(seq), Some(part_tasks)) =
+                            (item.sequence_number, assignments_by_part.get(&item.part_id))
+                        {
+                            // Find any assignment for an earlier sequence that is scheduled at or after our target slot
+                            let conflict = part_tasks.iter().any(|t| {
+                                if let Some(t_seq) = t.sequence_number {
+                                    if t_seq < seq {
+                                        // An EARLIER operation exists. It MUST be completed BEFORE this one starts.
+                                        // So we cannot schedule this one if it's NOT after that one.
+                                        !is_before(&t.date, &t.shift, current_date, &shift_to_check)
+                                    } else {
+                                        false
+                                    }
+                                } else {
+                                    false
+                                }
+                            });
+                            if conflict {
+                                continue; // Skip this shift for this item as it violates sequencing
+                            }
+                        }
+
+                        for cap in eligible_caps {
+                            if cap.parts_per_hour <= 0.0 || item.quantity == 0 {
+                                continue;
+                            }
+
+                            // Look up specific Machine + Date + Shift capacity
+                            let key = (
+                                cap.machine_id.clone(),
+                                current_date.clone(),
+                                shift_to_check.clone(),
+                            );
+                            if let Some(machine) = machine_states_map.get_mut(&key) {
                         if machine.total_capacity_hours <= 0.0
                             || machine.current_utilization_pct >= machine.max_utilization_pct
                         {
@@ -920,6 +934,7 @@ fn calculate_optimal_schedule(mut request: ScheduleRequest) -> ScheduleResponse 
                 }
             }
         }
+    }
 
         // 8. If no machine can accept the rest (even after checking future dates), push remainder to backlog
         if !fully_scheduled && item.quantity > 0 {

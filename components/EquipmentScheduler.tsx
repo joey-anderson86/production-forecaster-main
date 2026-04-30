@@ -996,6 +996,10 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
           const dateStr = dateObj ? `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}` : day;
 
           Object.entries(dayShifts).forEach(([sId, sData]) => {
+            const anchor = shiftSettings[sId];
+            const isWorking = dateObj && anchor ? isWorkingDay(dateObj, anchor) : true;
+            if (!isWorking) return;
+
             const key = `${mId}|${dateStr}|${sId}`;
             if (!machineStatesMap[key]) {
               machineStatesMap[key] = {

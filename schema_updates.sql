@@ -72,6 +72,7 @@ CREATE TABLE dbo.DeliveryData (
     Target INT,
     Actual INT,
     ReasonCode NVARCHAR(50),
+    IsMRPGenerated BIT NOT NULL DEFAULT 0,
     CONSTRAINT UQ_DeliveryData UNIQUE NONCLUSTERED (Date, Department, PartNumber, Shift),
     CONSTRAINT FK_DeliveryData_ReasonCode FOREIGN KEY (Department, ReasonCode) REFERENCES dbo.ReasonCode (ProcessName, ReasonCode)
 );
@@ -126,7 +127,8 @@ CREATE TABLE dbo.EquipmentSchedule (
     Shift NVARCHAR(50) NOT NULL,
     PartNumber NVARCHAR(50) NOT NULL,
     Qty INT NOT NULL,
-    RunSequence INT NOT NULL -- Tracks the drag-and-drop order
+    RunSequence INT NOT NULL, -- Tracks the drag-and-drop order
+    IsMRPGenerated BIT NOT NULL DEFAULT 0
 );
 GO
 
@@ -154,4 +156,17 @@ GO
 -- Index for fast Pipeline queries by PartNumber and WIPLocator
 CREATE NONCLUSTERED INDEX IX_PipelineData_Part_Locator 
 ON dbo.PipelineData(PartNumber, WIPLocator);
+GO
+
+-- Migration: Add IsMRPGenerated to existing tables
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.EquipmentSchedule') AND name = 'IsMRPGenerated')
+BEGIN
+    ALTER TABLE dbo.EquipmentSchedule ADD IsMRPGenerated BIT NOT NULL DEFAULT 0;
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.DeliveryData') AND name = 'IsMRPGenerated')
+BEGIN
+    ALTER TABLE dbo.DeliveryData ADD IsMRPGenerated BIT NOT NULL DEFAULT 0;
+END
 GO

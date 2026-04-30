@@ -191,7 +191,7 @@ pub async fn generate_cascaded_demand_from_schedule(
     let jan4 = NaiveDate::from_ymd_opt(year, 1, 4).unwrap();
     let day_of_week = jan4.weekday().num_days_from_monday();
     let monday_wk1 = jan4 - Duration::days(day_of_week as i64);
-    let target_monday = monday_wk1 + Duration::weeks((week - 1) as i64);
+    let _target_monday = monday_wk1 + Duration::weeks((week - 1) as i64);
 
     let schedule_query = "
         SELECT 
@@ -276,10 +276,6 @@ pub async fn generate_cascaded_demand_from_schedule(
                     }
                 }
 
-                if current_date < target_monday {
-                    current_date = target_monday;
-                    current_shift = "A".to_string();
-                }
 
                 *next_raw_demand.entry((current_date, current_shift)).or_insert(0) += total_raw_qty;
             }
@@ -332,6 +328,12 @@ pub async fn commit_mrp_plan(
 
     client.simple_query("BEGIN TRANSACTION").await.map_err(|e| e.to_string())?;
 
+    // Step 1: Clear out previous MRP runs for the target week_id to prevent duplicates
+    client.execute(
+        "DELETE FROM dbo.EquipmentSchedule WHERE IsMRPGenerated = 1 AND WeekIdentifier = @p1",
+        &[&week_id]
+    ).await.map_err(|e| e.to_string())?;
+
     for row in demand_rows {
         let part_number = row.get::<&str, _>("PartNumber").unwrap().trim().to_string();
         let department = row.get::<&str, _>("ProcessName").unwrap().trim().to_string();
@@ -339,30 +341,33 @@ pub async fn commit_mrp_plan(
         let shift = row.get::<&str, _>("TargetShift").unwrap().trim().to_string();
         let qty = get_i32_robust(&row, "RequiredQty").unwrap_or(0);
 
+        // Step 2: Calculate dynamic ISO week for every row
+        let target_date = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
+            .map_err(|e| format!("Invalid date in UpstreamDemand: {}", e))?;
+        let iso_week = target_date.iso_week();
+        let dynamic_week_id = format!("{}-w{:02}", iso_week.year(), iso_week.week());
+
         client.execute(
             "MERGE dbo.EquipmentSchedule AS target
              USING (SELECT @p1 as WeekIdentifier, @p2 as Department, @p3 as Date, @p4 as Shift, @p5 as PartNumber) AS source
              ON (target.WeekIdentifier = source.WeekIdentifier AND target.Department = source.Department AND target.Date = source.Date AND target.Shift = source.Shift AND target.PartNumber = source.PartNumber)
              WHEN MATCHED THEN
-                UPDATE SET Qty = target.Qty + @p6
+                UPDATE SET Qty = target.Qty + @p6, IsMRPGenerated = 1
              WHEN NOT MATCHED THEN
-                INSERT (WeekIdentifier, Department, MachineID, Date, Shift, PartNumber, Qty, RunSequence)
-                VALUES (@p1, @p2, 'General', @p3, @p4, @p5, @p6, 0);",
-            &[&week_id, &department, &date_str, &shift, &part_number, &qty],
+                INSERT (WeekIdentifier, Department, MachineID, Date, Shift, PartNumber, Qty, RunSequence, IsMRPGenerated)
+                VALUES (@p1, @p2, 'General', @p3, @p4, @p5, @p6, 0, 1);",
+            &[&dynamic_week_id, &department, &date_str, &shift, &part_number, &qty],
         ).await.map_err(|e| e.to_string())?;
 
-        let day_of_week = match NaiveDate::parse_from_str(&date_str, "%Y-%m-%d") {
-            Ok(d) => match d.weekday() {
-                chrono::Weekday::Mon => "Mon",
-                chrono::Weekday::Tue => "Tue",
-                chrono::Weekday::Wed => "Wed",
-                chrono::Weekday::Thu => "Thu",
-                chrono::Weekday::Fri => "Fri",
-                chrono::Weekday::Sat => "Sat",
-                chrono::Weekday::Sun => "Sun",
-            }.to_string(),
-            Err(_) => "".to_string(),
-        };
+        let day_of_week = match target_date.weekday() {
+            chrono::Weekday::Mon => "Mon",
+            chrono::Weekday::Tue => "Tue",
+            chrono::Weekday::Wed => "Wed",
+            chrono::Weekday::Thu => "Thu",
+            chrono::Weekday::Fri => "Fri",
+            chrono::Weekday::Sat => "Sat",
+            chrono::Weekday::Sun => "Sun",
+        }.to_string();
 
         client.execute(
             "MERGE dbo.DeliveryData AS target
@@ -373,12 +378,12 @@ pub async fn commit_mrp_plan(
                   AND (target.Shift = source.Shift OR (target.Shift IS NULL AND source.Shift = 'A')))
              WHEN MATCHED THEN
                 UPDATE SET Target = target.Target + source.Target, WeekIdentifier = source.WeekIdentifier, 
-                           DayOfWeek = source.DayOfWeek, Shift = source.Shift
+                           DayOfWeek = source.DayOfWeek, Shift = source.Shift, IsMRPGenerated = 1
              WHEN NOT MATCHED THEN
-                INSERT (Department, WeekIdentifier, PartNumber, DayOfWeek, Target, Date, Shift)
+                INSERT (Department, WeekIdentifier, PartNumber, DayOfWeek, Target, Date, Shift, IsMRPGenerated)
                 VALUES (source.Department, source.WeekIdentifier, source.PartNumber, source.DayOfWeek, 
-                        source.Target, source.Date, source.Shift);",
-            &[&department, &week_id, &part_number, &day_of_week, &qty, &date_str, &shift],
+                        source.Target, source.Date, source.Shift, 1);",
+            &[&department, &dynamic_week_id, &part_number, &day_of_week, &qty, &date_str, &shift],
         ).await.map_err(|e| e.to_string())?;
     }
 
@@ -530,4 +535,112 @@ pub async fn delete_part_routings(
             .await.map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+#[tauri::command]
+pub async fn validate_schedule_feasibility(
+    app: tauri::AppHandle,
+    connection_string: String,
+    week_id: String,
+) -> Result<Vec<String>, String> {
+    let mut client = create_client(&connection_string).await?;
+
+    // 1. Load Shift Settings/Anchors for Panama schedule
+    let mut anchors = HashMap::new();
+    if let Some(store) = app.get_store("store.json") {
+        if let Some(shift_settings_val) = store.get("shiftSettings") {
+            if let Ok(shift_settings) = serde_json::from_value::<HashMap<String, String>>(shift_settings_val) {
+                for (shift, date_str) in shift_settings {
+                    if let Ok(date) = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d") {
+                        anchors.insert(shift, date);
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Fetch EquipmentSchedule joined with PartRoutings
+    let query = "
+        SELECT 
+            es.PartNumber, 
+            CONVERT(VARCHAR, es.Date, 23) as DateStr, 
+            es.Shift, 
+            pr.SequenceNumber, 
+            pr.TransitShifts,
+            pr.ProcessName
+        FROM dbo.EquipmentSchedule es
+        INNER JOIN dbo.PartRoutings pr ON es.PartNumber = pr.PartNumber AND es.Department = pr.ProcessName
+        WHERE es.WeekIdentifier = @p1
+        ORDER BY es.PartNumber, pr.SequenceNumber ASC
+    ";
+
+    let stream = client.query(query, &[&week_id]).await.map_err(|e| e.to_string())?;
+    let rows = stream.into_first_result().await.map_err(|e| e.to_string())?;
+
+    let mut conflicts = Vec::new();
+    let mut part_groups: HashMap<String, Vec<(NaiveDate, String, i32, i32, String)>> = HashMap::new();
+
+    for row in rows {
+        let pn = row.get::<&str, _>("PartNumber").unwrap().trim().to_string();
+        let date_str = row.get::<&str, _>("DateStr").unwrap().trim();
+        let date = NaiveDate::parse_from_str(date_str, "%Y-%m-%d").unwrap();
+        let shift = row.get::<&str, _>("Shift").unwrap().trim().to_string();
+        let seq = row.get::<i32, _>("SequenceNumber").unwrap();
+        let transit = row.get::<i32, _>("TransitShifts").unwrap();
+        let proc = row.get::<&str, _>("ProcessName").unwrap().trim().to_string();
+
+        part_groups.entry(pn).or_default().push((date, shift, seq, transit, proc));
+    }
+
+    // 3. Check sequence feasibility
+    for (pn, steps) in part_groups {
+        for i in 0..steps.len() - 1 {
+            let (d1, s1, seq1, transit1, proc1) = &steps[i];
+            let (d2, s2, seq2, _transit2, proc2) = &steps[i + 1];
+
+            // Calculate working shifts between (d1, s1) and (d2, s2)
+            let mut gap = 0;
+            let mut curr_d = *d1;
+            let mut curr_s = s1.clone();
+
+            let mut checks = 0;
+            let max_checks = 200; // Limit search range to prevent infinite loops
+
+            while (curr_d < *d2 || (curr_d == *d2 && curr_s != *s2)) && checks < max_checks {
+                checks += 1;
+                
+                // Move to NEXT shift
+                let (next_d, next_s) = if curr_s == "A" {
+                    (curr_d, "B".to_string())
+                } else if curr_s == "B" {
+                    (curr_d + Duration::days(1), "A".to_string())
+                } else if curr_s == "C" {
+                    (curr_d, "D".to_string())
+                } else if curr_s == "D" {
+                    (curr_d + Duration::days(1), "C".to_string())
+                } else {
+                    // Fallback for unknown shifts
+                    (curr_d + Duration::days(1), "A".to_string())
+                };
+
+                curr_d = next_d;
+                curr_s = next_s;
+
+                if let Some(anchor) = anchors.get(&curr_s) {
+                    if is_working_day(curr_d, *anchor) {
+                        gap += 1;
+                    }
+                }
+            }
+
+            if gap < *transit1 {
+                conflicts.push(format!(
+                    "Part {}: Conflict between Seq {} ({}) and Seq {} ({}). Required {} transit shifts, but only {} available.",
+                    pn, seq1, proc1, seq2, proc2, transit1, gap
+                ));
+            }
+        }
+    }
+
+    Ok(conflicts)
 }
