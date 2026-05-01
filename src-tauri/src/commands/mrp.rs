@@ -23,21 +23,35 @@ fn is_working_day(target_date: NaiveDate, anchor_date: NaiveDate) -> bool {
 /// Week 1: A (Day), B (Night) work Mon, Tue, Fri, Sat, Sun.
 /// Week 2: A, B work Wed, Thu.
 /// C, D work the opposite.
-fn get_previous_shift(current_date: NaiveDate, current_shift: &str) -> (NaiveDate, String) {
-    // Shifts A/B and C/D are concurrent but on different days.
-    // In a 2-shift system per day: Day and Night.
-    // A and C are likely Day, B and D are likely Night (or vice-versa).
-    // Let's assume: A/C = Day, B/D = Night.
+fn get_previous_shift(current_date: NaiveDate, current_shift: &str, anchors: &HashMap<String, NaiveDate>) -> (NaiveDate, String) {
+    let is_night = current_shift == "B" || current_shift == "D";
     
-    if current_shift == "B" || current_shift == "D" {
-        // Current is Night, previous is Day of the same date
-        let prev_shift = if current_shift == "B" { "A" } else { "C" };
-        (current_date, prev_shift.to_string())
+    if is_night {
+        let target_date = current_date;
+        let shift_a_works = anchors.get("A").map(|&a| is_working_day(target_date, a)).unwrap_or(false);
+        let shift_c_works = anchors.get("C").map(|&a| is_working_day(target_date, a)).unwrap_or(false);
+        
+        let prev_shift = if shift_a_works {
+            "A"
+        } else if shift_c_works {
+            "C"
+        } else {
+            if current_shift == "B" { "A" } else { "C" }
+        };
+        (target_date, prev_shift.to_string())
     } else {
-        // Current is Day, previous is Night of the previous date
-        let prev_date = current_date - Duration::days(1);
-        let prev_shift = if current_shift == "A" { "B" } else { "D" };
-        (prev_date, prev_shift.to_string())
+        let target_date = current_date - Duration::days(1);
+        let shift_b_works = anchors.get("B").map(|&a| is_working_day(target_date, a)).unwrap_or(false);
+        let shift_d_works = anchors.get("D").map(|&a| is_working_day(target_date, a)).unwrap_or(false);
+        
+        let prev_shift = if shift_b_works {
+            "B"
+        } else if shift_d_works {
+            "D"
+        } else {
+            if current_shift == "A" { "B" } else { "D" }
+        };
+        (target_date, prev_shift.to_string())
     }
 }
 
@@ -47,114 +61,133 @@ pub async fn generate_cascaded_demand(
     connection_string: String,
     week_id: String, // e.g., "2026-w17"
 ) -> Result<(), String> {
-    // 1. Load Shift Settings from Tauri Store
-    let store = app.get_store("store.json").ok_or("Failed to load store.json")?;
-    let shift_settings_val = store.get("shiftSettings").ok_or("shiftSettings not found in store")?;
-    let shift_settings: HashMap<String, String> = serde_json::from_value(shift_settings_val)
-        .map_err(|e| format!("Failed to parse shiftSettings: {}", e))?;
-
-    let mut anchors = HashMap::new();
-    for (shift, date_str) in shift_settings {
-        let date = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
-            .map_err(|e| format!("Invalid anchor date for shift {}: {}", shift, e))?;
-        anchors.insert(shift, date);
-    }
-
-    // 2. Fetch Master Demand from DailyRates
-    // week_id "2026-w17" -> Year 2026, Week 17
-    let parts: Vec<&str> = week_id.split("-w").collect();
-    if parts.len() != 2 {
-        return Err("Invalid week_id format. Expected YYYY-wWW".to_string());
-    }
-    let year: i32 = parts[0].parse().map_err(|_| "Invalid year in week_id")?;
-    let week: i32 = parts[1].parse().map_err(|_| "Invalid week in week_id")?;
-
     let mut client = create_client(&connection_string).await?;
-    let rates_stream = client
-        .query(
-            "SELECT PartNumber, Qty FROM dbo.DailyRate WHERE Week = @p1 AND Year = @p2",
-            &[&week, &year],
-        )
-        .await
-        .map_err(|e| e.to_string())?;
-    let rates_rows = rates_stream.into_first_result().await.map_err(|e| e.to_string())?;
+    client.simple_query("BEGIN TRANSACTION").await.map_err(|e| e.to_string())?;
 
-    // 3. Setup Target Date (Friday of the week as the delivery anchor)
-    // To be precise, we should calculate the Friday of the ISO week.
-    // Or just use the Monday + 4 days.
-    let jan4 = NaiveDate::from_ymd_opt(year, 1, 4).unwrap();
-    let day_of_week = jan4.weekday().num_days_from_monday();
-    let monday_wk1 = jan4 - Duration::days(day_of_week as i64);
-    let target_monday = monday_wk1 + Duration::weeks((week - 1) as i64);
-    let delivery_deadline = target_monday + Duration::days(4); // Friday
+    let result: Result<(), String> = async {
+        // 1. Load Shift Settings from Tauri Store
+        let store = app.get_store("store.json").ok_or("Failed to load store.json")?;
+        let shift_settings_val = store.get("shiftSettings").ok_or("shiftSettings not found in store")?;
+        let shift_settings: HashMap<String, String> = serde_json::from_value(shift_settings_val)
+            .map_err(|e| format!("Failed to parse shiftSettings: {}", e))?;
 
-    // 4. Clear existing UpstreamDemand for this week to avoid duplicates
-    // Since we don't have a week column in UpstreamDemand, we'll delete by date range
-    let start_date = target_monday;
-    let end_date = target_monday + Duration::days(6);
-    let start_date_str = start_date.format("%Y-%m-%d").to_string();
-    let end_date_str = end_date.format("%Y-%m-%d").to_string();
-    client.execute(
-        "DELETE FROM dbo.UpstreamDemand WHERE TargetDate BETWEEN @p1 AND @p2",
-        &[&start_date_str, &end_date_str],
-    ).await.map_err(|e| e.to_string())?;
+        let mut anchors = HashMap::new();
+        for (shift, date_str) in shift_settings {
+            let date = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
+                .map_err(|e| format!("Invalid anchor date for shift {}: {}", shift, e))?;
+            anchors.insert(shift, date);
+        }
 
-    // 5. Iterate through each Part and its Routing
-    for row in rates_rows {
-        let part_number = row.get::<&str, _>("PartNumber").unwrap().trim().to_string();
-        let qty = get_i32_robust(&row, "Qty").unwrap_or(0);
-        if qty <= 0 { continue; }
+        // 2. Fetch Master Demand from DailyRates
+        let parts: Vec<&str> = week_id.split("-w").collect();
+        if parts.len() != 2 {
+            return Err("Invalid week_id format. Expected YYYY-wWW".to_string());
+        }
+        let year: i32 = parts[0].parse().map_err(|_| "Invalid year in week_id")?;
+        let week: i32 = parts[1].parse().map_err(|_| "Invalid week in week_id")?;
 
-        // Fetch Routing for this part
-        let routing_stream = client.query(
-            "SELECT RoutingID, ProcessName, SequenceNumber, ProcessingTimeMins, BatchSize, TransitShifts 
-             FROM dbo.PartRoutings WHERE PartNumber = @p1 ORDER BY SequenceNumber DESC",
-            &[&part_number],
+        let rates_stream = client
+            .query(
+                "SELECT PartNumber, Qty FROM dbo.DailyRate WHERE Week = @p1 AND Year = @p2",
+                &[&week, &year],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        let rates_rows = rates_stream.into_first_result().await.map_err(|e| e.to_string())?;
+
+        // 3. Setup Target Date
+        let jan4 = NaiveDate::from_ymd_opt(year, 1, 4).unwrap();
+        let day_of_week = jan4.weekday().num_days_from_monday();
+        let monday_wk1 = jan4 - Duration::days(day_of_week as i64);
+        let target_monday = monday_wk1 + Duration::weeks((week - 1) as i64);
+        let delivery_deadline = target_monday + Duration::days(4); // Friday
+
+        // 4. Clear existing UpstreamDemand
+        let start_date = target_monday;
+        let end_date = target_monday + Duration::days(6);
+        let start_date_str = start_date.format("%Y-%m-%d").to_string();
+        let end_date_str = end_date.format("%Y-%m-%d").to_string();
+        client.execute(
+            "DELETE FROM dbo.UpstreamDemand WHERE TargetDate BETWEEN @p1 AND @p2",
+            &[&start_date_str, &end_date_str],
         ).await.map_err(|e| e.to_string())?;
-        let routing_rows = routing_stream.into_first_result().await.map_err(|e| e.to_string())?;
 
-        let mut current_qty = qty;
-        let mut current_date = delivery_deadline;
-        let mut current_shift = "A".to_string(); // Start with Day shift on Friday
+        let mut virtual_inventory: HashMap<(String, String), i32> = HashMap::new();
 
-        for route_row in routing_rows {
-            let process_name = route_row.get::<&str, _>("ProcessName").unwrap().trim().to_string();
-            let transit_shifts = get_i32_robust(&route_row, "TransitShifts").unwrap_or(0);
-            let batch_size = get_i32_robust(&route_row, "BatchSize").unwrap_or(1);
+        // 5. Iterate through each Part and its Routing
+        for row in rates_rows {
+            let part_number = row.get::<&str, _>("PartNumber").unwrap().trim().to_string();
+            let qty = get_i32_robust(&row, "Qty").unwrap_or(0);
+            if qty <= 0 { continue; }
 
-            // Lead Time Offsetting: Count backward by transit_shifts
-            let mut shifts_to_offset = transit_shifts;
-            while shifts_to_offset > 0 {
-                let (prev_date, prev_shift) = get_previous_shift(current_date, &current_shift);
-                current_date = prev_date;
-                current_shift = prev_shift;
+            let routing_stream = client.query(
+                "SELECT RoutingID, ProcessName, SequenceNumber, ProcessingTimeMins, BatchSize, TransitShifts 
+                 FROM dbo.PartRoutings WHERE PartNumber = @p1 ORDER BY SequenceNumber DESC",
+                &[&part_number],
+            ).await.map_err(|e| e.to_string())?;
+            let routing_rows = routing_stream.into_first_result().await.map_err(|e| e.to_string())?;
 
-                // Check if this shift is active
-                if let Some(anchor) = anchors.get(&current_shift) {
-                    if is_working_day(current_date, *anchor) {
+            let mut current_qty = qty;
+            let mut current_date = delivery_deadline;
+            let mut current_shift = "A".to_string(); // Start with Day shift on Friday
+
+            for route_row in routing_rows {
+                let process_name = route_row.get::<&str, _>("ProcessName").unwrap().trim().to_string();
+                let transit_shifts = get_i32_robust(&route_row, "TransitShifts").unwrap_or(0);
+                let batch_size = get_i32_robust(&route_row, "BatchSize").unwrap_or(1);
+
+                let inventory_key = (part_number.clone(), process_name.clone());
+                let current_inventory = virtual_inventory.get(&inventory_key).copied().unwrap_or(0);
+
+                let net_needed = (current_qty - current_inventory).max(0);
+                let consumed_inventory = current_inventory - (current_inventory - current_qty).max(0);
+                *virtual_inventory.entry(inventory_key.clone()).or_insert(0) -= consumed_inventory;
+
+                let required_qty = if net_needed > 0 {
+                    let batches = (net_needed as f64 / batch_size as f64).ceil() as i32;
+                    let produced = batches * batch_size;
+                    let overproduction = produced - net_needed;
+                    *virtual_inventory.entry(inventory_key.clone()).or_insert(0) += overproduction;
+                    produced
+                } else {
+                    0
+                };
+
+                if required_qty > 0 {
+                    client.execute(
+                        "INSERT INTO dbo.UpstreamDemand (PartNumber, ProcessName, TargetDate, TargetShift, RequiredQty)
+                         VALUES (@p1, @p2, @p3, @p4, @p5)",
+                        &[&part_number, &process_name, &current_date.format("%Y-%m-%d").to_string(), &current_shift, &required_qty],
+                    ).await.map_err(|e| e.to_string())?;
+                }
+
+                current_qty = required_qty;
+
+                // Offset lead time for the NEXT upstream sequence
+                let mut shifts_to_offset = transit_shifts;
+                while shifts_to_offset > 0 {
+                    let (prev_date, prev_shift) = get_previous_shift(current_date, &current_shift, &anchors);
+                    current_date = prev_date;
+                    current_shift = prev_shift;
+
+                    if let Some(anchor) = anchors.get(&current_shift) {
+                        if is_working_day(current_date, *anchor) {
+                            shifts_to_offset -= 1;
+                        }
+                    } else {
                         shifts_to_offset -= 1;
                     }
-                } else {
-                    // If no anchor, assume it's working (though shouldn't happen)
-                    shifts_to_offset -= 1;
                 }
             }
-
-            // Batch Math: Round up to nearest multiple of BatchSize
-            let batches = (current_qty as f64 / batch_size as f64).ceil() as i32;
-            let required_qty = batches * batch_size;
-
-            // Insert into UpstreamDemand
-            client.execute(
-                "INSERT INTO dbo.UpstreamDemand (PartNumber, ProcessName, TargetDate, TargetShift, RequiredQty)
-                 VALUES (@p1, @p2, @p3, @p4, @p5)",
-                &[&part_number, &process_name, &current_date.format("%Y-%m-%d").to_string(), &current_shift, &required_qty],
-            ).await.map_err(|e| e.to_string())?;
-
-            // The next upstream operation must produce at least this quantity
-            current_qty = required_qty;
         }
+        Ok(())
+    }.await;
+
+    if result.is_err() {
+        let _ = client.simple_query("ROLLBACK TRANSACTION").await;
+        return result;
     }
+    client.simple_query("COMMIT TRANSACTION").await.map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -166,34 +199,25 @@ pub async fn generate_cascaded_demand_from_schedule(
     week_id: String,
 ) -> Result<(), String> {
     let mut client = create_client(&connection_string).await?;
+    client.simple_query("BEGIN TRANSACTION").await.map_err(|e| e.to_string())?;
 
-    let mut anchors = HashMap::new();
-    if let Some(store) = app.get_store("store.json") {
-        if let Some(shift_settings_val) = store.get("shiftSettings") {
-            if let Ok(shift_settings) = serde_json::from_value::<HashMap<String, String>>(shift_settings_val) {
-                for (shift, date_str) in shift_settings {
-                    if let Ok(date) = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d") {
-                        anchors.insert(shift, date);
+    let result: Result<(), String> = async {
+        let mut anchors = HashMap::new();
+        if let Some(store) = app.get_store("store.json") {
+            if let Some(shift_settings_val) = store.get("shiftSettings") {
+                if let Ok(shift_settings) = serde_json::from_value::<HashMap<String, String>>(shift_settings_val) {
+                    for (shift, date_str) in shift_settings {
+                        if let Ok(date) = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d") {
+                            anchors.insert(shift, date);
+                        }
                     }
                 }
             }
         }
-    }
 
-    client.execute("TRUNCATE TABLE dbo.UpstreamDemand", &[]).await.map_err(|e| e.to_string())?;
+        client.execute("TRUNCATE TABLE dbo.UpstreamDemand", &[]).await.map_err(|e| e.to_string())?;
 
-    let parts: Vec<&str> = week_id.split("-w").collect();
-    if parts.len() != 2 {
-        return Err("Invalid week_id format. Expected YYYY-wWW".to_string());
-    }
-    let year: i32 = parts[0].parse().map_err(|_| "Invalid year in week_id")?;
-    let week: i32 = parts[1].parse().map_err(|_| "Invalid week in week_id")?;
-    let jan4 = NaiveDate::from_ymd_opt(year, 1, 4).unwrap();
-    let day_of_week = jan4.weekday().num_days_from_monday();
-    let monday_wk1 = jan4 - Duration::days(day_of_week as i64);
-    let _target_monday = monday_wk1 + Duration::weeks((week - 1) as i64);
-
-    let schedule_query = "
+        let schedule_query = "
         SELECT 
             es.PartNumber, 
             SUM(es.Qty) as TotalQty, 
@@ -213,26 +237,29 @@ pub async fn generate_cascaded_demand_from_schedule(
     let mut missing_routings = Vec::new();
 
     // Group scheduled rows by PartNumber
-    let mut parts_schedule: HashMap<String, (i32, Vec<(NaiveDate, String, i32)>)> = HashMap::new();
+    let mut parts_schedule: HashMap<String, (i32, String, Vec<(NaiveDate, String, i32)>)> = HashMap::new();
     for row in scheduled_rows {
         let part_number = row.get::<&str, _>("PartNumber").unwrap().trim().to_string();
         let qty = get_i32_robust(&row, "TotalQty").unwrap_or(0);
         let date_str = row.get::<&str, _>("TargetDateStr").unwrap().trim().to_string();
         let target_shift = row.get::<&str, _>("TargetShift").unwrap().trim().to_string();
         let terminal_seq = get_i32_robust(&row, "TerminalSeq").unwrap_or(0);
+        let terminal_proc = row.get::<&str, _>("TerminalProcess").unwrap().trim().to_string();
 
         if qty <= 0 { continue; }
         let target_date = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d").unwrap();
 
-        let entry = parts_schedule.entry(part_number).or_insert((terminal_seq, Vec::new()));
-        entry.1.push((target_date, target_shift, qty));
+        let entry = parts_schedule.entry(part_number).or_insert((terminal_seq, terminal_proc, Vec::new()));
+        entry.2.push((target_date, target_shift, qty));
     }
 
-    for (part_number, (terminal_seq, schedules)) in parts_schedule {
+    let mut virtual_inventory: HashMap<(String, String), i32> = HashMap::new();
+
+    for (part_number, (terminal_seq, terminal_proc, schedules)) in parts_schedule {
         let routing_stream = client.query(
             "SELECT ProcessName, SequenceNumber, ProcessingTimeMins, BatchSize, TransitShifts 
              FROM dbo.PartRoutings 
-             WHERE PartNumber = @p1 AND SequenceNumber < @p2 
+             WHERE PartNumber = @p1 AND SequenceNumber <= @p2 
              ORDER BY SequenceNumber DESC",
             &[&part_number, &terminal_seq],
         ).await.map_err(|e| e.to_string())?;
@@ -243,71 +270,110 @@ pub async fn generate_cascaded_demand_from_schedule(
             continue;
         }
 
-        // Initialize raw demand from the terminal schedule
         let mut raw_demand: HashMap<(NaiveDate, String), i32> = HashMap::new();
         for (date, shift, qty) in schedules {
-            *raw_demand.entry((date, shift)).or_insert(0) += qty;
+            *raw_demand.entry((date, shift.clone())).or_insert(0) += qty;
+            // Removed inserting terminal_proc directly into demand_map here, because we handle it in the loop
         }
 
-        for route_row in routing_rows {
-            let process_name = route_row.get::<&str, _>("ProcessName").unwrap().trim().to_string();
-            let transit_shifts = get_i32_robust(&route_row, "TransitShifts").unwrap_or(0);
-            let batch_size = get_i32_robust(&route_row, "BatchSize").unwrap_or(1);
+            for route_row in routing_rows {
+                let process_name = route_row.get::<&str, _>("ProcessName").unwrap().trim().to_string();
+                let sequence_number = get_i32_robust(&route_row, "SequenceNumber").unwrap_or(0);
+                let transit_shifts = get_i32_robust(&route_row, "TransitShifts").unwrap_or(0);
+                let batch_size = get_i32_robust(&route_row, "BatchSize").unwrap_or(1);
 
-            let mut next_raw_demand: HashMap<(NaiveDate, String), i32> = HashMap::new();
+                let mut next_raw_demand: HashMap<(NaiveDate, String), i32> = HashMap::new();
 
-            // Step 1: Offset dates for all demands feeding into this route step
-            for ((date, shift), total_raw_qty) in raw_demand {
-                let mut current_date = date;
-                let mut current_shift = shift.clone();
-                let mut shifts_to_offset = transit_shifts;
+                let mut sorted_demands: Vec<_> = raw_demand.into_iter().collect();
+                sorted_demands.sort_by(|a, b| {
+                    let date_cmp = b.0.0.cmp(&a.0.0);
+                    if date_cmp != std::cmp::Ordering::Equal {
+                        return date_cmp;
+                    }
+                    let shift_a = match a.0.1.as_str() { "A" | "C" => 1, _ => 2 };
+                    let shift_b = match b.0.1.as_str() { "A" | "C" => 1, _ => 2 };
+                    shift_b.cmp(&shift_a)
+                });
 
-                while shifts_to_offset > 0 {
-                    let (prev_date, prev_shift) = get_previous_shift(current_date, &current_shift);
-                    current_date = prev_date;
-                    current_shift = prev_shift;
+                for ((date, shift), total_raw_qty) in sorted_demands {
+                    let produced_qty;
 
-                    if let Some(anchor) = anchors.get(&current_shift) {
-                        if is_working_day(current_date, *anchor) {
-                            shifts_to_offset -= 1;
-                        }
+                    if sequence_number == terminal_seq {
+                        produced_qty = total_raw_qty;
+                        let key = (part_number.clone(), process_name.clone(), date.clone(), shift.clone());
+                        *demand_map.entry(key).or_insert(0) += produced_qty;
                     } else {
-                        shifts_to_offset -= 1;
+                        let inventory_key = (part_number.clone(), process_name.clone());
+                        let current_inventory = virtual_inventory.get(&inventory_key).copied().unwrap_or(0);
+
+                        let net_needed = (total_raw_qty - current_inventory).max(0);
+                        let consumed_inventory = current_inventory - (current_inventory - total_raw_qty).max(0);
+                        *virtual_inventory.entry(inventory_key.clone()).or_insert(0) -= consumed_inventory;
+
+                        if net_needed > 0 {
+                            let batches = (net_needed as f64 / batch_size as f64).ceil() as i32;
+                            produced_qty = batches * batch_size;
+                            let overproduction = produced_qty - net_needed;
+
+                            *virtual_inventory.entry(inventory_key.clone()).or_insert(0) += overproduction;
+
+                            let key = (part_number.clone(), process_name.clone(), date.clone(), shift.clone());
+                            *demand_map.entry(key).or_insert(0) += produced_qty;
+                        } else {
+                            produced_qty = 0;
+                        }
+                    }
+                    if produced_qty > 0 {
+                        *next_raw_demand.entry((date, shift)).or_insert(0) += produced_qty;
                     }
                 }
 
+                let mut output_raw_demand: HashMap<(NaiveDate, String), i32> = HashMap::new();
+                for ((date, shift), total_produced_qty) in next_raw_demand {
+                    let mut current_date = date;
+                    let mut current_shift = shift.clone();
+                    let mut shifts_to_offset = transit_shifts;
 
-                *next_raw_demand.entry((current_date, current_shift)).or_insert(0) += total_raw_qty;
+                    while shifts_to_offset > 0 {
+                        let (prev_date, prev_shift) = get_previous_shift(current_date, &current_shift, &anchors);
+                        current_date = prev_date;
+                        current_shift = prev_shift;
+
+                        if let Some(anchor) = anchors.get(&current_shift) {
+                            if is_working_day(current_date, *anchor) {
+                                shifts_to_offset -= 1;
+                            }
+                        } else {
+                            shifts_to_offset -= 1;
+                        }
+                    }
+                    *output_raw_demand.entry((current_date, current_shift)).or_insert(0) += total_produced_qty;
+                }
+
+                raw_demand = output_raw_demand;
             }
-
-            // Step 2: Apply batch size aggregation
-            let mut output_raw_demand: HashMap<(NaiveDate, String), i32> = HashMap::new();
-            for ((date, shift), total_raw_qty) in next_raw_demand {
-                let batches = (total_raw_qty as f64 / batch_size as f64).ceil() as i32;
-                let produced_qty = batches * batch_size;
-
-                let key = (part_number.clone(), process_name.clone(), date.clone(), shift.clone());
-                *demand_map.entry(key).or_insert(0) += produced_qty;
-
-                *output_raw_demand.entry((date, shift)).or_insert(0) += produced_qty;
-            }
-
-            // The output of this step becomes the raw demand for the next upstream step
-            raw_demand = output_raw_demand;
         }
-    }
 
-    if !missing_routings.is_empty() {
-        println!("Warning: Missing routings for parts: {:?}", missing_routings);
-    }
+        if !missing_routings.is_empty() {
+            println!("Warning: Missing routings for parts: {:?}", missing_routings);
+        }
 
-    for ((part_number, process_name, target_date, target_shift), required_qty) in demand_map {
-        client.execute(
-            "INSERT INTO dbo.UpstreamDemand (PartNumber, ProcessName, TargetDate, TargetShift, RequiredQty)
-             VALUES (@p1, @p2, @p3, @p4, @p5)",
-            &[&part_number, &process_name, &target_date.format("%Y-%m-%d").to_string(), &target_shift, &required_qty],
-        ).await.map_err(|e| e.to_string())?;
+        for ((part_number, process_name, target_date, target_shift), required_qty) in demand_map {
+            client.execute(
+                "INSERT INTO dbo.UpstreamDemand (PartNumber, ProcessName, TargetDate, TargetShift, RequiredQty)
+                 VALUES (@p1, @p2, @p3, @p4, @p5)",
+                &[&part_number, &process_name, &target_date.format("%Y-%m-%d").to_string(), &target_shift, &required_qty],
+            ).await.map_err(|e| e.to_string())?;
+        }
+
+        Ok(())
+    }.await;
+
+    if result.is_err() {
+        let _ = client.simple_query("ROLLBACK TRANSACTION").await;
+        return result;
     }
+    client.simple_query("COMMIT TRANSACTION").await.map_err(|e| e.to_string())?;
 
     Ok(())
 }

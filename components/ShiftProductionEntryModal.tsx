@@ -40,7 +40,9 @@ import {
   IconCheck,
   IconDownload,
   IconSearch,
+  IconPrinter,
 } from '@tabler/icons-react';
+import { HourByHourSheet } from './HourByHourSheet';
 import { useScorecardStore } from '@/lib/scorecardStore';
 import { useProcessStore } from '@/lib/processStore';
 import { isWorkingDay, getWeekIdentifier, getDayOfWeekLabel, getWeekDates } from '@/lib/dateUtils';
@@ -479,6 +481,10 @@ export function ShiftProductionEntryModal({
     }
   };
 
+  const handlePrint = () => {
+    window.print();
+  };
+
   // ── Derived State ──
   const canLoadPlan = !!selectedDate && !!selectedDept && !!selectedShift;
   const parsedDateForDisplay = selectedDate;
@@ -845,6 +851,15 @@ export function ShiftProductionEntryModal({
                 Cancel
               </Button>
               <Button
+                variant="light"
+                color="indigo"
+                leftSection={<IconPrinter size={18} />}
+                onClick={handlePrint}
+                disabled={entries.length === 0}
+              >
+                Print Tracking Sheets
+              </Button>
+              <Button
                 onClick={handleSubmit}
                 loading={isSubmitting}
                 leftSection={<IconDeviceFloppy size={18} />}
@@ -854,6 +869,21 @@ export function ShiftProductionEntryModal({
                 Submit Production Data
               </Button>
             </Group>
+            
+            {/* Render hidden tracking sheets for all entries */}
+            <Box className="print-sheets-container">
+              {entries.map((entry) => (
+                <HourByHourSheet
+                  key={entry.id}
+                  partNumber={entry.partNumber}
+                  machineId={selectedDept || 'UNSPECIFIED'}
+                  shiftTarget={entry.target}
+                  date={selectedDate ? dayjs(selectedDate).format('YYYY-MM-DD') : ''}
+                  shift={selectedShift || ''}
+                  shiftHours={8}
+                />
+              ))}
+            </Box>
           </>
         )}
       </Stack>
