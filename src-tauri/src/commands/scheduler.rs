@@ -312,6 +312,7 @@ pub async fn get_machine_utilization(
         .map_err(|e| e.to_string())?;
 
     let mut capacities: HashMap<String, HashMap<String, HashMap<String, f64>>> = HashMap::new();
+    println!("DEBUG: Loading capacities for {} / {}", process_name, week_id);
     for row in rows {
         let m_id = row
             .get::<&str, _>("MachineID")
@@ -330,6 +331,7 @@ pub async fn get_machine_utilization(
             .trim()
             .to_string();
         let hours = get_f64_robust(&row, "HoursAvailable").unwrap_or(0.0);
+        println!("  Row: {} | {} ({}) | Shift {} | Hours={}", m_id, date_str, day_name, shift, hours);
         capacities
             .entry(m_id)
             .or_default()
@@ -337,6 +339,7 @@ pub async fn get_machine_utilization(
             .or_default()
             .insert(shift, hours);
     }
+    println!("DEBUG: Finished loading capacities. Machines found: {:?}", capacities.keys().collect::<Vec<_>>());
 
     // 2. Load Part Info (Processing Time, Batch Size, SequenceNumber)
     let part_info_query = "
@@ -787,6 +790,17 @@ fn calculate_optimal_schedule(mut request: ScheduleRequest) -> ScheduleResponse 
     available_dates.sort();
     available_dates.dedup();
 
+    println!("═══ AUTO-SCHEDULE ENGINE ═══");
+    println!("  Backlog items: {}", request.backlog_items.len());
+    println!("  Capabilities map keys: {:?}", capabilities_map.keys().collect::<Vec<_>>());
+    println!("  Machine states: {} entries", machine_states_map.len());
+    println!("  Available dates: {:?}", available_dates);
+    for (key, state) in &machine_states_map {
+        if state.total_capacity_hours > 0.0 {
+            println!("  [CAPACITY] {:?} => {:.1}h, util={:.1}%", key, state.total_capacity_hours, state.current_utilization_pct);
+        }
+    }
+
     // 3a. Index existing assignments by PartNumber to speed up lookup
     let mut assignments_by_part: HashMap<String, Vec<ScheduledTask>> = HashMap::new();
     if let Some(existing) = request.existing_assignments {
@@ -813,14 +827,12 @@ fn calculate_optimal_schedule(mut request: ScheduleRequest) -> ScheduleResponse 
     // 4. Loop through sorted backlog items
     for mut item in request.backlog_items {
         let mut fully_scheduled = false;
-        let requested_date = item.original_date.clone().unwrap_or_default();
-
+        println!("  ── Item: {} part={} qty={} shift={}", item.id, item.part_id, item.quantity, item.shift);
         if let Some(eligible_caps) = capabilities_map.get(&item.part_id) {
-            // Find all dates from requested_date onwards
-            let valid_dates: Vec<&String> = available_dates
-                .iter()
-                .filter(|d| *d >= &requested_date)
-                .collect();
+            println!("    Found {} capabilities", eligible_caps.len());
+            // Allow scheduling on any available date within the week to maximize capacity utilization
+            let valid_dates: Vec<&String> = available_dates.iter().collect();
+            println!("    Valid dates: {:?}", valid_dates);
 
             // Try scheduling across available forward-looking dates
                 for current_date in valid_dates {
@@ -853,6 +865,9 @@ fn calculate_optimal_schedule(mut request: ScheduleRequest) -> ScheduleResponse 
                                         // An EARLIER operation exists. It MUST be completed BEFORE this one starts.
                                         // So we cannot schedule this one if it's NOT after that one.
                                         !is_before(&t.date, &t.shift, current_date, &shift_to_check)
+                                    } else if t_seq > seq {
+                                        // A LATER operation exists. We MUST complete this one BEFORE that one starts.
+                                        !is_before(current_date, &shift_to_check, &t.date, &t.shift)
                                     } else {
                                         false
                                     }
@@ -877,6 +892,7 @@ fn calculate_optimal_schedule(mut request: ScheduleRequest) -> ScheduleResponse 
                                 shift_to_check.clone(),
                             );
                             if let Some(machine) = machine_states_map.get_mut(&key) {
+                                println!("      [HIT] {:?} cap={:.1}h util={:.1}%", key, machine.total_capacity_hours, machine.current_utilization_pct);
                         if machine.total_capacity_hours <= 0.0
                             || machine.current_utilization_pct >= machine.max_utilization_pct
                         {
@@ -934,11 +950,15 @@ fn calculate_optimal_schedule(mut request: ScheduleRequest) -> ScheduleResponse 
                 }
             }
         }
+    } else {
+        println!("    ✗ NO CAPABILITY FOUND for part_id={}", item.part_id);
     }
 
-        // 8. If no machine can accept the rest (even after checking future dates), push remainder to backlog
         if !fully_scheduled && item.quantity > 0 {
+            println!("    → UNSCHEDULED: {} remaining qty={}", item.part_id, item.quantity);
             remaining_backlog.push(item);
+        } else {
+            println!("    → FULLY SCHEDULED: {}", item.part_id);
         }
     }
 

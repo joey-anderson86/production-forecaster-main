@@ -958,7 +958,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
 
       const backlogItems: any[] = data.Unassigned.map((job, idx) => ({
         id: job.Id,
-        partId: job.PartNumber,
+        partId: job.PartNumber.trim().toUpperCase(),
         quantity: job.TargetQty,
         priority: 1000 - idx,
         shift: job.OriginalShift || job.Shift || 'A',
@@ -980,15 +980,17 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
 
         machines.forEach(mId => {
           capabilities.push({
-            partId: job.PartNumber,
-            machineId: mId,
+            partId: job.PartNumber.trim().toUpperCase(),
+            machineId: mId.trim().toUpperCase(),
             partsPerHour: 60.0 / pTime
           });
         });
       });
 
       const machineStatesMap: Record<string, MachineState> = {};
+      console.group('🔍 Machine States Construction');
       Object.entries(data.Machines).forEach(([mId, mInfo]) => {
+        console.log(`Machine: ${mId}, Schedule days:`, Object.keys(mInfo.Schedule));
         Object.entries(mInfo.Schedule).forEach(([day, dayShifts]) => {
           // get the date string for the day
           const dayIdx = DAYS_OF_WEEK.indexOf(day as DayOfWeek);
@@ -996,14 +998,16 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
           const dateStr = dateObj ? `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}` : day;
 
           Object.entries(dayShifts).forEach(([sId, sData]) => {
-            const anchor = shiftSettings[sId];
-            const isWorking = dateObj && anchor ? isWorkingDay(dateObj, anchor) : true;
-            if (!isWorking) return;
+            console.log(`  ${day} (${dateStr}) Shift ${sId}: CapacityHrs=${sData.CapacityHrs}, TotalAssigned=${sData.TotalAssignedHours}`);
+            // Trust the database capacity as the source of truth for shift availability.
+            // ProcessInfo already has HoursAvailable=0 for non-working shifts.
+            // Do NOT apply Panama isWorkingDay here — anchor dates can drift from the actual capacity data.
+            if (sData.CapacityHrs <= 0) return;
 
-            const key = `${mId}|${dateStr}|${sId}`;
+            const key = `${mId.trim().toUpperCase()}|${dateStr}|${sId}`;
             if (!machineStatesMap[key]) {
               machineStatesMap[key] = {
-                machineId: mId,
+                machineId: mId.trim().toUpperCase(),
                 date: dateStr,
                 shift: sId,
                 totalCapacityHours: 0,
@@ -1017,12 +1021,21 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
           });
         });
       });
+      console.log('Final machineStatesMap keys:', Object.keys(machineStatesMap));
+      console.groupEnd();
 
       // Finalize pct
       const machineStates = Object.values(machineStatesMap).map(ms => ({
         ...ms,
         currentUtilizationPct: ms.totalCapacityHours > 0 ? ((ms as any).tempAssigned / ms.totalCapacityHours) * 100.0 : 0
       }));
+
+      // ── DIAGNOSTIC LOGGING ──
+      console.group('🔧 Auto-Schedule Debug');
+      console.log('Backlog Items:', backlogItems.length, backlogItems);
+      console.log('Capabilities:', capabilities.length, capabilities);
+      console.log('Machine States:', machineStates.length, machineStates);
+      console.groupEnd();
 
       // 1. Fetch all existing assignments for the week to enforce sequencing
       const existingAssignments = await invoke('get_all_week_assignments', { 
@@ -1040,64 +1053,72 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
         }
       });
 
+      console.group('🔧 Auto-Schedule Response');
+      console.log('Newly Scheduled:', response.newlyScheduled?.length, response.newlyScheduled);
+      console.log('Remaining Backlog:', response.remainingBacklog?.length, response.remainingBacklog);
+      console.groupEnd();
+
       setData(prev => {
         if (!prev) return null;
         const newState = copyState(prev);
 
         newState.Unassigned = prev.Unassigned.filter(job => 
-          response.remainingBacklog.some(b => b.id === job.Id)
+          response.remainingBacklog.some((b: { id: string }) => b.id === job.Id)
         );
 
-        response.newlyScheduled.forEach(task => {
+        console.log(' Newly Scheduled:', response.newlyScheduled.length, response.newlyScheduled);
+        
+        response.newlyScheduled.forEach((task: { backlogItemId: string; quantity: number; machineId: string; date: string; shift: string }) => {
           const originalJob = prev.Unassigned.find(j => j.Id === task.backlogItemId);
-          if (!originalJob) return;
-
-          let remainingQtyToSchedule = task.quantity;
-          const mInfo = newState.Machines[task.machineId];
-
-          if (mInfo) {
-            const targetDayIdx = weekDates.findIndex(d => {
-               const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-               return ds === task.date;
-            });
-            
-            if (targetDayIdx !== -1) {
-                const dayStr = DAYS_OF_WEEK[targetDayIdx];
-                const shiftData = mInfo.Schedule[dayStr]?.[task.shift];
-                
-                if (shiftData && remainingQtyToSchedule > 0) {
-                    const availableHours = shiftData.CapacityHrs - shiftData.TotalAssignedHours;
-                    if (availableHours > 0) {
-                       const maxQtyForShift = Math.floor((availableHours * 60) / originalJob.ProcessingTimeMins);
-                       const qtyToPlace = Math.min(maxQtyForShift, remainingQtyToSchedule);
-
-                       if (qtyToPlace > 0) {
-                          const jobToAdd = {
-                            ...originalJob,
-                            Id: `${originalJob.Id}|${task.machineId}|${dayStr}|${task.shift}|${Date.now()}`,
-                            TargetQty: qtyToPlace,
-                            Shift: task.shift
-                          };
-
-                          shiftData.Jobs.push(jobToAdd);
-                          shiftData.TotalAssignedHours = calculateTotalHours(shiftData.Jobs);
-                          remainingQtyToSchedule -= qtyToPlace;
-                       }
-                    }
-                }
-            }
-
-            if (remainingQtyToSchedule > 0) {
-               newState.Unassigned.push({
-                 ...originalJob,
-                 Id: `${originalJob.Id}|REMAINDER|${Date.now()}`,
-                 TargetQty: remainingQtyToSchedule,
-                 IsOverflow: true,
-                 OriginalDate: originalJob.OriginalDate,
-                 OriginalShift: originalJob.OriginalShift
-               });
-            }
+          if (!originalJob) {
+            console.warn(`Original job not found for backlogItemId: ${task.backlogItemId}`);
+            return;
           }
+
+          const mIdNorm = task.machineId.trim().toUpperCase();
+          const mInfo = newState.Machines[mIdNorm];
+          if (!mInfo) {
+            console.error(`Machine not found in state: ${task.machineId} (Normalized: ${mIdNorm})`);
+            return;
+          }
+
+          const targetDayIdx = weekDates.findIndex(d => {
+            const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            return ds === task.date;
+          });
+
+          if (targetDayIdx === -1) {
+            console.error(`Day not found for date: ${task.date}`);
+            return;
+          }
+
+          const dayStr = DAYS_OF_WEEK[targetDayIdx];
+          console.log(`  Assigning ${originalJob.PartNumber} to ${mIdNorm} on ${dayStr} ${task.shift}`);
+
+          // Ensure the day and shift slot exist in the UI state
+          if (!mInfo.Schedule[dayStr]) {
+            mInfo.Schedule[dayStr] = {};
+          }
+          if (!mInfo.Schedule[dayStr][task.shift]) {
+            mInfo.Schedule[dayStr][task.shift] = {
+              Jobs: [],
+              CapacityHrs: 0,
+              TotalAssignedHours: 0
+            };
+          }
+
+          const shiftData = mInfo.Schedule[dayStr][task.shift];
+
+          // Trust the Rust engine's scheduling decision — place directly without re-checking capacity
+          const jobToAdd = {
+            ...originalJob,
+            Id: `${originalJob.Id}|${task.machineId}|${dayStr}|${task.shift}|${Date.now()}`,
+            TargetQty: task.quantity,
+            Shift: task.shift
+          };
+
+          shiftData.Jobs.push(jobToAdd);
+          shiftData.TotalAssignedHours = calculateTotalHours(shiftData.Jobs);
         });
         
         // Consolidate backlog to merge fragments while keeping shortfalls separate
@@ -1145,10 +1166,11 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
     return DAYS_OF_WEEK.map((day, idx) => {
       const date = weekDates[idx];
       const shifts = ALL_SHIFTS.map(sId => {
-        const anchor = shiftSettings[sId];
-        // Panama Logic: Check if the shift is ON for this specific day
-        const isWorking = date && anchor ? isWorkingDay(date, anchor) : true;
-        return { id: sId, isWorking };
+        // Check if ANY machine has capacity for this shift on this day
+        const hasCapacity = Object.values(data.Machines).some(m => 
+          m.Schedule[day]?.[sId]?.CapacityHrs > 0
+        );
+        return { id: sId, isWorking: hasCapacity };
       }).filter(s => s.isWorking);
 
       return {
@@ -1158,7 +1180,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
         dateIdx: idx
       };
     }).filter(d => d.shifts.length > 0);
-  }, [data, weekDates, shiftSettings]);
+  }, [data, weekDates]);
 
   return (
     <Box p={0} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
