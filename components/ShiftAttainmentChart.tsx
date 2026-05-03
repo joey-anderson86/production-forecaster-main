@@ -153,6 +153,12 @@ export function ShiftAttainmentChart({ weekData, departmentName, compact = false
             ]}
             tickLine="xy"
             gridAxis="xy"
+            xAxisProps={{ 
+              angle: -45, 
+              textAnchor: 'end',
+              height: 80,
+              interval: 0
+            }}
             yAxisProps={{ domain: [0, 110] }}
             valueFormatter={(value) => `${value}%`}
             withBarValueLabel

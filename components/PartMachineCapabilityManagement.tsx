@@ -23,12 +23,14 @@ import { SQLPartMachineCapability } from "@/lib/types";
 
 interface Props {
   connectionString: string;
+  processFilter?: string | null;
 }
 
-export function PartMachineCapabilityManagement({ connectionString }: Props) {
+export function PartMachineCapabilityManagement({ connectionString, processFilter }: Props) {
   const [capabilities, setCapabilities] = useState<SQLPartMachineCapability[]>([]);
   const [allParts, setAllParts] = useState<string[]>([]);
   const [allMachines, setAllMachines] = useState<string[]>([]);
+  const [processHierarchy, setProcessHierarchy] = useState<{ [key: string]: string[] }>({});
   const [loading, setLoading] = useState(true);
 
   // Form State
@@ -39,25 +41,32 @@ export function PartMachineCapabilityManagement({ connectionString }: Props) {
   useEffect(() => {
     if (!connectionString) return;
     fetchData();
-  }, [connectionString]);
+  }, [connectionString, processFilter]);
+
+  useEffect(() => {
+    setSelectedPart(null);
+  }, [processFilter]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
       const [caps, parts, meta] = await Promise.all([
         invoke<SQLPartMachineCapability[]>("get_part_machine_capabilities", { connectionString }),
-        invoke<string[]>("get_all_part_numbers", { connectionString }),
+        processFilter 
+          ? invoke<string[]>("get_part_numbers_by_process", { connectionString, process: processFilter })
+          : invoke<string[]>("get_all_part_numbers", { connectionString }),
         invoke<any>("get_scheduler_meta", { connectionString })
       ]);
       setCapabilities(caps);
       setAllParts(parts);
       
+      const hierarchy = meta.ProcessHierarchy || {};
+      setProcessHierarchy(hierarchy);
+
       const machinesSet = new Set<string>();
-      if (meta && meta.ProcessHierarchy) {
-        Object.values(meta.ProcessHierarchy).forEach((mList: any) => {
-          mList.forEach((m: string) => machinesSet.add(m));
-        });
-      }
+      Object.values(hierarchy).forEach((mList: any) => {
+        mList.forEach((m: string) => machinesSet.add(m));
+      });
       setAllMachines(Array.from(machinesSet).sort());
     } catch (e: any) {
       notifications.show({ title: 'Error fetching capabilities', message: e.toString(), color: 'red' });
@@ -105,14 +114,37 @@ export function PartMachineCapabilityManagement({ connectionString }: Props) {
     }
   };
 
+  const filteredMachines = useMemo(() => {
+    if (!processFilter || !processHierarchy[processFilter]) {
+      return allMachines;
+    }
+    return processHierarchy[processFilter].sort();
+  }, [allMachines, processFilter, processHierarchy]);
+
   const groupedCapabilities = useMemo(() => {
     const map = new Map<string, string[]>();
+    
+    // Create a reverse mapping for quick lookup: Machine -> Process
+    const machineToProcess = new Map<string, string[]>();
+    Object.entries(processHierarchy).forEach(([proc, machines]) => {
+      machines.forEach(m => {
+        if (!machineToProcess.has(m)) machineToProcess.set(m, []);
+        machineToProcess.get(m)!.push(proc);
+      });
+    });
+
     capabilities.forEach(c => {
+      // If we have a process filter, only include machines that belong to that process
+      if (processFilter) {
+        const belongsToProcess = machineToProcess.get(c.machineId)?.includes(processFilter);
+        if (!belongsToProcess) return;
+      }
+
       if (!map.has(c.partId)) map.set(c.partId, []);
       map.get(c.partId)!.push(c.machineId);
     });
     return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-  }, [capabilities]);
+  }, [capabilities, processFilter, processHierarchy]);
 
   if (loading) {
     return <Center h={200}><Loader size="md" color="indigo" /></Center>;
@@ -148,7 +180,7 @@ export function PartMachineCapabilityManagement({ connectionString }: Props) {
             <MultiSelect
               label="Allowed Machines"
               placeholder="Select valid equipment..."
-              data={allMachines}
+              data={filteredMachines}
               value={selectedMachines}
               onChange={setSelectedMachines}
               searchable

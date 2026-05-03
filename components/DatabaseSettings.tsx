@@ -129,6 +129,7 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
   const [routingFilterParts, setRoutingFilterParts] = useState<string[]>([]);
   const [reasonCodeProcessFilter, setReasonCodeProcessFilter] = useState<string | null>(null);
   const [processTabFilter, setProcessTabFilter] = useState<string | null>(null);
+  const [routingConstraintsProcessFilter, setRoutingConstraintsProcessFilter] = useState<string | null>(null);
   const [initialLocatorMappings, setInitialLocatorMappings] = useState<string>("");
   const [initialProcessInfos, setInitialProcessInfos] = useState<string>("");
   const [initialDailyRates, setInitialDailyRates] = useState<string>("");
@@ -1648,7 +1649,27 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
             </Tabs.Panel>
 
             <Tabs.Panel value="routingConstraints">
-              <PartMachineCapabilityManagement connectionString={connectionString} />
+              <Stack gap="md" mt="md">
+                <Group grow>
+                  <Select
+                    label="Filter by Process"
+                    placeholder="All Processes"
+                    data={globalProcesses}
+                    value={routingConstraintsProcessFilter}
+                    onChange={setRoutingConstraintsProcessFilter}
+                    clearable
+                    searchable
+                    leftSection={<IconTable size={14} />}
+                  />
+                  <Box style={{ alignSelf: 'flex-end' }}>
+                     {/* Empty box for alignment consistency */}
+                  </Box>
+                </Group>
+                <PartMachineCapabilityManagement 
+                  connectionString={connectionString} 
+                  processFilter={routingConstraintsProcessFilter}
+                />
+              </Stack>
             </Tabs.Panel>
 
             <Tabs.Panel value="reasonCode">
