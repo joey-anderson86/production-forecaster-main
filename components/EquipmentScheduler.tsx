@@ -103,7 +103,8 @@ const JobCard = ({
   columnIndex,
   shiftSettings,
   onUpdateQty,
-  onPreviewChange
+  onPreviewChange,
+  onSplitJob
 }: {
   job: JobBlock;
   index: number;
