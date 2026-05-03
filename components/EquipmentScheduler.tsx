@@ -10,54 +10,11 @@ import { load } from '@tauri-apps/plugin-store';
 import { DAYS_OF_WEEK, DayOfWeek, isWorkingDay, getWeekDates, getCurrentWeekId } from '@/lib/dateUtils';
 import { useScorecardStore } from '@/lib/scorecardStore';
 import { useProcessStore } from '@/lib/processStore';
-import { JobAssignment, BacklogItem, PartMachineCapability, MachineState } from '@/lib/types';
+import { useSchedulerStore } from '@/lib/schedulerStore';
+import { JobAssignment, BacklogItem, PartMachineCapability, MachineState, JobBlock, ShiftSchedule, MachineSchedule, SchedulerState, SchedulerMeta } from '@/lib/types';
 
 // --- Interfaces ---
 
-export interface JobBlock {
-  Id: string; // Unique ID representing the draggable card
-  PartNumber: string;
-  Shift: string;
-  TargetQty: number;
-  ProcessingTimeMins: number; // For scheduling capacity
-  StandardBatchSize?: number;
-  BatchIndex: number;
-  IsBatchSplit: boolean;
-  MaxQty?: number; // Added to track original limit
-  OriginalShift?: string;
-  OriginalDate?: string;
-  IsOverflow?: boolean; // Track if this is an unscheduled remainder
-  SequenceNumber?: number;
-}
-
-export interface ShiftSchedule {
-  Jobs: JobBlock[];
-  CapacityHrs: number;
-  TotalAssignedHours: number;
-}
-
-export interface MachineSchedule {
-  MachineID: string;
-  DailyCapacityHrs: number;
-  Schedule: Record<string, Record<string, ShiftSchedule>>; // Day -> Map of Shifts
-}
-
-export interface SchedulerState {
-  Unassigned: JobBlock[];
-  Machines: Record<string, MachineSchedule>;
-}
-
-interface EquipmentSchedulerProps {
-  initialState?: SchedulerState;
-  initialWeekId?: string;
-  initialProcessName?: string;
-}
-
-interface SchedulerMeta {
-  ActiveWeeks: string[];
-  ProcessHierarchy: Record<string, string[]>;
-  PartMachineMap?: Record<string, string[]>;
-}
 
 
 // --- Helper Functions ---
@@ -400,18 +357,60 @@ const JobCard = ({
 };
 
 
+interface EquipmentSchedulerProps {
+  initialState?: SchedulerState;
+  initialWeekId?: string;
+  initialProcessName?: string;
+}
+
 // --- Main Component ---
 export default function EquipmentScheduler({ initialState, initialWeekId, initialProcessName }: EquipmentSchedulerProps) {
 
   const shiftSettings = useScorecardStore(state => state.shiftSettings);
 
+  const { 
+    setSchedulerState, 
+    updateSchedulerState,
+    setMeta, 
+    setDirty: setStoreDirty, 
+    setWasSubmitted: setStoreWasSubmitted,
+    data: storeData,
+    meta: storeMeta,
+    dirty: storeDirtyMap,
+    wasSubmitted: storeWasSubmittedMap
+  } = useSchedulerStore();
+
   const [currentWeekId, setCurrentWeekId] = useState(initialWeekId || getCurrentWeekId());
   const { processes, activeProcess: processName, setActiveProcess: setProcessName } = useProcessStore();
+  
+  const effectiveProcessName = processName || 'All Processes';
+  
+  // Get state from store
+  const data = storeData[currentWeekId]?.[effectiveProcessName] || null;
+  const meta = storeMeta;
+  const dirty = storeDirtyMap[currentWeekId]?.[effectiveProcessName] || false;
+  const wasSubmitted = storeWasSubmittedMap[currentWeekId]?.[effectiveProcessName] || false;
+
+  const setData = useCallback((updater: SchedulerState | null | ((prev: SchedulerState | null) => SchedulerState | null)) => {
+    if (typeof updater === 'function') {
+      updateSchedulerState(currentWeekId, effectiveProcessName, updater);
+    } else if (updater) {
+      setSchedulerState(currentWeekId, effectiveProcessName, updater);
+    }
+  }, [currentWeekId, effectiveProcessName, setSchedulerState, updateSchedulerState]);
+
+  const setDirty = useCallback((isDirty: boolean) => {
+    setStoreDirty(currentWeekId, effectiveProcessName, isDirty);
+  }, [currentWeekId, effectiveProcessName, setStoreDirty]);
+
+  const setWasSubmitted = useCallback((isSubmitted: boolean) => {
+    setStoreWasSubmitted(currentWeekId, effectiveProcessName, isSubmitted);
+  }, [currentWeekId, effectiveProcessName, setStoreWasSubmitted]);
+
   const [backlogDay, setBacklogDay] = useState<DayOfWeek | 'All'>('Mon');
   const [backlogPartFilter, setBacklogPartFilter] = useState("");
   const [backlogShiftFilter, setBacklogShiftFilter] = useState<string | null>(null);
   const [visibleDays, setVisibleDays] = useState<string[]>(DAYS_OF_WEEK);
-  const [meta, setMeta] = useState<SchedulerMeta | null>(null);
   const [previewData, setPreviewData] = useState<{ jobId: string, qty: number } | null>(null);
   const [allowedDropMachines, setAllowedDropMachines] = useState<string[] | null>(null);
 
@@ -443,17 +442,14 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
     });
     return consolidated;
   }, []);
-  const [dirty, setDirty] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [clearModalOpened, setClearModalOpened] = useState(false);
 
-  const [data, setData] = useState<SchedulerState | null>(initialState || null);
   const [loading, setLoading] = useState(true);
   const [comparisonModalOpened, setComparisonModalOpened] = useState(false);
   const [comparisonData, setComparisonData] = useState<any[]>([]);
   const [isUpdatingTargets, setIsUpdatingTargets] = useState(false);
-  const [wasSubmitted, setWasSubmitted] = useState(false);
 
   // Split Logic State
   const [splitModalOpened, setSplitModalOpened] = useState(false);
@@ -538,6 +534,28 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
     return allMachines.map(m => ({ value: m, label: m }));
   }, [allMachines]);
 
+  const daysWithShifts = useMemo(() => {
+    if (!data) return [];
+    const ALL_SHIFTS = ['A', 'B', 'C', 'D'];
+    return DAYS_OF_WEEK.map((day, idx) => {
+      const date = weekDates[idx];
+      const shifts = ALL_SHIFTS.map(sId => {
+        // Check if ANY machine has capacity for this shift on this day
+        const hasCapacity = Object.values(data.Machines).some(m => 
+          m.Schedule[day]?.[sId]?.CapacityHrs > 0
+        );
+        return { id: sId, isWorking: hasCapacity };
+      }).filter(s => s.isWorking);
+
+      return {
+        day,
+        dateStr: date ? date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '',
+        shifts,
+        dateIdx: idx
+      };
+    }).filter(d => d.shifts.length > 0 && visibleDays.includes(d.day));
+  }, [data, weekDates, visibleDays]);
+
   const aggregateStats = useMemo(() => {
     if (!data) return { totalLoad: 0, totalCapacity: 0, utilization: 0 };
 
@@ -581,7 +599,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
     } catch (e) {
       console.error("Failed to fetch metadata", e);
     }
-  }, []);
+  }, [setMeta]);
 
   const fetchUtilization = useCallback(async () => {
     try {
@@ -661,7 +679,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
     } finally {
       setLoading(false);
     }
-  }, [currentWeekId, processName]);
+  }, [currentWeekId, processName, setData, setDirty, consolidateJobsList, weekDates]);
 
   const handleUpdateJobQty = useCallback((jobId: string, newQty: number) => {
     setData(prev => {
@@ -768,7 +786,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
       return newState;
     });
     setDirty(true);
-  }, [data]);
+  }, [setData, setDirty]);
 
   const handleSplitJob = useCallback((jobId: string, numBatches: number) => {
     setData(prev => {
@@ -858,15 +876,21 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
     });
     setDirty(true);
     setSplitModalOpened(false);
-  }, [data]);
+  }, [setData, setDirty]);
 
   useEffect(() => {
-    fetchMeta();
-  }, [fetchMeta]);
+    if (!meta) {
+      fetchMeta();
+    }
+  }, [fetchMeta, meta]);
 
   useEffect(() => {
-    fetchUtilization();
-  }, [fetchUtilization]);
+    if (!data) {
+      fetchUtilization();
+    } else {
+      setLoading(false);
+    }
+  }, [fetchUtilization, data]);
 
   const onDragStart = useCallback((initial: any) => {
     if (!data) return;
@@ -1018,9 +1042,9 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
     });
 
     setDirty(true);
-  }, [weekDates]);
+  }, [weekDates, backlogDay, consolidateJobsList, setData, setDirty]);
 
-  const handleSubmit = async () => {
+  const handleSubmit = useCallback(async () => {
     if (!data) return;
     try {
       setIsSubmitting(true);
@@ -1062,9 +1086,9 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }, [data, currentWeekId, processName, weekDates, fetchUtilization, setDirty, setWasSubmitted]);
 
-  const handleClearSchedule = async () => {
+  const handleClearSchedule = useCallback(async () => {
     try {
       setIsClearing(true);
       const store = await load("store.json", { autoSave: false, defaults: {} });
@@ -1096,9 +1120,9 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
     } finally {
       setIsClearing(false);
     }
-  };
+  }, [processName, currentWeekId, fetchUtilization]);
 
-  const handleGenerateChangeover = async () => {
+  const handleGenerateChangeover = useCallback(async () => {
     if (!data) return;
 
     const rows: string[] = ["Machine,Start Day,Start Shift,Part Number,Total Run Qty,Next Changeover Part"];
@@ -1165,7 +1189,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
         });
       }
     }
-  };
+  }, [data, daysWithShifts, processName, currentWeekId]);
 
   const [isAutoScheduling, setIsAutoScheduling] = useState(false);
   const { autoScheduleOperations } = useProcessStore();
@@ -1387,27 +1411,6 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
     }
   };
 
-  const daysWithShifts = useMemo(() => {
-    if (!data) return [];
-    const ALL_SHIFTS = ['A', 'B', 'C', 'D'];
-    return DAYS_OF_WEEK.map((day, idx) => {
-      const date = weekDates[idx];
-      const shifts = ALL_SHIFTS.map(sId => {
-        // Check if ANY machine has capacity for this shift on this day
-        const hasCapacity = Object.values(data.Machines).some(m => 
-          m.Schedule[day]?.[sId]?.CapacityHrs > 0
-        );
-        return { id: sId, isWorking: hasCapacity };
-      }).filter(s => s.isWorking);
-
-      return {
-        day,
-        dateStr: date ? date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '',
-        shifts,
-        dateIdx: idx
-      };
-    }).filter(d => d.shifts.length > 0 && visibleDays.includes(d.day));
-  }, [data, weekDates, visibleDays]);
 
   return (
     <Box p={0} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>

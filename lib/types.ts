@@ -323,3 +323,44 @@ export interface ScheduleResponse {
   /** Updated utilization states for all machines involved. */
   updatedMachineStates: MachineState[];
 }
+
+// --- Equipment Scheduler Interface Types ---
+
+export interface JobBlock {
+  Id: string; // Unique ID representing the draggable card
+  PartNumber: string;
+  Shift: string;
+  TargetQty: number;
+  ProcessingTimeMins: number; // For scheduling capacity
+  StandardBatchSize?: number;
+  BatchIndex: number;
+  IsBatchSplit: boolean;
+  MaxQty?: number; // Track original limit
+  OriginalShift?: string;
+  OriginalDate?: string;
+  IsOverflow?: boolean; // Track if this is an unscheduled remainder
+  SequenceNumber?: number;
+}
+
+export interface ShiftSchedule {
+  Jobs: JobBlock[];
+  CapacityHrs: number;
+  TotalAssignedHours: number;
+}
+
+export interface MachineSchedule {
+  MachineID: string;
+  DailyCapacityHrs: number;
+  Schedule: Record<string, Record<string, ShiftSchedule>>; // Day -> Map of Shifts
+}
+
+export interface SchedulerState {
+  Unassigned: JobBlock[];
+  Machines: Record<string, MachineSchedule>;
+}
+
+export interface SchedulerMeta {
+  ActiveWeeks: string[];
+  ProcessHierarchy: Record<string, string[]>;
+  PartMachineMap?: Record<string, string[]>;
+}
