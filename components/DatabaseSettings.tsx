@@ -152,11 +152,12 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
   // Detection of changes
   const hasChanges = useMemo(() => {
     const isDeepEqual = (a: any, b: string) => {
+      if (!b) return true; // Treat empty initial as equal to prevent false positives before data load
       try {
-        const aStr = JSON.stringify(a);
-        const bParsed = JSON.parse(b);
-        const bStr = JSON.stringify(bParsed);
-        return aStr === bStr;
+        // Optimized comparison: only stringify 'a' once and compare to 'b' 
+        // if 'b' was already normalized. But since 'b' comes from JSON.stringify(data)
+        // during fetchData, it's already normalized.
+        return JSON.stringify(a) === b;
       } catch {
         return false;
       }
@@ -295,6 +296,7 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
 
   useEffect(() => {
     // This handles tab changes and filter changes.
+    setScrollTop(0); // Reset scroll on tab change to prevent out-of-bounds in virtualized tables
     fetchData(activeTab);
   }, [activeTab, selectedWeek, selectedProcess, routingFilterProcess, routingFilterParts, reasonCodeProcessFilter, processTabFilter, fetchData]);
 
@@ -671,19 +673,26 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
               ReasonCode: r.ReasonCode || r.reasonCode || r.Reason || r.reason || ""
             }));
             await invoke("replace_reason_codes", { connectionString, records: mapped });
-          } else if (activeTab === "deliveryData") {
-            const mapped = rawData.map(r => ({
-              Department: r.Department || r.department || "",
-              WeekIdentifier: r.WeekIdentifier || r.weekIdentifier || "",
-              PartNumber: r.PartNumber || r.partNumber || "",
-              DayOfWeek: r.DayOfWeek || r.dayOfWeek || "",
-              Target: r.Target !== undefined && r.Target !== "" ? parseInt(r.Target) : null,
-              Actual: r.Actual !== undefined && r.Actual !== "" ? parseInt(r.Actual) : null,
-              Date: r.Date || r.date || null,
-              Shift: r.Shift || r.shift || null,
-              ReasonCode: r.ReasonCode || r.reasonCode || null
-            }));
             await invoke("replace_delivery_data", { connectionString, records: mapped });
+          } else if (activeTab === "partRouting") {
+            const mapped = rawData.map(r => {
+              const find = (options: string[]) => {
+                const key = Object.keys(r).find(k => 
+                  options.includes(k.toLowerCase().replace(/[^a-z0-9]/g, ''))
+                );
+                return key ? r[key] : undefined;
+              };
+
+              return {
+                PartNumber: String(find(['partnumber', 'part', 'pn']) || ""),
+                ProcessName: String(find(['processname', 'process', 'proc']) || ""),
+                SequenceNumber: parseInt(String(find(['sequencenumber', 'sequence', 'seq']) || "10")),
+                ProcessingTimeMins: parseFloat(String(find(['processingtimemins', 'processingtime', 'time', 'min', 'mins']) || "0")),
+                BatchSize: parseInt(String(find(['batchsize', 'batch']) || "1")),
+                TransitShifts: parseInt(String(find(['transitshifts', 'transit', 'shifts']) || "0"))
+              };
+            });
+            await invoke("replace_part_routings", { connectionString, records: mapped });
           }
 
           notifications.show({
@@ -728,6 +737,9 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
     } else if (activeTab === "deliveryData") {
       headers = "Department,WeekIdentifier,PartNumber,DayOfWeek,Target,Actual,Date,Shift,ReasonCode";
       fileName = "delivery_data_backup.csv";
+    } else if (activeTab === "partRouting") {
+      headers = "PartNumber,ProcessName,SequenceNumber,ProcessingTimeMins,BatchSize,TransitShifts";
+      fileName = "part_routings_template.csv";
     }
     
     if (!headers) return;
@@ -972,69 +984,118 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
     }
 
     if (activeTab === "dailyRate") {
+      const ROW_HEIGHT = 48;
+      const VISIBLE_COUNT = 12;
+
+      const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - 3);
+      const endIndex = Math.min(dailyRates.length, startIndex + VISIBLE_COUNT + 6);
+      
+      const visibleRows = dailyRates.slice(startIndex, endIndex);
+
+      const gridTemplate = "1fr 100px 100px 120px 50px";
+
       return (
-        <ScrollArea h={400} mt="md">
-          <Table stickyHeader stickyHeaderOffset={0} striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="xs">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Part Number</Table.Th>
-                <Table.Th>Week</Table.Th>
-                <Table.Th>Year</Table.Th>
-                <Table.Th>Daily Rate (Qty)</Table.Th>
-                <Table.Th w={50}></Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {dailyRates.map((row, i) => (
-                <Table.Tr key={i}>
-                  <Table.Td>
-                    <Select
-                      variant="unstyled"
-                      size="xs"
-                      data={allPartNumbers}
-                      value={row.PartNumber || ""}
-                      onChange={(val) => updateRecord(i, "PartNumber", val || "")}
-                      searchable
-                      clearable
-                    />
-                  </Table.Td>
-                  <Table.Td>
-                    <NumberInput 
-                      variant="unstyled" 
-                      size="xs" 
-                      value={row.Week} 
-                      onChange={(val) => updateRecord(i, "Week", val)} 
-                    />
-                  </Table.Td>
-                  <Table.Td>
-                    <NumberInput 
-                      variant="unstyled" 
-                      size="xs" 
-                      value={row.Year} 
-                      onChange={(val) => updateRecord(i, "Year", val)} 
-                    />
-                  </Table.Td>
-                  <Table.Td>
-                    <NumberInput 
-                      variant="unstyled" 
-                      size="xs" 
-                      value={row.Qty} 
-                      onChange={(val) => updateRecord(i, "Qty", val)} 
-                    />
-                  </Table.Td>
-                  <Table.Td>
-                    <ActionIcon variant="subtle" color="red" onClick={() => removeLocalRecord(i)}>
-                      <IconTrash size={14} />
-                    </ActionIcon>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-              {dailyRates.length === 0 && (
-                <Table.Tr><Table.Td colSpan={5}><Text ta="center" c="dimmed">No records found</Text></Table.Td></Table.Tr>
+        <Box mt="md" pos="relative">
+          {/* Header */}
+          <Box 
+            style={{ 
+              display: 'grid', 
+              gridTemplateColumns: gridTemplate,
+              padding: '12px 16px',
+              borderBottom: '1px solid var(--mantine-color-gray-3)',
+              background: 'var(--mantine-color-gray-0)',
+              fontWeight: 700,
+              fontSize: '14px',
+              borderTopLeftRadius: '8px',
+              borderTopRightRadius: '8px',
+              zIndex: 10
+            }}
+          >
+            <Text size="sm" fw={700}>Part Number</Text>
+            <Text size="sm" fw={700}>Week</Text>
+            <Text size="sm" fw={700}>Year</Text>
+            <Text size="sm" fw={700}>Daily Rate</Text>
+            <Text size="sm" fw={700}></Text>
+          </Box>
+
+          <ScrollArea 
+            h={500} 
+            onScrollPositionChange={({ y }) => setScrollTop(y)}
+            viewportProps={{ style: { position: 'relative' } }}
+          >
+            <Box style={{ height: dailyRates.length * ROW_HEIGHT, position: 'relative' }}>
+              {dailyRates.length === 0 ? (
+                <Center h={100}><Text c="dimmed">No records found</Text></Center>
+              ) : (
+                visibleRows.map((row, i) => {
+                  const actualIndex = startIndex + i;
+                  return (
+                    <Box 
+                      key={actualIndex}
+                      style={{ 
+                        position: 'absolute', 
+                        top: actualIndex * ROW_HEIGHT,
+                        left: 0,
+                        right: 0,
+                        height: ROW_HEIGHT,
+                        display: 'grid',
+                        gridTemplateColumns: gridTemplate,
+                        alignItems: 'center',
+                        padding: '0 16px',
+                        borderBottom: '1px solid var(--mantine-color-gray-1)',
+                        background: actualIndex % 2 === 0 ? 'transparent' : 'var(--mantine-color-gray-0)',
+                      }}
+                    >
+                      <Box>
+                        <Select
+                          variant="unstyled"
+                          size="xs"
+                          data={allPartNumbers}
+                          value={row.PartNumber || ""}
+                          onChange={(val) => updateRecord(actualIndex, "PartNumber", val || "")}
+                          searchable
+                          clearable
+                        />
+                      </Box>
+                      <Box>
+                        <NumberInput 
+                          variant="unstyled" 
+                          size="xs" 
+                          value={row.Week} 
+                          onChange={(val) => updateRecord(actualIndex, "Week", val)} 
+                          hideControls
+                        />
+                      </Box>
+                      <Box>
+                        <NumberInput 
+                          variant="unstyled" 
+                          size="xs" 
+                          value={row.Year} 
+                          onChange={(val) => updateRecord(actualIndex, "Year", val)} 
+                          hideControls
+                        />
+                      </Box>
+                      <Box>
+                        <NumberInput 
+                          variant="unstyled" 
+                          size="xs" 
+                          value={row.Qty} 
+                          onChange={(val) => updateRecord(actualIndex, "Qty", val)} 
+                          hideControls
+                        />
+                      </Box>
+                      <Box style={{ textAlign: 'right' }}>
+                        <ActionIcon variant="subtle" color="red" onClick={() => removeLocalRecord(actualIndex)}>
+                          <IconTrash size={14} />
+                        </ActionIcon>
+                      </Box>
+                    </Box>
+                  );
+                })
               )}
-            </Table.Tbody>
-          </Table>
-        </ScrollArea>
+            </Box>
+          </ScrollArea>
+        </Box>
       );
     }
 
@@ -1139,96 +1200,143 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
     }
 
     if (activeTab === "partRouting") {
+      const ROW_HEIGHT = 48;
+      const VISIBLE_COUNT = 12;
+
+      const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - 3);
+      const endIndex = Math.min(partRoutings.length, startIndex + VISIBLE_COUNT + 6);
+      
+      const visibleRows = partRoutings.slice(startIndex, endIndex);
+
+      const gridTemplate = "1fr 1fr 80px 100px 80px 80px 50px";
+
       return (
-        <ScrollArea h={400} mt="md">
-          <Table stickyHeader stickyHeaderOffset={0} striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="xs">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Part Number</Table.Th>
-                <Table.Th>Process</Table.Th>
-                <Table.Th w={100}>Seq</Table.Th>
-                <Table.Th w={100}>Time (min)</Table.Th>
-                <Table.Th w={100}>Batch</Table.Th>
-                <Table.Th w={100}>Transit</Table.Th>
-                <Table.Th w={50}></Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {partRoutings.map((row, i) => (
-                <Table.Tr key={i}>
-                  <Table.Td>
-                    <Autocomplete 
-                      variant="unstyled" 
-                      size="xs" 
-                      data={allPartNumbers}
-                      value={row.PartNumber || ""} 
-                      onChange={(val) => updateRecord(i, "PartNumber", val || "")} 
-                    />
-                  </Table.Td>
-                  <Table.Td>
-                    <Select
-                      variant="unstyled"
-                      size="xs"
-                      data={globalProcesses}
-                      value={row.ProcessName || ""}
-                      onChange={(val) => updateRecord(i, "ProcessName", val || "")}
-                      searchable
-                      clearable
-                    />
-                  </Table.Td>
-                  <Table.Td>
-                    <NumberInput
-                      variant="unstyled"
-                      size="xs"
-                      hideControls
-                      value={row.SequenceNumber}
-                      onChange={(val) => updateRecord(i, "SequenceNumber", val)}
-                    />
-                  </Table.Td>
-                  <Table.Td>
-                    <NumberInput
-                      variant="unstyled"
-                      size="xs"
-                      hideControls
-                      decimalScale={4}
-                      step={0.001}
-                      value={row.ProcessingTimeMins}
-                      onChange={(val) => updateRecord(i, "ProcessingTimeMins", val)}
-                    />
-                  </Table.Td>
-                  <Table.Td>
-                    <NumberInput
-                      variant="unstyled"
-                      size="xs"
-                      hideControls
-                      value={row.BatchSize}
-                      onChange={(val) => updateRecord(i, "BatchSize", val)}
-                    />
-                  </Table.Td>
-                  <Table.Td>
-                    <NumberInput
-                      variant="unstyled"
-                      size="xs"
-                      hideControls
-                      value={row.TransitShifts}
-                      onChange={(val) => updateRecord(i, "TransitShifts", val)}
-                    />
-                  </Table.Td>
-                  <Table.Td>
-                    <ActionIcon variant="subtle" color="red" onClick={() => removeLocalRecord(i)}>
-                      <IconTrash size={14} />
-                    </ActionIcon>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-              {partRoutings.length === 0 && (
-                <Table.Tr><Table.Td colSpan={7}><Text ta="center" c="dimmed">No records found</Text></Table.Td></Table.Tr>
+        <Box mt="md" pos="relative">
+          {/* Header */}
+          <Box 
+            style={{ 
+              display: 'grid', 
+              gridTemplateColumns: gridTemplate,
+              padding: '12px 16px',
+              borderBottom: '1px solid var(--mantine-color-gray-3)',
+              background: 'var(--mantine-color-gray-0)',
+              fontWeight: 700,
+              fontSize: '14px',
+              borderTopLeftRadius: '8px',
+              borderTopRightRadius: '8px',
+              zIndex: 10
+            }}
+          >
+            <Text size="sm" fw={700}>Part Number</Text>
+            <Text size="sm" fw={700}>Process</Text>
+            <Text size="sm" fw={700}>Seq</Text>
+            <Text size="sm" fw={700}>Time (min)</Text>
+            <Text size="sm" fw={700}>Batch</Text>
+            <Text size="sm" fw={700}>Transit</Text>
+            <Text size="sm" fw={700}></Text>
+          </Box>
+
+          <ScrollArea 
+            h={500} 
+            onScrollPositionChange={({ y }) => setScrollTop(y)}
+            viewportProps={{ style: { position: 'relative' } }}
+          >
+            <Box style={{ height: partRoutings.length * ROW_HEIGHT, position: 'relative' }}>
+              {partRoutings.length === 0 ? (
+                <Center h={100}><Text c="dimmed">No records found</Text></Center>
+              ) : (
+                visibleRows.map((row, i) => {
+                  const actualIndex = startIndex + i;
+                  return (
+                    <Box 
+                      key={actualIndex}
+                      style={{ 
+                        position: 'absolute', 
+                        top: actualIndex * ROW_HEIGHT,
+                        left: 0,
+                        right: 0,
+                        height: ROW_HEIGHT,
+                        display: 'grid',
+                        gridTemplateColumns: gridTemplate,
+                        alignItems: 'center',
+                        padding: '0 16px',
+                        borderBottom: '1px solid var(--mantine-color-gray-1)',
+                        background: actualIndex % 2 === 0 ? 'transparent' : 'var(--mantine-color-gray-0)',
+                      }}
+                    >
+                      <Box>
+                        <Autocomplete 
+                          variant="unstyled" 
+                          size="xs" 
+                          data={allPartNumbers}
+                          value={row.PartNumber || ""} 
+                          onChange={(val) => updateRecord(actualIndex, "PartNumber", val || "")} 
+                        />
+                      </Box>
+                      <Box>
+                        <Select
+                          variant="unstyled"
+                          size="xs"
+                          data={globalProcesses}
+                          value={row.ProcessName || ""}
+                          onChange={(val) => updateRecord(actualIndex, "ProcessName", val || "")}
+                          searchable
+                          clearable
+                        />
+                      </Box>
+                      <Box>
+                        <NumberInput
+                          variant="unstyled"
+                          size="xs"
+                          hideControls
+                          value={row.SequenceNumber}
+                          onChange={(val) => updateRecord(actualIndex, "SequenceNumber", val)}
+                        />
+                      </Box>
+                      <Box>
+                        <NumberInput
+                          variant="unstyled"
+                          size="xs"
+                          hideControls
+                          decimalScale={4}
+                          step={0.001}
+                          value={row.ProcessingTimeMins}
+                          onChange={(val) => updateRecord(actualIndex, "ProcessingTimeMins", val)}
+                        />
+                      </Box>
+                      <Box>
+                        <NumberInput
+                          variant="unstyled"
+                          size="xs"
+                          hideControls
+                          value={row.BatchSize}
+                          onChange={(val) => updateRecord(actualIndex, "BatchSize", val)}
+                        />
+                      </Box>
+                      <Box>
+                        <NumberInput
+                          variant="unstyled"
+                          size="xs"
+                          hideControls
+                          value={row.TransitShifts}
+                          onChange={(val) => updateRecord(actualIndex, "TransitShifts", val)}
+                        />
+                      </Box>
+                      <Box style={{ textAlign: 'right' }}>
+                        <ActionIcon variant="subtle" color="red" onClick={() => removeLocalRecord(actualIndex)}>
+                          <IconTrash size={14} />
+                        </ActionIcon>
+                      </Box>
+                    </Box>
+                  );
+                })
               )}
-            </Table.Tbody>
-          </Table>
-        </ScrollArea>
+            </Box>
+          </ScrollArea>
+        </Box>
       );
-    } else if (activeTab === "deliveryData") {
+    }
+ else if (activeTab === "deliveryData") {
       return (
         <Center h={400} mt="md">
           <Stack align="center" gap="md">

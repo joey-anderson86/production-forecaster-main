@@ -177,7 +177,13 @@ const ParentRow = ({
         <Group gap={4} justify="center" wrap="nowrap">
           <NumberInput
             value={weeklyTarget}
-            onChange={(val) => setWeeklyTarget(typeof val === 'number' ? val : '')}
+            onChange={(val) => {
+              if (val === '') setWeeklyTarget('');
+              else {
+                const num = typeof val === 'number' ? val : parseFloat(val);
+                if (!isNaN(num)) setWeeklyTarget(num);
+              }
+            }}
             hideControls
             min={0}
             step={displayUnit === 'pieces' ? batchSize : 1}
@@ -327,11 +333,14 @@ const PlanRow = memo(({
                   <NumberInput
                     value={record?.Target !== null && record?.Target !== undefined ? (displayUnit === 'pieces' ? record.Target * batchSize : record.Target) : ''}
                     onChange={(val) => {
-                      if (typeof val === 'number') {
-                        const batchVal = displayUnit === 'pieces' ? Math.round(val / batchSize) : val;
-                        onUpdateRecord(part.Id, day, 'Target', batchVal);
-                      } else {
+                      if (val === '') {
                         onUpdateRecord(part.Id, day, 'Target', null);
+                      } else {
+                        const num = typeof val === 'number' ? val : parseFloat(val);
+                        if (!isNaN(num)) {
+                          const batchVal = displayUnit === 'pieces' ? Math.round(num / batchSize) : num;
+                          onUpdateRecord(part.Id, day, 'Target', batchVal);
+                        }
                       }
                     }}
                     hideControls

@@ -86,6 +86,7 @@ pub fn run() {
             commands::mrp::get_part_routings,
             commands::mrp::upsert_part_routings,
             commands::mrp::delete_part_routings,
+            commands::mrp::replace_part_routings,
 
             // Database Utilities
             db::test_mssql_connection

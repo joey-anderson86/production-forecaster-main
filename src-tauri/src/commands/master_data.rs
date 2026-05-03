@@ -313,9 +313,12 @@ pub async fn upsert_process_info(
         client.execute(
             "MERGE dbo.ProcessInfo AS target
              USING (SELECT @p1 as ProcessName, CAST(@p2 as DATE) as Date, @p3 as HoursAvailable, @p4 as MachineID, @p5 as Shift, @p6 as WeekIdentifier) AS source
-             ON (target.ProcessName = source.ProcessName AND target.Date = source.Date AND target.MachineID = source.MachineID AND target.Shift = source.Shift AND target.WeekIdentifier = source.WeekIdentifier)
+             ON (target.ProcessName = source.ProcessName 
+                 AND CAST(target.Date AS DATE) = source.Date 
+                 AND ISNULL(target.MachineID, '') = ISNULL(source.MachineID, '') 
+                 AND ISNULL(target.Shift, '') = ISNULL(source.Shift, ''))
              WHEN MATCHED THEN
-                UPDATE SET HoursAvailable = source.HoursAvailable
+                UPDATE SET HoursAvailable = source.HoursAvailable, WeekIdentifier = source.WeekIdentifier
              WHEN NOT MATCHED THEN
                 INSERT (ProcessName, Date, HoursAvailable, MachineID, Shift, WeekIdentifier)
                 VALUES (source.ProcessName, source.Date, source.HoursAvailable, source.MachineID, source.Shift, source.WeekIdentifier);",

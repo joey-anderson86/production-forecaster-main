@@ -604,6 +604,54 @@ pub async fn delete_part_routings(
 }
 
 #[tauri::command]
+pub async fn replace_part_routings(
+    connection_string: String,
+    records: Vec<PartRouting>,
+) -> Result<(), String> {
+    let mut client = create_client(&connection_string).await?;
+    client
+        .simple_query("BEGIN TRANSACTION")
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let result: Result<(), String> = async {
+        client
+            .execute("DELETE FROM dbo.PartRoutings", &[])
+            .await
+            .map_err(|e| e.to_string())?;
+
+        for rec in records {
+            let pn = rec.part_number.trim();
+            let pr = rec.process_name.trim();
+            
+            if pn.is_empty() || pr.is_empty() {
+                continue;
+            }
+
+            client.execute(
+                "IF NOT EXISTS (SELECT 1 FROM dbo.ItemMaster WHERE PartNumber = @p1)
+                 INSERT INTO dbo.ItemMaster (PartNumber) VALUES (@p1)",
+                &[&pn],
+            ).await.map_err(|e| e.to_string())?;
+
+            client.execute(
+                "INSERT INTO dbo.PartRoutings (PartNumber, ProcessName, SequenceNumber, ProcessingTimeMins, BatchSize, TransitShifts)
+                 VALUES (@p1, @p2, @p3, @p4, @p5, @p6)",
+                &[&pn, &pr, &rec.sequence_number, &rec.processing_time_mins, &rec.batch_size, &rec.transit_shifts],
+            ).await.map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }.await;
+
+    if result.is_err() {
+        let _ = client.simple_query("ROLLBACK TRANSACTION").await;
+        return result;
+    }
+    client.simple_query("COMMIT TRANSACTION").await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn validate_schedule_feasibility(
     app: tauri::AppHandle,
     connection_string: String,

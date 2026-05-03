@@ -164,7 +164,13 @@ const ShiftRow = ({
               <Box>
                 <NumberInput
                   value={allocation.dailyHours[day] ?? ''}
-                  onChange={(val) => onUpdateHour(day, typeof val === 'number' ? val : null)}
+                  onChange={(val) => {
+                    if (val === '') onUpdateHour(day, null);
+                    else {
+                      const num = typeof val === 'number' ? val : parseFloat(val);
+                      if (!isNaN(num)) onUpdateHour(day, num);
+                    }
+                  }}
                   hideControls
                   variant="unstyled"
                   min={0}
@@ -380,7 +386,7 @@ function AutoScheduleModal({
   processName: string | null;
 }) {
   const [utilization, setUtilization] = useState<number | string>(85);
-  const [baseHours, setBaseHours] = useState<number | string>(8);
+  const [baseHours, setBaseHours] = useState<number | string>(12);
 
   const handleSubmit = () => {
     if (typeof utilization === 'number' && typeof baseHours === 'number') {
