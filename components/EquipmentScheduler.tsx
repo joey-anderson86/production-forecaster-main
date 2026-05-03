@@ -117,6 +117,7 @@ const JobCard = ({
 }) => {
   const [editQty, setEditQty] = useState<number>(job.TargetQty);
   const [opened, setOpened] = useState(false);
+  const [contextMenuOpened, setContextMenuOpened] = useState(false);
 
   // Update local editQty if the job's TargetQty changes externally
   useEffect(() => {
@@ -169,12 +170,16 @@ const JobCard = ({
                   cursor: 'grab',
                 }}
               >
-                <Menu trigger="context-menu" shadow="md" width={200} withinPortal>
+                <Menu opened={contextMenuOpened} onChange={setContextMenuOpened} shadow="md" width={200} withinPortal>
                   <Menu.Target>
                     <Paper
                       shadow={snapshot.isDragging ? "xl" : "xs"}
                       p={8}
                       withBorder
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setContextMenuOpened(true);
+                      }}
                       style={{
                         backgroundColor: snapshot.isDragging 
                           ? 'var(--mantine-color-indigo-0)' 
