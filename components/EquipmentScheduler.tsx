@@ -2,9 +2,9 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult, DroppableProvided, DraggableProvided, DraggableStateSnapshot, DroppableStateSnapshot } from '@hello-pangea/dnd';
-import { Portal, Box, Paper, Text, Group, Stack, ScrollArea, Tooltip, HoverCard, Title, Badge, Select, ActionIcon, Divider, Loader, Center, Button, Popover, NumberInput, Flex, MultiSelect, Modal, TextInput, ActionIcon as MantineActionIcon } from '@mantine/core';
+import { Portal, Box, Paper, Text, Group, Stack, ScrollArea, Tooltip, HoverCard, Title, Badge, Select, ActionIcon, Divider, Loader, Center, Button, Popover, NumberInput, Flex, MultiSelect, Modal, TextInput, ActionIcon as MantineActionIcon, Menu } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconAlertTriangle, IconClock, IconBox, IconBolt, IconFileExport, IconFilterOff } from '@tabler/icons-react';
+import { IconAlertTriangle, IconClock, IconBox, IconBolt, IconFileExport, IconFilterOff, IconArrowsSplit } from '@tabler/icons-react';
 import { invoke } from '@tauri-apps/api/core';
 import { load } from '@tauri-apps/plugin-store';
 import { DAYS_OF_WEEK, DayOfWeek, isWorkingDay, getWeekDates, getCurrentWeekId } from '@/lib/dateUtils';
@@ -155,6 +155,7 @@ const JobCard = ({
   shiftSettings: Record<string, string>;
   onUpdateQty?: (jobId: string, newQty: number) => void;
   onPreviewChange?: (jobId: string, newQty: number | null) => void;
+  onSplitJob?: (jobId: string) => void;
 }) => {
   const [editQty, setEditQty] = useState<number>(job.TargetQty);
   const [opened, setOpened] = useState(false);
@@ -197,184 +198,196 @@ const JobCard = ({
     <Draggable draggableId={job.Id} index={index}>
       {(provided: DraggableProvided, snapshot: DraggableStateSnapshot) => {
         const card = (
-          <HoverCard position="right" shadow="md" withinPortal openDelay={200} disabled={snapshot.isDragging}>
-            <HoverCard.Target>
-              <Paper
-                ref={provided.innerRef}
-                {...provided.draggableProps}
-                {...provided.dragHandleProps}
-                shadow={snapshot.isDragging ? "xl" : "xs"}
-                p={8}
-                mb={8}
-                withBorder
-                style={{
-                  backgroundColor: snapshot.isDragging 
-                    ? 'var(--mantine-color-indigo-0)' 
-                    : (isShortfall ? 'var(--mantine-color-red-0)' : 'white'),
-                  opacity: snapshot.isDragging ? 0.9 : 1,
-                  cursor: 'grab',
-                  position: 'relative',
-                  borderRadius: '6px',
-                  borderLeftWidth: '3px',
-                  borderLeftStyle: 'solid',
-                  borderLeftColor: isShortfall 
-                    ? 'var(--mantine-color-red-6)' 
-                    : `var(--mantine-color-${shiftColor.replace('.', '-')})`,
-                  ...provided.draggableProps.style,
-                  zIndex: snapshot.isDragging ? 9999 : 1,
-                  // Maintain width when dragging in Portal
-                  width: snapshot.isDragging ? '220px' : '100%',
-                }}
-              >
+          <Menu trigger="context-menu" shadow="md" width={200} withinPortal>
+            <Menu.Target>
+              <HoverCard position="right" shadow="md" withinPortal openDelay={200} disabled={snapshot.isDragging}>
+                <HoverCard.Target>
+                  <Paper
+                    ref={provided.innerRef}
+                    {...provided.draggableProps}
+                    {...provided.dragHandleProps}
+                    shadow={snapshot.isDragging ? "xl" : "xs"}
+                    p={8}
+                    mb={8}
+                    withBorder
+                    style={{
+                      backgroundColor: snapshot.isDragging 
+                        ? 'var(--mantine-color-indigo-0)' 
+                        : (isShortfall ? 'var(--mantine-color-red-0)' : 'white'),
+                      opacity: snapshot.isDragging ? 0.9 : 1,
+                      cursor: 'grab',
+                      position: 'relative',
+                      borderRadius: '6px',
+                      borderLeftWidth: '3px',
+                      borderLeftStyle: 'solid',
+                      borderLeftColor: isShortfall 
+                        ? 'var(--mantine-color-red-6)' 
+                        : `var(--mantine-color-${shiftColor.replace('.', '-')})`,
+                      ...provided.draggableProps.style,
+                      zIndex: snapshot.isDragging ? 9999 : 1,
+                      // Maintain width when dragging in Portal
+                      width: snapshot.isDragging ? '220px' : '100%',
+                    }}
+                  >
 
-                <Stack gap={4}>
-                  <Stack gap={2}>
-                    <Text 
-                      fw={800} 
-                      style={{ fontSize: '13px', lineHeight: 1.2 }} 
-                      truncate="end"
-                      c={isShortfall ? 'red.8' : undefined}
-                    >
-                      {job.PartNumber}
-                    </Text>
-                    
-                    <Stack gap={4} align="flex-start">
-                      {isShortfall && (
-                        <Tooltip label="Scheduled after original plan" withinPortal position="top">
-                          <Badge size="xs" color="red" variant="filled" fullWidth styles={{ root: { fontSize: '10px', padding: '0 4px', height: 18, fontWeight: 800, justifyContent: 'flex-start' } }}>
-                            SHORTFALL
-                          </Badge>
-                        </Tooltip>
-                      )}
-                      {isEarly && (
-                        <Tooltip label="Scheduled before original plan" withinPortal position="top">
-                          <Badge size="xs" color="green" variant="filled" fullWidth styles={{ root: { fontSize: '10px', padding: '0 4px', height: 18, fontWeight: 800, justifyContent: 'flex-start' } }}>
-                            EARLY
-                          </Badge>
-                        </Tooltip>
-                      )}
-                      {isMoved && (
-                        <Tooltip label={moveLabel} withinPortal position="top">
-                          <Badge size="xs" color="orange" variant="filled" fullWidth styles={{ root: { fontSize: '10px', padding: '0 4px', height: 18, fontWeight: 800, justifyContent: 'flex-start' } }}>
-                            MOVED
-                          </Badge>
-                        </Tooltip>
-                      )}
-                    </Stack>
-                  </Stack>
+                    <Stack gap={4}>
+                      <Stack gap={2}>
+                        <Text 
+                          fw={800} 
+                          style={{ fontSize: '13px', lineHeight: 1.2 }} 
+                          truncate="end"
+                          c={isShortfall ? 'red.8' : undefined}
+                        >
+                          {job.PartNumber}
+                        </Text>
+                        
+                        <Stack gap={4} align="flex-start">
+                          {isShortfall && (
+                            <Tooltip label="Scheduled after original plan" withinPortal position="top">
+                              <Badge size="xs" color="red" variant="filled" fullWidth styles={{ root: { fontSize: '10px', padding: '0 4px', height: 18, fontWeight: 800, justifyContent: 'flex-start' } }}>
+                                SHORTFALL
+                              </Badge>
+                            </Tooltip>
+                          )}
+                          {isEarly && (
+                            <Tooltip label="Scheduled before original plan" withinPortal position="top">
+                              <Badge size="xs" color="green" variant="filled" fullWidth styles={{ root: { fontSize: '10px', padding: '0 4px', height: 18, fontWeight: 800, justifyContent: 'flex-start' } }}>
+                                EARLY
+                              </Badge>
+                            </Tooltip>
+                          )}
+                          {isMoved && (
+                            <Tooltip label={moveLabel} withinPortal position="top">
+                              <Badge size="xs" color="orange" variant="filled" fullWidth styles={{ root: { fontSize: '10px', padding: '0 4px', height: 18, fontWeight: 800, justifyContent: 'flex-start' } }}>
+                                MOVED
+                              </Badge>
+                            </Tooltip>
+                          )}
+                        </Stack>
+                      </Stack>
 
-                  <Group gap={4} wrap="nowrap" align="center">
-                    <Badge
-                      size="xs"
-                      variant="filled"
-                      color={shiftColor.split('.')[0]}
-                      styles={{ root: { height: 18, padding: '0 6px', fontSize: '11px', fontWeight: 800 } }}
-                    >
-                      {job.Shift}
-                    </Badge>
-
-                    <Popover
-                      opened={opened}
-                      onChange={(o) => {
-                        setOpened(o);
-                        if (!o) {
-                          onPreviewChange?.(job.Id, null);
-                          setEditQty(job.TargetQty);
-                        }
-                      }}
-                      position="bottom"
-                      withArrow
-                      shadow="md"
-                      withinPortal
-                      trapFocus={false}
-                    >
-                      <Popover.Target>
+                      <Group gap={4} wrap="nowrap" align="center">
                         <Badge
                           size="xs"
-                          variant="light"
-                          color="gray"
-                          onClick={(e) => { e.stopPropagation(); setOpened(o => !o); }}
-                          style={{ cursor: 'pointer', height: 18, fontSize: '11px', fontWeight: 800 }}
+                          variant="filled"
+                          color={shiftColor.split('.')[0]}
+                          styles={{ root: { height: 18, padding: '0 6px', fontSize: '11px', fontWeight: 800 } }}
                         >
-                          {job.TargetQty.toLocaleString()}
+                          {job.Shift}
                         </Badge>
-                      </Popover.Target>
-                      <Popover.Dropdown p={8} onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
-                        <Stack gap={8}>
-                          <Text size="10px" fw={700}>Adjust Quantity</Text>
-                          <Group gap={4} wrap="nowrap">
-                            <Box style={{ width: 80 }}>
-                              <NumberInput
-                                size="xs"
-                                value={editQty}
-                                onChange={(val) => {
-                                  const num = Number(val);
-                                  setEditQty(num);
-                                  onPreviewChange?.(job.Id, num);
-                                }}
-                                min={1}
-                                max={job.MaxQty || job.TargetQty}
-                                step={1}
-                                styles={{ input: { fontSize: '10px', height: 24, minHeight: 24 } }}
-                              />
-                            </Box>
-                            <Button
-                              size="compact-xs"
-                              variant="filled"
-                              color="indigo"
-                              onClick={() => {
-                                onUpdateQty?.(job.Id, editQty);
-                                setOpened(false);
-                              }}
-                            >
-                              Update
-                            </Button>
-                          </Group>
-                          <Text size="8px" c="dimmed">Max permitted: {job.MaxQty || job.TargetQty}</Text>
-                        </Stack>
-                      </Popover.Dropdown>
-                    </Popover>
-                  </Group>
 
-                  <Group gap={3} wrap="nowrap">
-                    <IconClock size={12} color="var(--mantine-color-gray-6)" />
-                    <Text size="11px" fw={700} c="indigo.7" style={{ letterSpacing: '0.01em' }}>
-                      {processingHrs}h
+                        <Popover
+                          opened={opened}
+                          onChange={(o) => {
+                            setOpened(o);
+                            if (!o) {
+                              onPreviewChange?.(job.Id, null);
+                              setEditQty(job.TargetQty);
+                            }
+                          }}
+                          position="bottom"
+                          withArrow
+                          shadow="md"
+                          withinPortal
+                          trapFocus={false}
+                        >
+                          <Popover.Target>
+                            <Badge
+                              size="xs"
+                              variant="light"
+                              color="gray"
+                              onClick={(e) => { e.stopPropagation(); setOpened(o => !o); }}
+                              style={{ cursor: 'pointer', height: 18, fontSize: '11px', fontWeight: 800 }}
+                            >
+                              {job.TargetQty.toLocaleString()}
+                            </Badge>
+                          </Popover.Target>
+                          <Popover.Dropdown p={8} onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+                            <Stack gap={8}>
+                              <Text size="10px" fw={700}>Adjust Quantity</Text>
+                              <Group gap={4} wrap="nowrap">
+                                <Box style={{ width: 80 }}>
+                                  <NumberInput
+                                    size="xs"
+                                    value={editQty}
+                                    onChange={(val) => {
+                                      const num = Number(val);
+                                      setEditQty(num);
+                                      onPreviewChange?.(job.Id, num);
+                                    }}
+                                    min={1}
+                                    step={1}
+                                    styles={{ input: { fontSize: '10px', height: 24, minHeight: 24 } }}
+                                  />
+                                </Box>
+                                <Button
+                                  size="compact-xs"
+                                  variant="filled"
+                                  color="indigo"
+                                  onClick={() => {
+                                    onUpdateQty?.(job.Id, editQty);
+                                    setOpened(false);
+                                  }}
+                                >
+                                  Update
+                                </Button>
+                              </Group>
+                              <Text size="8px" c="dimmed">Current Card: {job.TargetQty}</Text>
+                            </Stack>
+                          </Popover.Dropdown>
+                        </Popover>
+                      </Group>
+
+                      <Group gap={3} wrap="nowrap">
+                        <IconClock size={12} color="var(--mantine-color-gray-6)" />
+                        <Text size="11px" fw={700} c="indigo.7" style={{ letterSpacing: '0.01em' }}>
+                          {processingHrs}h
+                        </Text>
+                      </Group>
+                    </Stack>
+                  </Paper>
+                </HoverCard.Target>
+                <HoverCard.Dropdown p="sm">
+                  <Stack gap="xs">
+                    <Text size="sm" fw={700} style={{ borderBottom: '1px solid var(--mantine-color-gray-2)', paddingBottom: 4 }}>
+                      Job Details
                     </Text>
-                  </Group>
-                </Stack>
-              </Paper>
-            </HoverCard.Target>
-            <HoverCard.Dropdown p="sm">
-              <Stack gap="xs">
-                <Text size="sm" fw={700} style={{ borderBottom: '1px solid var(--mantine-color-gray-2)', paddingBottom: 4 }}>
-                  Job Details
-                </Text>
-                <Group justify="space-between" mt={4}>
-                  <Text size="xs" c="dimmed">Part Number:</Text>
-                  <Text size="xs" fw={600}>{job.PartNumber}</Text>
-                </Group>
-                <Group justify="space-between">
-                  <Text size="xs" c="dimmed">Planned Date:</Text>
-                  <Text size="xs" fw={600}>{job.OriginalDate || jobDateStr}</Text>
-                </Group>
-                <Group justify="space-between">
-                  <Text size="xs" c="dimmed">Target Qty:</Text>
-                  <Text size="xs" fw={600}>{job.TargetQty}</Text>
-                </Group>
-                <Group justify="space-between">
-                  <Text size="xs" c="dimmed">Processing Hrs:</Text>
-                  <Text size="xs" fw={600}>{processingHrs} hrs</Text>
-                </Group>
-                {job.StandardBatchSize && (
-                  <Group justify="space-between">
-                    <Text size="xs" c="dimmed">Batch Size:</Text>
-                    <Text size="xs" fw={600}>{job.StandardBatchSize}</Text>
-                  </Group>
-                )}
-              </Stack>
-            </HoverCard.Dropdown>
-          </HoverCard>
+                    <Group justify="space-between" mt={4}>
+                      <Text size="xs" c="dimmed">Part Number:</Text>
+                      <Text size="xs" fw={600}>{job.PartNumber}</Text>
+                    </Group>
+                    <Group justify="space-between">
+                      <Text size="xs" c="dimmed">Planned Date:</Text>
+                      <Text size="xs" fw={600}>{job.OriginalDate || jobDateStr}</Text>
+                    </Group>
+                    <Group justify="space-between">
+                      <Text size="xs" c="dimmed">Target Qty:</Text>
+                      <Text size="xs" fw={600}>{job.TargetQty}</Text>
+                    </Group>
+                    <Group justify="space-between">
+                      <Text size="xs" c="dimmed">Processing Hrs:</Text>
+                      <Text size="xs" fw={600}>{processingHrs} hrs</Text>
+                    </Group>
+                    {job.StandardBatchSize && (
+                      <Group justify="space-between">
+                        <Text size="xs" c="dimmed">Batch Size:</Text>
+                        <Text size="xs" fw={600}>{job.StandardBatchSize}</Text>
+                      </Group>
+                    )}
+                  </Stack>
+                </HoverCard.Dropdown>
+              </HoverCard>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Label>Card Actions</Menu.Label>
+              <Menu.Item 
+                leftSection={<IconArrowsSplit size={14} />} 
+                onClick={() => onSplitJob?.(job.Id)}
+              >
+                Split into Batches
+              </Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
         );
 
         if (snapshot.isDragging) {
@@ -407,6 +420,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
     jobs.forEach(item => {
       const itemDate = item.Id.split('|')[2];
       const existingIdx = consolidated.findIndex(j =>
+        !j.IsBatchSplit && !item.IsBatchSplit && // Don't consolidate if either is a batch split
         j.PartNumber.trim().toLowerCase() === item.PartNumber.trim().toLowerCase() &&
         j.Shift === item.Shift &&
         j.Id.split('|')[2] === itemDate &&
@@ -440,6 +454,11 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
   const [comparisonData, setComparisonData] = useState<any[]>([]);
   const [isUpdatingTargets, setIsUpdatingTargets] = useState(false);
   const [wasSubmitted, setWasSubmitted] = useState(false);
+
+  // Split Logic State
+  const [splitModalOpened, setSplitModalOpened] = useState(false);
+  const [jobToSplitId, setJobToSplitId] = useState<string | null>(null);
+  const [splitNumBatches, setSplitNumBatches] = useState<number>(2);
 
   const weekDates = useMemo(() => {
     try {
@@ -679,49 +698,69 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
       if (!foundJob) return prev;
 
       const oldQty = foundJob.TargetQty;
-      const diff = oldQty - newQty;
 
-      // Create updated job object immutably
-      const updatedJob = { ...foundJob, TargetQty: newQty };
+      // Helper to split a quantity into batch-sized cards
+      const createBatchCards = (job: JobBlock, totalQtyToSplit: number): JobBlock[] => {
+        const batchSize = job.StandardBatchSize || totalQtyToSplit;
+        const numFullBatches = Math.floor(totalQtyToSplit / batchSize);
+        const remainder = totalQtyToSplit % batchSize;
+        const batchCards: JobBlock[] = [];
+        
+        for (let i = 0; i < numFullBatches; i++) {
+          let batchCard: JobBlock = {
+            ...job,
+            Id: `${job.Id}|split|${i}|${Date.now()}`,
+            TargetQty: batchSize,
+            MaxQty: batchSize,
+            IsBatchSplit: true
+          };
+          if (machineId) batchCard = revertToOriginalPlan(batchCard);
+          batchCards.push(batchCard);
+        }
+        
+        if (remainder > 0) {
+          let remCard: JobBlock = {
+            ...job,
+            Id: `${job.Id}|split|rem|${Date.now()}`,
+            TargetQty: remainder,
+            MaxQty: remainder,
+            IsBatchSplit: true
+          };
+          if (machineId) remCard = revertToOriginalPlan(remCard);
+          batchCards.push(remCard);
+        }
+        
+        return batchCards;
+      };
 
-      // Update its place in the state
-      if (uIdx !== -1) {
-        newState.Unassigned[uIdx] = updatedJob;
-      } else if (machineId && day && shift) {
-        const sData = newState.Machines[machineId].Schedule[day][shift];
-        const jIdx = sData.Jobs.findIndex(j => j.Id === jobId);
-        if (jIdx !== -1) sData.Jobs[jIdx] = updatedJob;
-      }
-
-      if (diff > 0) {
-        // Decrease qty -> Create remainder card in backlog
-        let remainderCard: JobBlock = {
-          ...updatedJob,
-          Id: `${updatedJob.Id}|split|${Date.now()}`,
-          TargetQty: diff,
-          MaxQty: diff, // The new card has its own max based on the split
-          IsBatchSplit: true
-        };
-
-        // If it was on a machine, we must reset the badges before pushing to backlog
-        if (machineId) {
-          remainderCard = revertToOriginalPlan(remainderCard);
+      if (newQty < oldQty) {
+        // Decrease -> Update current card and split remainder into batches in backlog
+        const updatedJob = { ...foundJob, TargetQty: newQty, IsBatchSplit: true };
+        if (uIdx !== -1) {
+          newState.Unassigned[uIdx] = updatedJob;
+        } else if (machineId && day && shift) {
+          const sData = newState.Machines[machineId].Schedule[day][shift];
+          const jIdx = sData.Jobs.findIndex(j => j.Id === jobId);
+          if (jIdx !== -1) sData.Jobs[jIdx] = updatedJob;
+          sData.TotalAssignedHours = calculateTotalHours(sData.Jobs);
         }
 
-        newState.Unassigned.push(remainderCard);
-        // Consolidate backlog after split
+        const remainderQty = oldQty - newQty;
+        const newBatchCards = createBatchCards(foundJob, remainderQty);
+        newState.Unassigned.push(...newBatchCards);
         newState.Unassigned = consolidateJobsList(newState.Unassigned);
 
-        // If it was on a machine, update the machine's assigned hours
+      } else if (newQty > oldQty) {
+        // Increase -> Keep current card as is, and split additional qty into batches in backlog
+        const additionalQty = newQty - oldQty;
+        const newBatchCards = createBatchCards(foundJob, additionalQty);
+        newState.Unassigned.push(...newBatchCards);
+        newState.Unassigned = consolidateJobsList(newState.Unassigned);
+        
+        // Ensure the machine load is still correct (no change to current card on machine)
         if (machineId && day && shift) {
-          const sData = newState.Machines[machineId].Schedule[day][shift];
-          sData.TotalAssignedHours = calculateTotalHours(sData.Jobs);
-        }
-      } else if (diff < 0) {
-        // Increase qty
-        if (machineId && day && shift) {
-          const sData = newState.Machines[machineId].Schedule[day][shift];
-          sData.TotalAssignedHours = calculateTotalHours(sData.Jobs);
+           const sData = newState.Machines[machineId].Schedule[day][shift];
+           sData.TotalAssignedHours = calculateTotalHours(sData.Jobs);
         }
       }
 
@@ -729,6 +768,96 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
       return newState;
     });
     setDirty(true);
+  }, [data]);
+
+  const handleSplitJob = useCallback((jobId: string, numBatches: number) => {
+    setData(prev => {
+      if (!prev) return null;
+      const newState = copyState(prev);
+
+      let targetJob: JobBlock | null = null;
+      let sourceList: JobBlock[] | null = null;
+      let jobIdx = -1;
+      let machineId: string | undefined;
+      let day: string | undefined;
+      let shift: string | undefined;
+
+      // Find job in Unassigned
+      jobIdx = newState.Unassigned.findIndex(j => j.Id === jobId);
+      if (jobIdx !== -1) {
+        targetJob = newState.Unassigned[jobIdx];
+        sourceList = newState.Unassigned;
+      } else {
+        // Search Machines
+        outer: for (const [mId, mInfo] of Object.entries(newState.Machines)) {
+          for (const [dKey, dShifts] of Object.entries(mInfo.Schedule)) {
+            for (const [sKey, sData] of Object.entries(dShifts)) {
+              const jIdx = sData.Jobs.findIndex(j => j.Id === jobId);
+              if (jIdx !== -1) {
+                targetJob = sData.Jobs[jIdx];
+                sourceList = sData.Jobs;
+                jobIdx = jIdx;
+                machineId = mId;
+                day = dKey;
+                shift = sKey;
+                break outer;
+              }
+            }
+          }
+        }
+      }
+
+      if (!targetJob || !sourceList || jobIdx === -1) return prev;
+
+      const totalQty = targetJob.TargetQty;
+      const baseQty = Math.floor(totalQty / numBatches);
+      const remainder = totalQty % numBatches;
+
+      if (baseQty <= 0 && totalQty > 0 && numBatches > totalQty) {
+        notifications.show({
+          title: 'Cannot Split',
+          message: `Cannot split ${totalQty} into ${numBatches} batches (base quantity would be 0).`,
+          color: 'red'
+        });
+        return prev;
+      }
+
+      const newJobs: JobBlock[] = [];
+      for (let i = 0; i < numBatches; i++) {
+        let qty = baseQty;
+        if (i < remainder) qty += 1;
+        
+        if (qty <= 0) continue;
+
+        newJobs.push({
+          ...targetJob,
+          Id: `${targetJob.Id}|split|${i}|${Date.now()}`,
+          TargetQty: qty,
+          MaxQty: qty,
+          IsBatchSplit: true
+        });
+      }
+
+      // Replace the original job with the new ones
+      sourceList.splice(jobIdx, 1, ...newJobs);
+
+      // If it was on a machine, update the machine's assigned hours
+      if (machineId && day && shift) {
+        const sData = newState.Machines[machineId].Schedule[day][shift];
+        sData.TotalAssignedHours = calculateTotalHours(sData.Jobs);
+      } else {
+        // If in backlog, consolidate (though splitting usually means we want them separate, 
+        // consolidateJobsList might merge them back if they have same metadata)
+        // Actually, we WANT them separate if the user split them.
+        // consolidateJobsList merges based on PartNumber, Shift, Date, etc.
+        // We might need to adjust consolidateJobsList to NOT merge if IsBatchSplit is true?
+        // Or just don't consolidate after a manual split.
+      }
+
+      return newState;
+    });
+    setDirty(true);
+    setSplitModalOpened(false);
   }, [data]);
 
   useEffect(() => {
@@ -1224,6 +1353,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                const consolidatedJobs: any[] = [];
                shift.Jobs.forEach(job => {
                  const existing = consolidatedJobs.find(j => 
+                   !j.IsBatchSplit && !job.IsBatchSplit &&
                    j.PartNumber === job.PartNumber &&
                    j.OriginalDate === job.OriginalDate &&
                    j.OriginalShift === job.OriginalShift
@@ -1478,6 +1608,10 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                               if (qty === null) setPreviewData(null);
                               else setPreviewData({ jobId: id, qty });
                             }}
+                            onSplitJob={(id) => {
+                              setJobToSplitId(id);
+                              setSplitModalOpened(true);
+                            }}
                           />
                         ))}
                       {provided.placeholder}
@@ -1670,6 +1804,10 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                                                           if (qty === null) setPreviewData(null);
                                                           else setPreviewData({ jobId: id, qty });
                                                         }}
+                                                        onSplitJob={(id) => {
+                                                          setJobToSplitId(id);
+                                                          setSplitModalOpened(true);
+                                                        }}
                                                       />
                                                     ))}
                                                     {provided.placeholder}
@@ -1820,6 +1958,32 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
             >
               Update Targets in Plan
             </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={splitModalOpened}
+        onClose={() => setSplitModalOpened(false)}
+        title={<Group gap="xs"><IconArrowsSplit color="var(--mantine-color-indigo-6)" size={20} /><Text fw={700}>Split Job into Batches</Text></Group>}
+        centered
+        size="sm"
+      >
+        <Stack gap="md">
+          <Text size="sm">
+            Enter the number of batches to split this card into. The total quantity will be distributed as evenly as possible.
+          </Text>
+          <NumberInput
+            label="Number of Batches"
+            value={splitNumBatches}
+            onChange={(val) => setSplitNumBatches(Number(val))}
+            min={2}
+            max={100}
+            step={1}
+          />
+          <Group justify="end">
+            <Button variant="default" onClick={() => setSplitModalOpened(false)}>Cancel</Button>
+            <Button color="indigo" onClick={() => jobToSplitId && handleSplitJob(jobToSplitId, splitNumBatches)}>Split Card</Button>
           </Group>
         </Stack>
       </Modal>
