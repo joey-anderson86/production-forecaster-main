@@ -764,6 +764,141 @@ pub async fn save_scheduler_state(
     Ok(())
 }
 
+#[tauri::command]
+pub async fn get_schedule_comparison(
+    connection_string: String,
+    week_id: String,
+    department: String,
+) -> Result<Vec<ScheduleComparisonRow>, String> {
+    let mut client = create_client(&connection_string).await?;
+
+    // 1. Get targets from DeliveryData
+    let target_query = "
+        SELECT PartNumber, CONVERT(VARCHAR, Date, 23) as Date, SUM(Target) as TotalTarget
+        FROM dbo.DeliveryData
+        WHERE WeekIdentifier = @p1 AND Department = @p2
+        GROUP BY PartNumber, Date";
+
+    let rows_target = client
+        .query(target_query, &[&week_id, &department])
+        .await
+        .map_err(|e| e.to_string())?
+        .into_first_result()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // 2. Get scheduled from EquipmentSchedule
+    let scheduled_query = "
+        SELECT PartNumber, CONVERT(VARCHAR, Date, 23) as Date, SUM(Qty) as TotalScheduled
+        FROM dbo.EquipmentSchedule
+        WHERE WeekIdentifier = @p1 AND Department = @p2
+        GROUP BY PartNumber, Date";
+
+    let rows_scheduled = client
+        .query(scheduled_query, &[&week_id, &department])
+        .await
+        .map_err(|e| e.to_string())?
+        .into_first_result()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Map to hold results: (PartNumber, Date) -> (Target, Scheduled)
+    let mut comparison_map: HashMap<(String, String), (i32, i32)> = HashMap::new();
+
+    for row in rows_target {
+        let p = row.get::<&str, _>("PartNumber").unwrap_or_default().trim().to_string();
+        let d = row.get::<&str, _>("Date").unwrap_or_default().trim().to_string();
+        let t = get_i32_robust(&row, "TotalTarget").unwrap_or(0);
+        comparison_map.insert((p, d), (t, 0));
+    }
+
+    for row in rows_scheduled {
+        let p = row.get::<&str, _>("PartNumber").unwrap_or_default().trim().to_string();
+        let d = row.get::<&str, _>("Date").unwrap_or_default().trim().to_string();
+        let s = get_i32_robust(&row, "TotalScheduled").unwrap_or(0);
+        
+        let entry = comparison_map.entry((p, d)).or_insert((0, 0));
+        entry.1 = s;
+    }
+
+    let mut results: Vec<ScheduleComparisonRow> = comparison_map
+        .into_iter()
+        .map(|((part_number, date), (original_target, scheduled_qty))| {
+            ScheduleComparisonRow {
+                part_number,
+                date,
+                original_target,
+                scheduled_qty,
+                variance: original_target - scheduled_qty,
+            }
+        })
+        .collect();
+
+    results.sort_by(|a, b| a.part_number.cmp(&b.part_number).then(a.date.cmp(&b.date)));
+
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn update_targets_from_schedule(
+    connection_string: String,
+    week_id: String,
+    department: String,
+) -> Result<(), String> {
+    let mut client = create_client(&connection_string).await?;
+    client.simple_query("BEGIN TRANSACTION").await.map_err(|e| e.to_string())?;
+
+    // 1. Zero out existing targets for this week/department to prepare for the new schedule
+    // This ensures that parts moved away from a day have 0 target on that day.
+    client.execute(
+        "UPDATE dbo.DeliveryData SET Target = 0 WHERE WeekIdentifier = @p1 AND Department = @p2",
+        &[&week_id, &department]
+    ).await.map_err(|e| e.to_string())?;
+
+    // 2. Fetch all scheduled quantities grouped by Part, Date, Shift
+    let scheduled_query = "
+        SELECT PartNumber, CONVERT(VARCHAR, Date, 23) as Date, Shift, SUM(Qty) as TotalQty
+        FROM dbo.EquipmentSchedule
+        WHERE WeekIdentifier = @p1 AND Department = @p2
+        GROUP BY PartNumber, Date, Shift";
+
+    let rows = client
+        .query(scheduled_query, &[&week_id, &department])
+        .await
+        .map_err(|e| e.to_string())?
+        .into_first_result()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    for row in rows {
+        let p = row.get::<&str, _>("PartNumber").unwrap_or_default().trim().to_uppercase();
+        let d = row.get::<&str, _>("Date").unwrap_or_default().trim().to_string();
+        let s = row.get::<&str, _>("Shift").unwrap_or("A").trim().to_uppercase();
+        let qty = get_i32_robust(&row, "TotalQty").unwrap_or(0);
+
+        // We use a MERGE-like logic to update existing or insert new targets in DeliveryData
+        let day_name = get_day_name(&d);
+
+        client.execute(
+            "MERGE dbo.DeliveryData AS target
+             USING (SELECT @p1 as Department, @p2 as WeekIdentifier, @p3 as PartNumber, @p4 as DayOfWeek, 
+                           @p5 as Target, CAST(@p6 as DATE) as Date, @p7 as Shift) AS source
+             ON (target.Department = source.Department AND target.PartNumber = source.PartNumber 
+                  AND CAST(target.Date AS DATE) = source.Date AND target.Shift = source.Shift)
+             WHEN MATCHED THEN
+                UPDATE SET Target = source.Target, WeekIdentifier = source.WeekIdentifier, DayOfWeek = source.DayOfWeek
+             WHEN NOT MATCHED THEN
+                INSERT (Department, WeekIdentifier, PartNumber, DayOfWeek, Target, Actual, Date, Shift)
+                VALUES (source.Department, source.WeekIdentifier, source.PartNumber, source.DayOfWeek, 
+                        source.Target, 0, source.Date, source.Shift);",
+            &[&department, &week_id, &p, &day_name, &qty, &d, &s],
+        ).await.map_err(|e| e.to_string())?;
+    }
+
+    client.simple_query("COMMIT TRANSACTION").await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Internal greedy algorithm for assigning backlog items to available machine slots.
 ///
 /// # Logic

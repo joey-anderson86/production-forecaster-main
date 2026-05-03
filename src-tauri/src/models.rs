@@ -201,6 +201,16 @@ pub struct JobBlock {
     pub sequence_number: Option<i32>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "PascalCase")]
+pub struct ScheduleComparisonRow {
+    pub part_number: String,
+    pub date: String,
+    pub original_target: i32,
+    pub scheduled_qty: i32,
+    pub variance: i32,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct ShiftSchedule {

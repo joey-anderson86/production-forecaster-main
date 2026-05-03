@@ -2,9 +2,9 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult, DroppableProvided, DraggableProvided, DraggableStateSnapshot, DroppableStateSnapshot } from '@hello-pangea/dnd';
-import { Portal, Box, Paper, Text, Group, Stack, ScrollArea, Tooltip, HoverCard, Title, Badge, Select, ActionIcon, Divider, Loader, Center, Button, Popover, NumberInput, Flex, MultiSelect, Modal, TextInput } from '@mantine/core';
+import { Portal, Box, Paper, Text, Group, Stack, ScrollArea, Tooltip, HoverCard, Title, Badge, Select, ActionIcon, Divider, Loader, Center, Button, Popover, NumberInput, Flex, MultiSelect, Modal, TextInput, ActionIcon as MantineActionIcon } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconAlertTriangle, IconClock, IconBox, IconBolt, IconFileExport } from '@tabler/icons-react';
+import { IconAlertTriangle, IconClock, IconBox, IconBolt, IconFileExport, IconFilterOff } from '@tabler/icons-react';
 import { invoke } from '@tauri-apps/api/core';
 import { load } from '@tauri-apps/plugin-store';
 import { DAYS_OF_WEEK, DayOfWeek, isWorkingDay, getWeekDates, getCurrentWeekId } from '@/lib/dateUtils';
@@ -120,6 +120,24 @@ function calculateTotalHours(jobs: JobBlock[]): number {
   return jobs.reduce((sum, job) => sum + ((job.TargetQty * job.ProcessingTimeMins) / 60), 0);
 }
 
+function revertToOriginalPlan(job: JobBlock): JobBlock {
+  const origDate = job.OriginalDate || job.Id.split('|')[2];
+  const origShift = job.OriginalShift || job.Shift;
+  
+  const idParts = job.Id.split('|');
+  // If it's a standard ID (Part|Shift|Date|Unique), update it to original
+  if (idParts.length >= 3) {
+    idParts[1] = origShift;
+    idParts[2] = origDate;
+  }
+
+  return {
+    ...job,
+    Shift: origShift,
+    Id: idParts.join('|')
+  };
+}
+
 // --- Draggable Job Card Component ---
 const JobCard = ({
   job,
@@ -151,14 +169,29 @@ const JobCard = ({
 
 
   const jobDateStr = job.Id.split('|')[2];
-  const dateMoved = job.OriginalDate && jobDateStr !== job.OriginalDate;
-  const shiftMoved = job.OriginalShift && job.Shift !== job.OriginalShift;
-  const hasMoved = dateMoved || shiftMoved;
   
+  const isMoved = job.OriginalDate && job.OriginalShift && (jobDateStr !== job.OriginalDate || job.Shift !== job.OriginalShift);
+  
+  let isEarly = false;
+  let isShortfall = false;
+
+  if (isMoved && job.OriginalDate && job.OriginalShift) {
+    const SHIFT_ORDER = ['A', 'B', 'C', 'D'];
+    if (jobDateStr < job.OriginalDate) {
+      isEarly = true;
+    } else if (jobDateStr > job.OriginalDate) {
+      isShortfall = true;
+    } else {
+      // Same date, check shift
+      const currIdx = SHIFT_ORDER.indexOf(job.Shift);
+      const origIdx = SHIFT_ORDER.indexOf(job.OriginalShift);
+      if (currIdx < origIdx) isEarly = true;
+      else if (currIdx > origIdx) isShortfall = true;
+    }
+  }
+
   let moveLabel = '';
-  if (dateMoved && shiftMoved) moveLabel = `Moved: SH ${job.OriginalShift} on ${job.OriginalDate}`;
-  else if (dateMoved) moveLabel = `Planned Date: ${job.OriginalDate}`;
-  else if (shiftMoved) moveLabel = `Prior Shift: SH ${job.OriginalShift}`;
+  if (isMoved) moveLabel = `Originally: SH ${job.OriginalShift} on ${job.OriginalDate}`;
 
   return (
     <Draggable draggableId={job.Id} index={index}>
@@ -171,68 +204,71 @@ const JobCard = ({
                 {...provided.draggableProps}
                 {...provided.dragHandleProps}
                 shadow={snapshot.isDragging ? "xl" : "xs"}
-                p={6}
+                p={8}
                 mb={8}
                 withBorder
                 style={{
                   backgroundColor: snapshot.isDragging 
                     ? 'var(--mantine-color-indigo-0)' 
-                    : (job.IsOverflow && dateMoved ? 'var(--mantine-color-red-0)' : 'white'),
+                    : (isShortfall ? 'var(--mantine-color-red-0)' : 'white'),
                   opacity: snapshot.isDragging ? 0.9 : 1,
                   cursor: 'grab',
                   position: 'relative',
                   borderRadius: '6px',
                   borderLeftWidth: '3px',
                   borderLeftStyle: 'solid',
-                  borderLeftColor: (job.IsOverflow && dateMoved) 
+                  borderLeftColor: isShortfall 
                     ? 'var(--mantine-color-red-6)' 
                     : `var(--mantine-color-${shiftColor.replace('.', '-')})`,
                   ...provided.draggableProps.style,
                   zIndex: snapshot.isDragging ? 9999 : 1,
                   // Maintain width when dragging in Portal
-                  width: snapshot.isDragging ? '180px' : '100%',
+                  width: snapshot.isDragging ? '220px' : '100%',
                 }}
               >
 
-                <Stack gap={2}>
-                  <Group gap={4} wrap="nowrap" align="center" style={{ width: '100%' }}>
+                <Stack gap={4}>
+                  <Stack gap={2}>
                     <Text 
                       fw={800} 
-                      style={{ fontSize: '11px', lineHeight: 1.2, flex: 1 }} 
+                      style={{ fontSize: '13px', lineHeight: 1.2 }} 
                       truncate="end"
-                      c={job.IsOverflow && dateMoved ? 'red.8' : undefined}
+                      c={isShortfall ? 'red.8' : undefined}
                     >
                       {job.PartNumber}
                     </Text>
-                    {job.IsOverflow && dateMoved && (
-                      <Tooltip label="Unable to fit in original schedule" withinPortal position="top">
-                        <Badge size="xs" color="red" variant="filled" styles={{ root: { fontSize: '8px', padding: '0 4px', height: 14, fontWeight: 800 } }}>
-                          SHORTFALL
-                        </Badge>
-                      </Tooltip>
-                    )}
-                    {dateMoved && (
-                      <Tooltip label={moveLabel} withinPortal position="top">
-                        <Badge size="xs" color="orange" variant="filled" styles={{ root: { fontSize: '8px', padding: '0 4px', height: 14, fontWeight: 800 } }}>
-                          MOVED
-                        </Badge>
-                      </Tooltip>
-                    )}
-                    {!dateMoved && shiftMoved && (
-                      <Tooltip label={moveLabel} withinPortal position="top">
-                        <Badge size="xs" color="gray" variant="outline" p={0} styles={{ root: { width: 14, height: 14, minWidth: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' } }}>
-                          <IconAlertTriangle size={10} color="var(--mantine-color-orange-6)" />
-                        </Badge>
-                      </Tooltip>
-                    )}
-                  </Group>
+                    
+                    <Stack gap={4} align="flex-start">
+                      {isShortfall && (
+                        <Tooltip label="Scheduled after original plan" withinPortal position="top">
+                          <Badge size="xs" color="red" variant="filled" fullWidth styles={{ root: { fontSize: '10px', padding: '0 4px', height: 18, fontWeight: 800, justifyContent: 'flex-start' } }}>
+                            SHORTFALL
+                          </Badge>
+                        </Tooltip>
+                      )}
+                      {isEarly && (
+                        <Tooltip label="Scheduled before original plan" withinPortal position="top">
+                          <Badge size="xs" color="green" variant="filled" fullWidth styles={{ root: { fontSize: '10px', padding: '0 4px', height: 18, fontWeight: 800, justifyContent: 'flex-start' } }}>
+                            EARLY
+                          </Badge>
+                        </Tooltip>
+                      )}
+                      {isMoved && (
+                        <Tooltip label={moveLabel} withinPortal position="top">
+                          <Badge size="xs" color="orange" variant="filled" fullWidth styles={{ root: { fontSize: '10px', padding: '0 4px', height: 18, fontWeight: 800, justifyContent: 'flex-start' } }}>
+                            MOVED
+                          </Badge>
+                        </Tooltip>
+                      )}
+                    </Stack>
+                  </Stack>
 
                   <Group gap={4} wrap="nowrap" align="center">
                     <Badge
                       size="xs"
                       variant="filled"
                       color={shiftColor.split('.')[0]}
-                      styles={{ root: { height: 14, padding: '0 4px', fontSize: '9px', fontWeight: 800 } }}
+                      styles={{ root: { height: 18, padding: '0 6px', fontSize: '11px', fontWeight: 800 } }}
                     >
                       {job.Shift}
                     </Badge>
@@ -258,7 +294,7 @@ const JobCard = ({
                           variant="light"
                           color="gray"
                           onClick={(e) => { e.stopPropagation(); setOpened(o => !o); }}
-                          style={{ cursor: 'pointer', height: 14, fontSize: '9px', fontWeight: 800 }}
+                          style={{ cursor: 'pointer', height: 18, fontSize: '11px', fontWeight: 800 }}
                         >
                           {job.TargetQty.toLocaleString()}
                         </Badge>
@@ -301,8 +337,8 @@ const JobCard = ({
                   </Group>
 
                   <Group gap={3} wrap="nowrap">
-                    <IconClock size={10} color="var(--mantine-color-gray-6)" />
-                    <Text size="10px" fw={700} c="indigo.7" style={{ letterSpacing: '0.01em' }}>
+                    <IconClock size={12} color="var(--mantine-color-gray-6)" />
+                    <Text size="11px" fw={700} c="indigo.7" style={{ letterSpacing: '0.01em' }}>
                       {processingHrs}h
                     </Text>
                   </Group>
@@ -374,6 +410,8 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
         j.PartNumber.trim().toLowerCase() === item.PartNumber.trim().toLowerCase() &&
         j.Shift === item.Shift &&
         j.Id.split('|')[2] === itemDate &&
+        j.OriginalDate === item.OriginalDate &&
+        j.OriginalShift === item.OriginalShift &&
         !!j.IsOverflow === !!item.IsOverflow // Differentiate shortfalls from regular backlog
       );
 
@@ -398,6 +436,10 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
 
   const [data, setData] = useState<SchedulerState | null>(initialState || null);
   const [loading, setLoading] = useState(true);
+  const [comparisonModalOpened, setComparisonModalOpened] = useState(false);
+  const [comparisonData, setComparisonData] = useState<any[]>([]);
+  const [isUpdatingTargets, setIsUpdatingTargets] = useState(false);
+  const [wasSubmitted, setWasSubmitted] = useState(false);
 
   const weekDates = useMemo(() => {
     try {
@@ -433,9 +475,45 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
   }, [data, meta, processName]);
 
   const displayedMachines = useMemo(() => {
-    if (selectedEquipment.length === 0) return allMachines;
-    return allMachines.filter(mId => selectedEquipment.includes(mId));
-  }, [allMachines, selectedEquipment]);
+    let mList = allMachines;
+
+    // Apply auto-filter based on backlog search
+    if (backlogPartFilter && meta?.PartMachineMap && data) {
+      const lowerFilter = backlogPartFilter.trim().toLowerCase();
+      
+      // Find parts in the backlog that match the filter
+      const matchingParts = data.Unassigned
+        .map(j => j.PartNumber.trim())
+        .filter(p => p.toLowerCase().includes(lowerFilter));
+
+      if (matchingParts.length > 0) {
+        const allowedForFiltered = new Set<string>();
+        let showAll = false;
+
+        matchingParts.forEach(part => {
+          const normalizedPart = part.toUpperCase();
+          // Find the exact key in the map (handling potential casing/whitespace mismatches)
+          const machinesKey = Object.keys(meta.PartMachineMap || {}).find(k => k.trim().toUpperCase() === normalizedPart);
+          const constraints = machinesKey && meta.PartMachineMap ? meta.PartMachineMap[machinesKey] : null;
+
+          // If any matching part has no defined constraints, it can run on all equipment
+          if (!constraints || constraints.length === 0) {
+            showAll = true;
+          } else {
+            constraints.forEach(mId => allowedForFiltered.add(mId.trim().toUpperCase()));
+          }
+        });
+
+        if (!showAll) {
+          // Normalize mId for comparison
+          mList = mList.filter(mId => allowedForFiltered.has(mId.trim().toUpperCase()));
+        }
+      }
+    }
+
+    if (selectedEquipment.length === 0) return mList;
+    return mList.filter(mId => selectedEquipment.includes(mId));
+  }, [allMachines, selectedEquipment, backlogPartFilter, meta, data]);
 
   const multiSelectData = useMemo(() => {
     return allMachines.map(m => ({ value: m, label: m }));
@@ -617,13 +695,19 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
 
       if (diff > 0) {
         // Decrease qty -> Create remainder card in backlog
-        const remainderCard: JobBlock = {
+        let remainderCard: JobBlock = {
           ...updatedJob,
           Id: `${updatedJob.Id}|split|${Date.now()}`,
           TargetQty: diff,
           MaxQty: diff, // The new card has its own max based on the split
           IsBatchSplit: true
         };
+
+        // If it was on a machine, we must reset the badges before pushing to backlog
+        if (machineId) {
+          remainderCard = revertToOriginalPlan(remainderCard);
+        }
+
         newState.Unassigned.push(remainderCard);
         // Consolidate backlog after split
         newState.Unassigned = consolidateJobsList(newState.Unassigned);
@@ -690,6 +774,9 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
 
       // 2. Add to destination
       if (destination.droppableId === 'unassigned') {
+        // Reset badges: Revert current state to match original plan
+        movedJob = revertToOriginalPlan(movedJob);
+
         const filteredUnassigned = newState.Unassigned
           .map((job, idx) => ({ job, idx }))
           .filter(({ job }) => {
@@ -752,7 +839,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
             movedJob.TargetQty = qtyThatFits;
             movedJob.MaxQty = qtyThatFits;
 
-            const remainderJob: JobBlock = {
+            const remainderJob: JobBlock = revertToOriginalPlan({
               ...movedJob,
               Id: `${movedJob.Id}|split|${Date.now()}`,
               TargetQty: leftoverQty,
@@ -761,12 +848,12 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
               IsOverflow: true,
               OriginalDate: movedJob.OriginalDate,
               OriginalShift: movedJob.OriginalShift
-            };
+            });
 
             newState.Unassigned.push(remainderJob);
             newState.Unassigned = consolidateJobsList(newState.Unassigned);
           } else {
-            newState.Unassigned.push(movedJob);
+            newState.Unassigned.push(revertToOriginalPlan(movedJob));
             newState.Unassigned = consolidateJobsList(newState.Unassigned);
             setTimeout(() => {
               notifications.show({ title: 'Shift Full: Card returned to backlog', message: 'Not enough capacity to place this job.', color: 'yellow' });
@@ -778,7 +865,9 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
         // AUTO-CONSOLIDATION (MERGE)
         // Check if a card with the exact same part number already exists in this machine/shift
         const existingJobIdx = shiftData.Jobs.findIndex(j =>
-          j.PartNumber.trim().toLowerCase() === movedJob.PartNumber.trim().toLowerCase()
+          j.PartNumber.trim().toLowerCase() === movedJob.PartNumber.trim().toLowerCase() &&
+          j.OriginalDate === movedJob.OriginalDate &&
+          j.OriginalShift === movedJob.OriginalShift
         );
 
         if (existingJobIdx !== -1) {
@@ -837,6 +926,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
       await invoke('save_scheduler_state', { connectionString, department: processName, weekId: currentWeekId, assignments });
       notifications.show({ title: 'Schedule Submitted', message: 'Successfully updated database.', color: 'green' });
       setDirty(false);
+      setWasSubmitted(true);
       fetchUtilization();
     } catch (e: any) {
       notifications.show({ title: 'Submission Failed', message: e.toString(), color: 'red' });
@@ -1133,7 +1223,11 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
             Object.values(day).forEach(shift => {
                const consolidatedJobs: any[] = [];
                shift.Jobs.forEach(job => {
-                 const existing = consolidatedJobs.find(j => j.PartNumber === job.PartNumber);
+                 const existing = consolidatedJobs.find(j => 
+                   j.PartNumber === job.PartNumber &&
+                   j.OriginalDate === job.OriginalDate &&
+                   j.OriginalShift === job.OriginalShift
+                 );
                  if (existing) {
                     existing.TargetQty += job.TargetQty;
                  } else {
@@ -1222,7 +1316,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
 
             <Group gap="xs">
               <Stack gap={0} align="flex-end">
-                <Text size="10px" fw={800} c="dimmed">LINE LOAD</Text>
+                <Text size="12px" fw={800} c="dimmed">LINE LOAD</Text>
                 <Group gap={6}>
                   <Text size="lg" fw={900} c="indigo.9">{aggregateStats.totalLoad.toFixed(1)}h</Text>
                   <Text size="xs" c="dimmed" fw={700}>/ {aggregateStats.totalCapacity.toFixed(0)}h</Text>
@@ -1230,8 +1324,8 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
               </Stack>
               <Stack gap={2} w={120}>
                 <Group justify="space-between" gap={0}>
-                  <Text size="10px" fw={800} c="indigo.7">UTILIZATION</Text>
-                  <Text size="10px" fw={800} c={aggregateStats.utilization > 100 ? 'red.7' : 'indigo.7'}>
+                  <Text size="12px" fw={800} c="indigo.7">UTILIZATION</Text>
+                  <Text size="12px" fw={800} c={aggregateStats.utilization > 100 ? 'red.7' : 'indigo.7'}>
                     {aggregateStats.utilization.toFixed(1)}%
                   </Text>
                 </Group>
@@ -1277,6 +1371,26 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                 Reset Schedule
               </Button>
               <Button variant="filled" color="indigo" size="sm" disabled={!dirty || isSubmitting} loading={isSubmitting} onClick={handleSubmit} leftSection={<IconBolt size={16} />}>Submit Schedule</Button>
+              <Button 
+                variant="outline" 
+                color="teal" 
+                size="sm" 
+                disabled={!wasSubmitted || isSubmitting} 
+                onClick={async () => {
+                   try {
+                     const store = await load("store.json", { autoSave: false, defaults: {} });
+                     const connectionString = await store.get<string>("db_connection_string");
+                     if (!connectionString) return;
+                     const data: any[] = await invoke('get_schedule_comparison', { connectionString, weekId: currentWeekId, department: processName });
+                     setComparisonData(data);
+                     setComparisonModalOpened(true);
+                   } catch (e: any) {
+                     notifications.show({ title: 'Failed to fetch comparison', message: e.toString(), color: 'red' });
+                   }
+                }}
+              >
+                Compare to Original Plan
+              </Button>
             </Group>
           </Group>
         </Group>
@@ -1296,7 +1410,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                     <Group gap={8}><IconBox size={20} color="var(--mantine-color-indigo-6)" /><Text fw={800} size="sm">Backlog</Text></Group>
                     <Badge color="indigo" variant="light">{data.Unassigned.length}</Badge>
                   </Group>
-                  <Select size="xs" data={['All', ...DAYS_OF_WEEK]} value={backlogDay} onChange={(val) => setBacklogDay(val as any)} label="Filter by planned day:" styles={{ label: { fontSize: '10px', fontWeight: 700, color: 'var(--mantine-color-gray-6)' } }} />
+                  <Select size="xs" data={['All', ...DAYS_OF_WEEK]} value={backlogDay} onChange={(val) => setBacklogDay(val as any)} label="Filter by planned day:" styles={{ label: { fontSize: '12px', fontWeight: 700, color: 'var(--mantine-color-gray-6)' } }} />
                   <Group grow gap="xs">
                     <Select 
                       size="xs" 
@@ -1304,7 +1418,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                       value={backlogShiftFilter || 'All'} 
                       onChange={(val) => setBacklogShiftFilter(val === 'All' ? null : val)} 
                       label="Shift:" 
-                      styles={{ label: { fontSize: '10px', fontWeight: 700, color: 'var(--mantine-color-gray-6)' } }} 
+                      styles={{ label: { fontSize: '12px', fontWeight: 700, color: 'var(--mantine-color-gray-6)' } }} 
                     />
                     <Box style={{ flexGrow: 2 }}>
                        <TextInput 
@@ -1313,7 +1427,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                         value={backlogPartFilter} 
                         onChange={(e) => setBacklogPartFilter(e.target.value)} 
                         label="Part Number:" 
-                        styles={{ label: { fontSize: '10px', fontWeight: 700, color: 'var(--mantine-color-gray-6)' } }} 
+                        styles={{ label: { fontSize: '12px', fontWeight: 700, color: 'var(--mantine-color-gray-6)' } }} 
                       />
                     </Box>
                   </Group>
@@ -1376,26 +1490,39 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
             {/* RIGHT PANE: Equipment Grid */}
             <Paper withBorder style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: '12px', backgroundColor: 'white' }}>
               <Box p="sm" style={{ borderBottom: '1px solid var(--mantine-color-gray-3)', backgroundColor: 'var(--mantine-color-gray-0)' }}>
-                  <Group grow gap="md">
-                    <MultiSelect
-                      placeholder="Filter equipment to focus scheduling..."
-                      data={multiSelectData}
-                      value={selectedEquipment}
-                      onChange={setSelectedEquipment}
-                      searchable
-                      clearable
-                      size="xs"
-                      label={<Text size="10px" fw={700} c="dimmed">LINE FILTER</Text>}
-                    />
-                    <MultiSelect
-                      placeholder="Visible days..."
-                      data={DAYS_OF_WEEK.map(d => ({ value: d, label: d }))}
-                      value={visibleDays}
-                      onChange={setVisibleDays}
-                      size="xs"
-                      label={<Text size="10px" fw={700} c="dimmed">VISIBLE DAYS</Text>}
-                    />
-                  </Group>
+                  <Stack gap="xs">
+                    <Group grow gap="md">
+                      <MultiSelect
+                        placeholder="Filter equipment to focus scheduling..."
+                        data={multiSelectData}
+                        value={selectedEquipment}
+                        onChange={setSelectedEquipment}
+                        searchable
+                        clearable
+                        size="xs"
+                        label={<Text size="12px" fw={700} c="dimmed">LINE FILTER</Text>}
+                      />
+                      <MultiSelect
+                        placeholder="Visible days..."
+                        data={DAYS_OF_WEEK.map(d => ({ value: d, label: d }))}
+                        value={visibleDays}
+                        onChange={setVisibleDays}
+                        size="xs"
+                        label={<Text size="12px" fw={700} c="dimmed">VISIBLE DAYS</Text>}
+                      />
+                    </Group>
+                    {backlogPartFilter && (
+                      <Group gap={6} align="center">
+                        <IconFilterOff size={14} color="var(--mantine-color-indigo-6)" />
+                        <Text size="11px" fw={700} c="indigo.7">
+                          Grid auto-filtered by backlog search: "{backlogPartFilter}"
+                        </Text>
+                        <Badge size="xs" color="indigo" variant="light" style={{ cursor: 'pointer' }} onClick={() => setBacklogPartFilter("")}>
+                          Clear
+                        </Badge>
+                      </Group>
+                    )}
+                  </Stack>
               </Box>
               <ScrollArea style={{ flex: 1 }} type="always">
                 <Box style={{ minWidth: 'max-content', width: '100%' }}>
@@ -1428,8 +1555,8 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                         </Box>
                         <Box style={{ display: 'flex' }}>
                           {d.shifts.map(s => (
-                            <Box key={s.id} p="6px" style={{ flex: '1 1 0px', minWidth: '80px', width: '0px', maxWidth: '300px', overflow: 'hidden', textAlign: 'center', borderRight: s.id !== d.shifts[d.shifts.length - 1].id ? '1px solid var(--mantine-color-gray-1)' : 'none' }}>
-                              <Text fw={700} size="9px" c={s.isWorking ? "dimmed" : "red.5"}>SH {s.id} {s.isWorking ? "" : "OFF"}</Text>
+                            <Box key={s.id} p="6px" style={{ flex: '1 1 0px', minWidth: '100px', width: '0px', maxWidth: '300px', overflow: 'hidden', textAlign: 'center', borderRight: s.id !== d.shifts[d.shifts.length - 1].id ? '1px solid var(--mantine-color-gray-1)' : 'none' }}>
+                              <Text fw={700} size="11px" c={s.isWorking ? "dimmed" : "red.5"}>SH {s.id} {s.isWorking ? "" : "OFF"}</Text>
                             </Box>
                           ))}
                         </Box>
@@ -1471,7 +1598,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                                 }}>
                                   <Stack gap={4}>
                                     <Text fw={800} size="sm" c="indigo.8" truncate>{machine.MachineID}</Text>
-                                    <Group gap={4} wrap="nowrap"><IconBolt size={12} color="var(--mantine-color-green-6)" /><Text size="10px" c="dimmed" fw={600}>CAP: {machine.DailyCapacityHrs}h</Text></Group>
+                                    <Group gap={4} wrap="nowrap"><IconBolt size={14} color="var(--mantine-color-green-6)" /><Text size="12px" c="dimmed" fw={600}>CAP: {machine.DailyCapacityHrs}h</Text></Group>
                                   </Stack>
                                 </Box>
 
@@ -1504,7 +1631,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                                               style={{
                                                 flexGrow: 1,
                                                 flexBasis: 0,
-                                                minWidth: '80px', maxWidth: '300px', overflow: 'hidden', width: '0px', flex: '1 1 0px',
+                                                minWidth: '100px', maxWidth: '300px', overflow: 'hidden', width: '0px', flex: '1 1 0px',
                                                 borderRight: '1px solid var(--mantine-color-gray-2)',
                                                 transition: 'background-color 0.2s',
                                                 position: 'relative',
@@ -1520,10 +1647,10 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                                                 <>
                                                   <Box p="6px" style={{ borderBottom: '1px solid var(--mantine-color-gray-1)', backgroundColor: isOver ? 'var(--mantine-color-red-0)' : 'transparent' }}>
                                                     <Group justify="space-between" gap={0} wrap="nowrap">
-                                                      <Text size="9px" fw={800} c={isOver ? 'red.7' : (effectiveHours ? 'dark' : 'dimmed')}>
+                                                      <Text size="11px" fw={800} c={isOver ? 'red.7' : (effectiveHours ? 'dark' : 'dimmed')}>
                                                         {effectiveHours.toFixed(1)}h
                                                       </Text>
-                                                      <Text size="8px" fw={700} c="dimmed">/ {shiftData?.CapacityHrs || 0}h</Text>
+                                                      <Text size="10px" fw={700} c="dimmed">/ {shiftData?.CapacityHrs || 0}h</Text>
                                                     </Group>
                                                     <Box mt={2} style={{ height: 3, borderRadius: 1.5, backgroundColor: 'var(--mantine-color-gray-1)', overflow: 'hidden' }}>
                                                       <Box style={{ height: '100%', width: `${Math.min(util, 100)}%`, backgroundColor: isOver ? 'var(--mantine-color-red-5)' : (util > 0 ? 'var(--mantine-color-green-5)' : 'transparent') }} />
@@ -1550,7 +1677,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                                                 </>
                                               ) : (
                                                 <Center style={{ height: '100%', padding: '20px' }}>
-                                                  <Text size="10px" fw={800} c="gray.4" style={{ transform: 'rotate(-45deg)', whiteSpace: 'nowrap' }}>
+                                                  <Text size="12px" fw={800} c="gray.4" style={{ transform: 'rotate(-45deg)', whiteSpace: 'nowrap' }}>
                                                     {shiftData && shiftData.CapacityHrs === 0 ? "CAPACITY 0h" : "SHIFT OFF"}
                                                   </Text>
                                                 </Center>
@@ -1607,6 +1734,91 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
               leftSection={<IconAlertTriangle size={16} />}
             >
               Confirm Reset
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={comparisonModalOpened}
+        onClose={() => setComparisonModalOpened(false)}
+        title={<Group gap="xs"><IconBox color="var(--mantine-color-teal-6)" size={20} /><Text fw={700}>Compare Schedule to Original Plan</Text></Group>}
+        size="80%"
+        styles={{ header: { borderBottom: '1px solid var(--mantine-color-gray-2)', marginBottom: 'sm' } }}
+      >
+        <Stack gap="md">
+          <Text size="sm" c="dimmed">
+            The following table shows the variance between the <strong>Original Planned Targets</strong> and your <strong>Current Equipment Schedule</strong>. 
+            A positive variance means the schedule is short of the target; a negative variance means you've scheduled more than planned.
+          </Text>
+
+          <ScrollArea h={400}>
+            <Box style={{ minWidth: 'max-content' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <thead>
+                  <tr style={{ backgroundColor: 'var(--mantine-color-gray-0)' }}>
+                    <th style={{ padding: '10px', textAlign: 'left', border: '1px solid var(--mantine-color-gray-3)', position: 'sticky', left: 0, zIndex: 2, backgroundColor: 'var(--mantine-color-gray-0)' }}>Part Number</th>
+                    {Array.from(new Set(comparisonData.map(d => d.Date))).sort().map(date => (
+                      <th key={date} style={{ padding: '10px', textAlign: 'center', border: '1px solid var(--mantine-color-gray-3)' }}>
+                        {new Date(date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                      </th>
+                    ))}
+                    <th style={{ padding: '10px', textAlign: 'center', border: '1px solid var(--mantine-color-gray-3)', fontWeight: 800 }}>Total Var</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from(new Set(comparisonData.map(d => d.PartNumber))).sort().map(part => {
+                    const partData = comparisonData.filter(d => d.PartNumber === part);
+                    const dates = Array.from(new Set(comparisonData.map(d => d.Date))).sort();
+                    let rowTotalVar = 0;
+                    
+                    return (
+                      <tr key={part}>
+                        <td style={{ padding: '8px', border: '1px solid var(--mantine-color-gray-3)', fontWeight: 700, position: 'sticky', left: 0, zIndex: 1, backgroundColor: 'white' }}>{part}</td>
+                        {dates.map(date => {
+                          const entry = partData.find(d => d.Date === date);
+                          const variance = entry ? entry.Variance : 0;
+                          rowTotalVar += variance;
+                          return (
+                            <td key={date} style={{ padding: '8px', border: '1px solid var(--mantine-color-gray-3)', textAlign: 'center', color: variance > 0 ? 'var(--mantine-color-red-7)' : variance < 0 ? 'var(--mantine-color-green-7)' : 'inherit', fontWeight: variance !== 0 ? 700 : 400 }}>
+                              {variance === 0 ? '-' : variance.toLocaleString()}
+                            </td>
+                          );
+                        })}
+                        <td style={{ padding: '8px', border: '1px solid var(--mantine-color-gray-3)', textAlign: 'center', fontWeight: 800, backgroundColor: 'var(--mantine-color-gray-0)' }}>
+                          {rowTotalVar === 0 ? '-' : rowTotalVar.toLocaleString()}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </Box>
+          </ScrollArea>
+
+          <Group justify="end" mt="xl" p="md" style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }}>
+            <Button variant="default" onClick={() => setComparisonModalOpened(false)}>Close</Button>
+            <Button 
+              color="teal" 
+              loading={isUpdatingTargets}
+              onClick={async () => {
+                try {
+                  setIsUpdatingTargets(true);
+                  const store = await load("store.json", { autoSave: false, defaults: {} });
+                  const connectionString = await store.get<string>("db_connection_string");
+                  if (!connectionString) return;
+
+                  await invoke('update_targets_from_schedule', { connectionString, weekId: currentWeekId, department: processName });
+                  notifications.show({ title: 'Targets Updated', message: 'Master production plan targets have been synchronized.', color: 'green' });
+                  setComparisonModalOpened(false);
+                } catch (e: any) {
+                  notifications.show({ title: 'Update Failed', message: e.toString(), color: 'red' });
+                } finally {
+                  setIsUpdatingTargets(false);
+                }
+              }}
+            >
+              Update Targets in Plan
             </Button>
           </Group>
         </Stack>

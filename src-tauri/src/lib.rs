@@ -19,6 +19,8 @@ pub fn run() {
             commands::scheduler::calculate_demand_distribution,
             commands::scheduler::submit_shift_production,
             commands::scheduler::auto_schedule,
+            commands::scheduler::get_schedule_comparison,
+            commands::scheduler::update_targets_from_schedule,
 
             // Scorecard & Planning Commands
             commands::scorecard::get_scorecard_data,
