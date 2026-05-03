@@ -51,7 +51,7 @@ export default function Home() {
         {/* Tab Content Rendering */}
         <main className="transition-all duration-300">
           {mainTab === 'forecaster' && (
-            <DashboardCard title="Production Forecaster">
+            <DashboardCard title="Production Manager">
               <ProductionForecaster />
             </DashboardCard>
           )}

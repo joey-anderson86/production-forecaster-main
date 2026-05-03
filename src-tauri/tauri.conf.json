@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Production Forecaster",
+        "title": "Production Manager v0.1.0",
         "width": 800,
         "height": 600,
         "resizable": true,

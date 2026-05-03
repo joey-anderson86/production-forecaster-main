@@ -37,7 +37,7 @@ export function AppNavigation({ mainTab, setMainTab, roleMode }: AppNavigationPr
               {/* <Tabs.Tab value="mrp-plan">MRP Shadow Plan</Tabs.Tab> */}
             </>
           )}
-          <Tabs.Tab value="forecaster">Production Forecaster</Tabs.Tab>
+          <Tabs.Tab value="forecaster">Production Manager</Tabs.Tab>
           <Tabs.Tab value="settings">Settings</Tabs.Tab>
         </Tabs.List>
       </Tabs>
