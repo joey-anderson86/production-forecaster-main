@@ -177,14 +177,14 @@ const JobCard = ({
                 style={{
                   backgroundColor: snapshot.isDragging 
                     ? 'var(--mantine-color-indigo-0)' 
-                    : (job.IsOverflow ? 'var(--mantine-color-red-0)' : 'white'),
+                    : (job.IsOverflow && dateMoved ? 'var(--mantine-color-red-0)' : 'white'),
                   opacity: snapshot.isDragging ? 0.9 : 1,
                   cursor: 'grab',
                   position: 'relative',
                   borderRadius: '6px',
                   borderLeftWidth: '3px',
                   borderLeftStyle: 'solid',
-                  borderLeftColor: job.IsOverflow 
+                  borderLeftColor: (job.IsOverflow && dateMoved) 
                     ? 'var(--mantine-color-red-6)' 
                     : `var(--mantine-color-${shiftColor.replace('.', '-')})`,
                   ...provided.draggableProps.style,
@@ -200,11 +200,11 @@ const JobCard = ({
                       fw={800} 
                       style={{ fontSize: '11px', lineHeight: 1.2, flex: 1 }} 
                       truncate="end"
-                      c={job.IsOverflow ? 'red.8' : undefined}
+                      c={job.IsOverflow && dateMoved ? 'red.8' : undefined}
                     >
                       {job.PartNumber}
                     </Text>
-                    {job.IsOverflow && (
+                    {job.IsOverflow && dateMoved && (
                       <Tooltip label="Unable to fit in original schedule" withinPortal position="top">
                         <Badge size="xs" color="red" variant="filled" styles={{ root: { fontSize: '8px', padding: '0 4px', height: 14, fontWeight: 800 } }}>
                           SHORTFALL

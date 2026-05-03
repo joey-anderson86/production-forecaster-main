@@ -27,6 +27,7 @@ interface DeliveryLossParetoProps {
   compact?: boolean;
   displayUnit: 'batches' | 'pieces';
   batchSizeMap: Map<string, number>;
+  height?: number;
 }
 
 const CustomTooltip = ({ active, payload, label, displayUnit }: any) => {
@@ -98,10 +99,11 @@ export function DeliveryLossPareto({
   departmentName, 
   compact = false,
   displayUnit,
-  batchSizeMap
+  batchSizeMap,
+  height
 }: DeliveryLossParetoProps) {
   const theme = useMantineTheme();
-  const chartHeight = compact ? 500 : 400;
+  const chartHeight = height || (compact ? 500 : 400);
   
   const [shiftFilter, setShiftFilter] = useState<string | null>(null);
   const [partFilter, setPartFilter] = useState<string | null>(null);
@@ -140,7 +142,7 @@ export function DeliveryLossPareto({
   const showPlaceholder = !weekData || paretoData.length === 0;
 
   return (
-    <Card withBorder shadow="sm" radius="md" p={compact ? 'md' : 'lg'} mt={compact ? 'md' : 'xl'}>
+    <Card withBorder shadow="sm" radius="md" p={compact ? 'md' : 'lg'} mt={height ? 'sm' : (compact ? 'md' : 'xl')}>
       <Stack gap="lg">
         <Group justify="space-between" align="flex-start">
           <Box>

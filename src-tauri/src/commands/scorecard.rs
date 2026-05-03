@@ -54,9 +54,28 @@ pub async fn get_scorecard_data(connection_string: String) -> Result<Vec<Scoreca
 pub async fn get_rolling_gaps(
     connection_string: String,
     department: String,
+    as_of_date: Option<String>,
 ) -> Result<Vec<RollingGapRow>, String> {
     let mut client = create_client(&connection_string).await?;
-    let query = "
+    
+    // If as_of_date is provided, use it; otherwise default to end of today
+    let query = if let Some(_) = &as_of_date {
+        "
+        WITH RankedGaps AS (
+            SELECT 
+                PartNumber,
+                Shift,
+                SUM(CAST(ISNULL(Actual, 0) AS INT) - CAST(ISNULL(Target, 0) AS INT)) OVER (PARTITION BY PartNumber, Shift ORDER BY Date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) as RollingGap,
+                ROW_NUMBER() OVER (PARTITION BY PartNumber, Shift ORDER BY Date DESC) as rn
+            FROM dbo.DeliveryData
+            WHERE Department = @p1 AND Date <= CAST(@p2 AS DATE)
+        )
+        SELECT PartNumber, Shift, RollingGap
+        FROM RankedGaps
+        WHERE rn = 1
+        "
+    } else {
+        "
         WITH RankedGaps AS (
             SELECT 
                 PartNumber,
@@ -69,11 +88,14 @@ pub async fn get_rolling_gaps(
         SELECT PartNumber, Shift, RollingGap
         FROM RankedGaps
         WHERE rn = 1
-    ";
-    let stream = client
-        .query(query, &[&department])
-        .await
-        .map_err(|e| e.to_string())?;
+        "
+    };
+
+    let stream = if let Some(date) = as_of_date {
+        client.query(query, &[&department, &date]).await
+    } else {
+        client.query(query, &[&department]).await
+    }.map_err(|e| e.to_string())?;
     let rows = stream
         .into_first_result()
         .await
@@ -145,7 +167,10 @@ pub async fn upsert_scorecard_data(
         } else {
             normalized_shift
         });
+        rec.reason_code = rec.reason_code.as_ref().map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
     }
+
+    ensure_reason_codes_exist(&mut client, &records).await?;
 
     // Insert into temp table in batches to respect 2000 param limit
     let chunk_size = 200; // 9 params * 200 = 1800 params < 2000
@@ -239,6 +264,21 @@ pub async fn replace_delivery_data(
         .execute("DELETE FROM dbo.DeliveryData", &[])
         .await
         .map_err(|e| e.to_string())?;
+
+    // Normalize and ensure ReasonCodes exist
+    let mut records = records;
+    for rec in &mut records {
+        rec.part_number = rec.part_number.trim().to_uppercase();
+        let normalized_shift = rec.shift.as_deref().unwrap_or("A").trim().to_uppercase();
+        rec.shift = Some(if normalized_shift.is_empty() {
+            "A".to_string()
+        } else {
+            normalized_shift
+        });
+        rec.reason_code = rec.reason_code.as_ref().map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    }
+
+    ensure_reason_codes_exist(&mut client, &records).await?;
 
     let create_temp_sql = "
         CREATE TABLE #TempDeliveryData (
@@ -495,4 +535,28 @@ pub async fn get_plan_data_for_shift(
         .collect();
 
     Ok(result)
+}
+
+async fn ensure_reason_codes_exist(
+    client: &mut tiberius::Client<tokio_util::compat::Compat<tokio::net::TcpStream>>,
+    records: &[ScorecardRow],
+) -> Result<(), String> {
+    let mut pairs = std::collections::HashSet::new();
+    for rec in records {
+        if let Some(rc) = &rec.reason_code {
+            pairs.insert((rec.department.trim().to_string(), rc.clone()));
+        }
+    }
+
+    for (dept, rc) in pairs {
+        client
+            .execute(
+                "IF NOT EXISTS (SELECT 1 FROM dbo.ReasonCode WHERE ProcessName = @p1 AND ReasonCode = @p2)
+                 INSERT INTO dbo.ReasonCode (ProcessName, ReasonCode) VALUES (@p1, @p2)",
+                &[&dept, &rc],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }

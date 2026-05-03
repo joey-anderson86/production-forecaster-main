@@ -5,13 +5,13 @@ import { useLocalStorage } from '@mantine/hooks';
 import { useScorecardStore, DayOfWeek, DailyScorecardRecord, PartScorecard } from '@/lib/scorecardStore';
 import { 
   Tabs, Select, Table, Card, Text, Group, Badge, Title, Box, Tooltip, Stack, Button, ActionIcon, Paper, SegmentedControl,
-  RingProgress, Divider as MantineDivider, TextInput, Grid, useMantineTheme, rgba, Center, MultiSelect
+  RingProgress, Divider as MantineDivider, TextInput, Grid, useMantineTheme, rgba, Center, MultiSelect, Modal
 } from '@mantine/core';
 import { 
   IconPlus, IconChevronDown, IconChevronRight, IconSearch, IconArrowsSort, 
   IconSortAscending, IconSortDescending, IconChartBar, IconTarget, IconRefresh,
   IconChevronsDown, IconChevronsUp, IconActivity, IconCalendar,
-  IconLayoutSidebarRight, IconLayoutBottombar, IconDatabaseX, IconArrowRight
+  IconLayoutSidebarRight, IconLayoutBottombar, IconDatabaseX, IconArrowRight, IconArrowsMaximize
 } from '@tabler/icons-react';
 import { useGlobalWeek } from './WeekContext';
 import { EditEntryModal } from './EditEntryModal';
@@ -57,31 +57,12 @@ export default function DeliveryScorecardDisplay() {
 
   const [rollingGaps, setRollingGaps] = useState<Record<string, number>>({});
   const [activePlotTab, setActivePlotTab] = useState<string | null>('pareto');
+  const [maximizeModalOpened, setMaximizeModalOpened] = useState(false);
 
+  // Stop fetching rolling gaps as it is hidden from the UI
   useEffect(() => {
-    async function loadRollingGaps() {
-      if (!connectionString || !activeTab) return;
-      try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        const gaps = await invoke<any[]>('get_rolling_gaps', {
-          connectionString,
-          department: activeTab
-        });
-        
-        const gapMap: Record<string, number> = {};
-        gaps.forEach((g: any) => {
-          // Note: Rust struct RollingGapRow uses rename_all = "camelCase" currently, 
-          // but I will update it to PascalCase in the next step for consistency.
-          // For now, I'll update this component to expect PascalCase.
-          gapMap[`${g.PartNumber}-${g.Shift}`] = g.RollingGap;
-        });
-        setRollingGaps(gapMap);
-      } catch (err) {
-        console.error("Failed to fetch rolling gaps", err);
-      }
-    }
-    loadRollingGaps();
-  }, [connectionString, activeTab, store.syncStatus]);
+    setRollingGaps({});
+  }, []);
 
   // ── Dynamic height measurement for widescreen table constraint ──
   const leftColumnRef = useRef<HTMLDivElement>(null);
@@ -630,23 +611,12 @@ export default function DeliveryScorecardDisplay() {
                           {getSortIcon('gap')}
                         </Group>
                       </Table.Th>
-                      <Table.Th 
-                        ta="center" 
-                        onClick={() => requestSort('rollingGap')} 
-                        style={{ cursor: 'pointer' }}
-                        className="hover:bg-gray-50 dark:hover:bg-zinc-800"
-                      >
-                        <Group gap={4} justify="center" wrap="nowrap">
-                          <Text size="xs" fw={700} c="dimmed">ROLLING GAP</Text>
-                          {getSortIcon('rollingGap')}
-                        </Group>
-                      </Table.Th>
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
                     {(!activeWeek || groupedParts.length === 0) ? (
                       <Table.Tr>
-                        <Table.Td colSpan={14} py="xl">
+                        <Table.Td colSpan={12} py="xl">
                           <Center>
                             <Stack align="center" gap="xs">
                                <IconDatabaseX size={32} color="var(--mantine-color-gray-4)" />
@@ -741,11 +711,6 @@ export default function DeliveryScorecardDisplay() {
                             <Table.Td ta="center" bg={group.gap < 0 ? `light-dark(var(--mantine-color-red-1), ${rgba(theme.colors.red[9], 0.2)})` : `light-dark(var(--mantine-color-green-1), ${rgba(theme.colors.green[9], 0.2)})`}>
                               <Text size="sm" fw={800} c={group.gap < 0 ? 'light-dark(var(--mantine-color-red-9), var(--mantine-color-red-2))' : 'light-dark(var(--mantine-color-green-9), var(--mantine-color-green-2))'}>
                                 {group.gap > 0 ? `+${group.gap}` : group.gap}
-                              </Text>
-                            </Table.Td>
-                            <Table.Td ta="center" bg={group.rollingGap < 0 ? `light-dark(var(--mantine-color-red-1), ${rgba(theme.colors.red[9], 0.2)})` : `light-dark(var(--mantine-color-green-1), ${rgba(theme.colors.green[9], 0.2)})`}>
-                              <Text size="sm" fw={800} c={group.rollingGap < 0 ? 'light-dark(var(--mantine-color-red-9), var(--mantine-color-red-2))' : 'light-dark(var(--mantine-color-green-9), var(--mantine-color-green-2))'}>
-                                {group.rollingGap > 0 ? `+${group.rollingGap}` : group.rollingGap}
                               </Text>
                             </Table.Td>
                           </Table.Tr>
@@ -869,11 +834,6 @@ export default function DeliveryScorecardDisplay() {
                                     {(gap * multiplier) > 0 ? `+${gap * multiplier}` : (gap * multiplier)}
                                   </Text>
                                 </Table.Td>
-                                <Table.Td ta="center" bg={part.rollingGap < 0 ? 'light-dark(red.0, #2c0e0e)' : 'light-dark(green.0, #0e2c0e)'}>
-                                  <Text size="xs" fw={700} c={part.rollingGap < 0 ? 'red.7' : 'green.7'}>
-                                    {(part.rollingGap * multiplier) > 0 ? `+${part.rollingGap * multiplier}` : (part.rollingGap * multiplier)}
-                                  </Text>
-                                </Table.Td>
                               </Table.Tr>
                             );
                           })}
@@ -922,11 +882,6 @@ export default function DeliveryScorecardDisplay() {
                       <Table.Td ta="center" bg={calculatedTotals.gap < 0 ? 'light-dark(var(--mantine-color-red-0), rgba(139, 0, 0, 0.15))' : 'light-dark(var(--mantine-color-green-0), rgba(0, 100, 0, 0.15))'}>
                         <Text size="sm" fw={900} c={calculatedTotals.gap < 0 ? 'light-dark(var(--mantine-color-red-9), var(--mantine-color-red-4))' : 'light-dark(var(--mantine-color-green-9), var(--mantine-color-green-4))'}>
                           {calculatedTotals.gap > 0 ? `+${calculatedTotals.gap.toLocaleString()}` : calculatedTotals.gap.toLocaleString()}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td ta="center" bg={calculatedTotals.rollingGap < 0 ? 'light-dark(var(--mantine-color-red-0), rgba(139, 0, 0, 0.15))' : 'light-dark(var(--mantine-color-green-0), rgba(0, 100, 0, 0.15))'}>
-                        <Text size="sm" fw={900} c={calculatedTotals.rollingGap < 0 ? 'light-dark(var(--mantine-color-red-9), var(--mantine-color-red-4))' : 'light-dark(var(--mantine-color-green-9), var(--mantine-color-green-4))'}>
-                          {calculatedTotals.rollingGap > 0 ? `+${calculatedTotals.rollingGap.toLocaleString()}` : calculatedTotals.rollingGap.toLocaleString()}
                         </Text>
                       </Table.Td>
                     </Table.Tr>
@@ -992,11 +947,24 @@ export default function DeliveryScorecardDisplay() {
               color="indigo" 
               radius="md"
             >
-              <Tabs.List>
-                <Tabs.Tab value="pareto" leftSection={<IconChartBar size={16} />}>Loss Pareto</Tabs.Tab>
-                <Tabs.Tab value="attainment" leftSection={<IconTarget size={16} />}>Shift Attainment</Tabs.Tab>
-                <Tabs.Tab value="part-attainment" leftSection={<IconTarget size={16} />}>Capped Attainment</Tabs.Tab>
-              </Tabs.List>
+              <Group justify="space-between" align="center" mb="xs">
+                <Tabs.List>
+                  <Tabs.Tab value="pareto" leftSection={<IconChartBar size={16} />}>Loss Pareto</Tabs.Tab>
+                  <Tabs.Tab value="attainment" leftSection={<IconTarget size={16} />}>Shift Attainment</Tabs.Tab>
+                  <Tabs.Tab value="part-attainment" leftSection={<IconTarget size={16} />}>Capped Attainment</Tabs.Tab>
+                </Tabs.List>
+                
+                <Tooltip label="Maximize Plots" withArrow position="left">
+                  <ActionIcon 
+                    variant="light" 
+                    color="indigo" 
+                    onClick={() => setMaximizeModalOpened(true)}
+                    size="lg"
+                  >
+                    <IconArrowsMaximize size={20} />
+                  </ActionIcon>
+                </Tooltip>
+              </Group>
 
               <Tabs.Panel value="pareto">
                 <DeliveryLossPareto 
@@ -1025,6 +993,68 @@ export default function DeliveryScorecardDisplay() {
               </Tabs.Panel>
             </Tabs>
           )}
+
+          <Modal
+            opened={maximizeModalOpened}
+            onClose={() => setMaximizeModalOpened(false)}
+            size="95%"
+            title={
+              <Group gap="xs">
+                <IconChartBar size={20} color={theme.colors.indigo[6]} />
+                <Text fw={700}>Detailed Production Analytics — {activeTab}</Text>
+              </Group>
+            }
+            radius="md"
+            overlayProps={{
+              backgroundOpacity: 0.55,
+              blur: 3,
+            }}
+          >
+            {activeTab && (
+              <Tabs 
+                value={activePlotTab} 
+                onChange={setActivePlotTab} 
+                variant="pills" 
+                color="indigo" 
+                radius="md"
+              >
+                <Tabs.List mb="lg">
+                  <Tabs.Tab value="pareto" leftSection={<IconChartBar size={16} />}>Loss Pareto</Tabs.Tab>
+                  <Tabs.Tab value="attainment" leftSection={<IconTarget size={16} />}>Shift Attainment</Tabs.Tab>
+                  <Tabs.Tab value="part-attainment" leftSection={<IconTarget size={16} />}>Capped Attainment</Tabs.Tab>
+                </Tabs.List>
+
+                <Tabs.Panel value="pareto">
+                  <DeliveryLossPareto 
+                    weekData={activeWeek}
+                    departmentName={activeTab}
+                    compact={false}
+                    displayUnit={displayUnit}
+                    batchSizeMap={batchSizeMap}
+                    height={750}
+                  />
+                </Tabs.Panel>
+
+                <Tabs.Panel value="attainment">
+                  <ShiftAttainmentChart 
+                    weekData={activeWeek}
+                    departmentName={activeTab}
+                    compact={false}
+                    height={750}
+                  />
+                </Tabs.Panel>
+
+                <Tabs.Panel value="part-attainment">
+                  <PartAttainmentChart 
+                    weekData={activeWeek}
+                    departmentName={activeTab}
+                    compact={false}
+                    height={750}
+                  />
+                </Tabs.Panel>
+              </Tabs>
+            )}
+          </Modal>
         </Grid.Col>
       </Grid>
     </Stack>

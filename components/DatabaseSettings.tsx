@@ -673,7 +673,6 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
               ReasonCode: r.ReasonCode || r.reasonCode || r.Reason || r.reason || ""
             }));
             await invoke("replace_reason_codes", { connectionString, records: mapped });
-            await invoke("replace_delivery_data", { connectionString, records: mapped });
           } else if (activeTab === "partRouting") {
             const mapped = rawData.map(r => {
               const find = (options: string[]) => {
@@ -693,6 +692,44 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
               };
             });
             await invoke("replace_part_routings", { connectionString, records: mapped });
+          } else if (activeTab === "deliveryData") {
+            const mapped = rawData.map(r => {
+              const find = (options: string[]) => {
+                const key = Object.keys(r).find(k => 
+                  options.includes(k.toLowerCase().replace(/[^a-z0-9]/g, ''))
+                );
+                return key ? r[key] : undefined;
+              };
+
+              return {
+                Department: String(find(['department', 'dept', 'process']) || ""),
+                WeekIdentifier: String(find(['weekidentifier', 'week', 'weekid']) || ""),
+                PartNumber: String(find(['partnumber', 'part', 'pn']) || ""),
+                DayOfWeek: String(find(['dayofweek', 'day']) || ""),
+                Target: parseInt(String(find(['target', 'goal', 'tgt']) || "0")),
+                Actual: parseInt(String(find(['actual', 'qty', 'act']) || "0")),
+                Date: String(find(['date']) || ""),
+                Shift: String(find(['shift']) || ""),
+                ReasonCode: String(find(['reasoncode', 'reason']) || "")
+              };
+            });
+            await invoke("replace_delivery_data", { connectionString, records: mapped });
+          } else if (activeTab === "routingConstraints") {
+            const mapped = rawData.map(r => {
+              const find = (options: string[]) => {
+                const key = Object.keys(r).find(k => 
+                  options.includes(k.toLowerCase().replace(/[^a-z0-9]/g, ''))
+                );
+                return key ? r[key] : undefined;
+              };
+
+              return {
+                partId: String(find(['partnumber', 'part', 'pn']) || ""),
+                machineId: String(find(['machineid', 'machine', 'mc']) || ""),
+                partsPerHour: 0.0
+              };
+            });
+            await invoke("replace_part_machine_capabilities", { connectionString, records: mapped });
           }
 
           notifications.show({
@@ -728,6 +765,9 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
     } else if (activeTab === "dailyRate") {
       headers = "PartNumber,Week,Year,Qty";
       fileName = "daily_rate_template.csv";
+    } else if (activeTab === "routingConstraints") {
+      headers = "PartNumber,MachineID";
+      fileName = "routing_constraints_template.csv";
     } else if (activeTab === "process") {
       headers = "ProcessName,MachineID";
       fileName = "manufacturing_processes_template.csv";

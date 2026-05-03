@@ -20,6 +20,8 @@ interface ShiftAttainmentChartProps {
   departmentName: string;
   /** If true, reduces padding and chart height for display in dashboard sidebars. */
   compact?: boolean;
+  /** Custom height for the chart. */
+  height?: number;
 }
 
 /**
@@ -31,9 +33,9 @@ interface ShiftAttainmentChartProps {
  * 
  * @param props - Component properties including week data and department context.
  */
-export function ShiftAttainmentChart({ weekData, departmentName, compact = false }: ShiftAttainmentChartProps) {
+export function ShiftAttainmentChart({ weekData, departmentName, compact = false, height }: ShiftAttainmentChartProps) {
   const theme = useMantineTheme();
-  const chartHeight = compact ? 450 : 350;
+  const chartHeight = height || (compact ? 450 : 350);
   const [selectedShift, setSelectedShift] = useState<string | null>(null);
   
   const { cappedShiftAttainment: attainmentData, hasData: hookHasData } = useAttainmentMath(weekData?.Parts);
@@ -98,7 +100,7 @@ export function ShiftAttainmentChart({ weekData, departmentName, compact = false
   }
 
   return (
-    <Card withBorder shadow="sm" radius="md" p={compact ? 'md' : 'lg'} mt={compact ? 'md' : 'xl'}>
+    <Card withBorder shadow="sm" radius="md" p={compact ? 'md' : 'lg'} mt={height ? 'sm' : (compact ? 'md' : 'xl')}>
       <Stack gap="lg">
         <Group justify="space-between" align="flex-start">
           <Box>

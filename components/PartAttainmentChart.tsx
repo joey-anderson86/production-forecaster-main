@@ -14,11 +14,12 @@ interface PartAttainmentChartProps {
   weekData?: WeeklyScorecard | null;
   departmentName: string;
   compact?: boolean;
+  height?: number;
 }
 
-export function PartAttainmentChart({ weekData, departmentName, compact = false }: PartAttainmentChartProps) {
+export function PartAttainmentChart({ weekData, departmentName, compact = false, height }: PartAttainmentChartProps) {
   const theme = useMantineTheme();
-  const chartHeight = compact ? 450 : 350;
+  const chartHeight = height || (compact ? 450 : 350);
   
   const { cappedPartAttainment, hasData: hookHasData } = useAttainmentMath(weekData?.Parts);
 
@@ -46,7 +47,7 @@ export function PartAttainmentChart({ weekData, departmentName, compact = false 
   }
 
   return (
-    <Card withBorder shadow="sm" radius="md" p={compact ? 'md' : 'lg'} mt={compact ? 'md' : 'xl'}>
+    <Card withBorder shadow="sm" radius="md" p={compact ? 'md' : 'lg'} mt={height ? 'sm' : (compact ? 'md' : 'xl')}>
       <Stack gap="lg">
         <Group justify="space-between" align="flex-start">
           <Box>

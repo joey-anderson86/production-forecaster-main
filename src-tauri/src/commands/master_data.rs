@@ -807,3 +807,36 @@ pub async fn delete_part_machine_capability(
         .map_err(|e| e.to_string())?;
     Ok(())
 }
+
+#[tauri::command]
+pub async fn replace_part_machine_capabilities(
+    connection_string: String,
+    records: Vec<PartMachineCapability>,
+) -> Result<(), String> {
+    let mut client = create_client(&connection_string).await?;
+    client
+        .simple_query("BEGIN TRANSACTION")
+        .await
+        .map_err(|e| e.to_string())?;
+
+    client
+        .execute("DELETE FROM dbo.PartMachineCapability", &[])
+        .await
+        .map_err(|e| e.to_string())?;
+
+    for rec in records {
+        client
+            .execute(
+                "INSERT INTO dbo.PartMachineCapability (PartNumber, MachineID) VALUES (@p1, @p2)",
+                &[&rec.part_id, &rec.machine_id],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    client
+        .simple_query("COMMIT TRANSACTION")
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}

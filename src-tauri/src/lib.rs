@@ -67,6 +67,7 @@ pub fn run() {
             commands::master_data::get_part_machine_capabilities,
             commands::master_data::add_part_machine_capability,
             commands::master_data::delete_part_machine_capability,
+            commands::master_data::replace_part_machine_capabilities,
 
             // Daily Rate Commands
             commands::rates::get_daily_rate_preview,
