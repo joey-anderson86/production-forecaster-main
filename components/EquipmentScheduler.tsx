@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult, DroppableProvided, DraggableProvided, DraggableStateSnapshot, DroppableStateSnapshot } from '@hello-pangea/dnd';
-import { Portal, Box, Paper, Text, Group, Stack, ScrollArea, Tooltip, HoverCard, Title, Badge, Select, ActionIcon, Divider, Loader, Center, Button, Popover, NumberInput, Flex, MultiSelect, Modal } from '@mantine/core';
+import { Portal, Box, Paper, Text, Group, Stack, ScrollArea, Tooltip, HoverCard, Title, Badge, Select, ActionIcon, Divider, Loader, Center, Button, Popover, NumberInput, Flex, MultiSelect, Modal, TextInput } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconAlertTriangle, IconClock, IconBox, IconBolt, IconFileExport } from '@tabler/icons-react';
 import { invoke } from '@tauri-apps/api/core';
@@ -190,7 +190,7 @@ const JobCard = ({
                   ...provided.draggableProps.style,
                   zIndex: snapshot.isDragging ? 9999 : 1,
                   // Maintain width when dragging in Portal
-                  width: snapshot.isDragging ? '240px' : 'auto',
+                  width: snapshot.isDragging ? '180px' : '100%',
                 }}
               >
 
@@ -359,6 +359,9 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
   const [currentWeekId, setCurrentWeekId] = useState(initialWeekId || getCurrentWeekId());
   const { processes, activeProcess: processName, setActiveProcess: setProcessName } = useProcessStore();
   const [backlogDay, setBacklogDay] = useState<DayOfWeek | 'All'>('Mon');
+  const [backlogPartFilter, setBacklogPartFilter] = useState("");
+  const [backlogShiftFilter, setBacklogShiftFilter] = useState<string | null>(null);
+  const [visibleDays, setVisibleDays] = useState<string[]>(DAYS_OF_WEEK);
   const [meta, setMeta] = useState<SchedulerMeta | null>(null);
   const [previewData, setPreviewData] = useState<{ jobId: string, qty: number } | null>(null);
   const [allowedDropMachines, setAllowedDropMachines] = useState<string[] | null>(null);
@@ -1179,8 +1182,8 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
         shifts,
         dateIdx: idx
       };
-    }).filter(d => d.shifts.length > 0);
-  }, [data, weekDates]);
+    }).filter(d => d.shifts.length > 0 && visibleDays.includes(d.day));
+  }, [data, weekDates, visibleDays]);
 
   return (
     <Box p={0} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -1294,6 +1297,26 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                     <Badge color="indigo" variant="light">{data.Unassigned.length}</Badge>
                   </Group>
                   <Select size="xs" data={['All', ...DAYS_OF_WEEK]} value={backlogDay} onChange={(val) => setBacklogDay(val as any)} label="Filter by planned day:" styles={{ label: { fontSize: '10px', fontWeight: 700, color: 'var(--mantine-color-gray-6)' } }} />
+                  <Group grow gap="xs">
+                    <Select 
+                      size="xs" 
+                      data={['All', 'A', 'B', 'C', 'D']} 
+                      value={backlogShiftFilter || 'All'} 
+                      onChange={(val) => setBacklogShiftFilter(val === 'All' ? null : val)} 
+                      label="Shift:" 
+                      styles={{ label: { fontSize: '10px', fontWeight: 700, color: 'var(--mantine-color-gray-6)' } }} 
+                    />
+                    <Box style={{ flexGrow: 2 }}>
+                       <TextInput 
+                        size="xs" 
+                        placeholder="Search Part..." 
+                        value={backlogPartFilter} 
+                        onChange={(e) => setBacklogPartFilter(e.target.value)} 
+                        label="Part Number:" 
+                        styles={{ label: { fontSize: '10px', fontWeight: 700, color: 'var(--mantine-color-gray-6)' } }} 
+                      />
+                    </Box>
+                  </Group>
                 </Stack>
               </Box>
               <ScrollArea style={{ flex: 1 }}>
@@ -1312,10 +1335,21 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                       {data.Unassigned
                         .map((job, originalIndex) => ({ job, originalIndex }))
                         .filter(({ job }) => {
-                          if (backlogDay === 'All') return true;
-                          const jobDateStr = job.Id.split('|')[2];
-                          const dayIdx = weekDates.findIndex(d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` === jobDateStr);
-                          return DAYS_OF_WEEK[dayIdx] === backlogDay;
+                          // Day filter
+                          let matchDay = true;
+                          if (backlogDay !== 'All') {
+                            const jobDateStr = job.Id.split('|')[2];
+                            const dayIdx = weekDates.findIndex(d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` === jobDateStr);
+                            matchDay = DAYS_OF_WEEK[dayIdx] === backlogDay;
+                          }
+                          
+                          // Part filter
+                          const matchPart = !backlogPartFilter || job.PartNumber.toLowerCase().includes(backlogPartFilter.toLowerCase());
+                          
+                          // Shift filter
+                          const matchShift = !backlogShiftFilter || job.Shift === backlogShiftFilter;
+                          
+                          return matchDay && matchPart && matchShift;
                         })
                         .map(({ job, originalIndex }, filteredIndex) => (
                           <JobCard
@@ -1342,15 +1376,26 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
             {/* RIGHT PANE: Equipment Grid */}
             <Paper withBorder style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: '12px', backgroundColor: 'white' }}>
               <Box p="sm" style={{ borderBottom: '1px solid var(--mantine-color-gray-3)', backgroundColor: 'var(--mantine-color-gray-0)' }}>
-                <MultiSelect
-                  placeholder="Filter equipment to focus scheduling..."
-                  data={multiSelectData}
-                  value={selectedEquipment}
-                  onChange={setSelectedEquipment}
-                  searchable
-                  clearable
-                  size="xs"
-                />
+                  <Group grow gap="md">
+                    <MultiSelect
+                      placeholder="Filter equipment to focus scheduling..."
+                      data={multiSelectData}
+                      value={selectedEquipment}
+                      onChange={setSelectedEquipment}
+                      searchable
+                      clearable
+                      size="xs"
+                      label={<Text size="10px" fw={700} c="dimmed">LINE FILTER</Text>}
+                    />
+                    <MultiSelect
+                      placeholder="Visible days..."
+                      data={DAYS_OF_WEEK.map(d => ({ value: d, label: d }))}
+                      value={visibleDays}
+                      onChange={setVisibleDays}
+                      size="xs"
+                      label={<Text size="10px" fw={700} c="dimmed">VISIBLE DAYS</Text>}
+                    />
+                  </Group>
               </Box>
               <ScrollArea style={{ flex: 1 }} type="always">
                 <Box style={{ minWidth: 'max-content', width: '100%' }}>
@@ -1377,13 +1422,13 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
 
                     {/* Day Headers */}
                     {daysWithShifts.map((d) => (
-                      <Box key={d.day} style={{ flexGrow: 1, flexBasis: 0, display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--mantine-color-gray-3)' }}>
+                      <Box key={d.day} style={{ flex: '1 1 0px', minWidth: '0px', width: '0px', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--mantine-color-gray-3)' }}>
                         <Box p="xs" style={{ borderBottom: '1px solid var(--mantine-color-gray-2)', textAlign: 'center', backgroundColor: 'var(--mantine-color-gray-1)' }}>
                           <Text fw={800} size="xs">{d.day.toUpperCase()} ({d.dateStr})</Text>
                         </Box>
                         <Box style={{ display: 'flex' }}>
                           {d.shifts.map(s => (
-                            <Box key={s.id} p="6px" style={{ flexGrow: 1, flexBasis: 0, textAlign: 'center', borderRight: s.id !== d.shifts[d.shifts.length - 1].id ? '1px solid var(--mantine-color-gray-1)' : 'none' }}>
+                            <Box key={s.id} p="6px" style={{ flex: '1 1 0px', minWidth: '80px', width: '0px', maxWidth: '300px', overflow: 'hidden', textAlign: 'center', borderRight: s.id !== d.shifts[d.shifts.length - 1].id ? '1px solid var(--mantine-color-gray-1)' : 'none' }}>
                               <Text fw={700} size="9px" c={s.isWorking ? "dimmed" : "red.5"}>SH {s.id} {s.isWorking ? "" : "OFF"}</Text>
                             </Box>
                           ))}
@@ -1431,7 +1476,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                                 </Box>
 
                                 {daysWithShifts.map((d) => (
-                                  <Box key={d.day} style={{ flexGrow: 1, flexBasis: 0, display: 'flex' }}>
+                                  <Box key={d.day} style={{ flex: '1 1 0px', minWidth: '0px', width: '0px', display: 'flex' }}>
                                     {d.shifts.map(s => {
                                       const cellId = `${machine.MachineID}|${d.day}|${s.id}`;
                                       const shiftData = machine.Schedule[d.day]?.[s.id];
@@ -1459,7 +1504,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                                               style={{
                                                 flexGrow: 1,
                                                 flexBasis: 0,
-                                                minWidth: '80px',
+                                                minWidth: '80px', maxWidth: '300px', overflow: 'hidden', width: '0px', flex: '1 1 0px',
                                                 borderRight: '1px solid var(--mantine-color-gray-2)',
                                                 transition: 'background-color 0.2s',
                                                 position: 'relative',

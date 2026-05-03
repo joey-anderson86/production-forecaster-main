@@ -541,13 +541,24 @@ pub async fn replace_processes(connection_string: String, records: Vec<Process>)
 #[tauri::command]
 pub async fn get_reason_codes_preview(
     connection_string: String,
+    process_filter: Option<String>,
 ) -> Result<Vec<ReasonCodeData>, String> {
     let mut client = create_client(&connection_string).await?;
+
+    let mut query_str = String::from("SELECT TOP 1000 ProcessName, ReasonCode FROM dbo.ReasonCode WHERE 1=1");
+    let mut params: Vec<Box<dyn tiberius::ToSql + Send + Sync>> = Vec::new();
+
+    if let Some(ref process) = process_filter {
+        if !process.is_empty() {
+            query_str.push_str(&format!(" AND ProcessName = @p{}", params.len() + 1));
+            params.push(Box::new(process.clone()));
+        }
+    }
+
+    let param_refs: Vec<&dyn tiberius::ToSql> = params.iter().map(|p| p.as_ref() as &dyn tiberius::ToSql).collect();
+
     let stream = client
-        .query(
-            "SELECT TOP 1000 ProcessName, ReasonCode FROM dbo.ReasonCode",
-            &[],
-        )
+        .query(query_str, &param_refs)
         .await
         .map_err(|e| e.to_string())?;
     let rows = stream

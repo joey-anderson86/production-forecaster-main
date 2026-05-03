@@ -14,6 +14,7 @@ import {
   Text,
   Badge,
   Paper,
+  ScrollArea,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { invoke } from "@tauri-apps/api/core";
@@ -168,51 +169,53 @@ export function PartMachineCapabilityManagement({ connectionString }: Props) {
         </Stack>
       </Paper>
 
-      <Table striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="sm">
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th w={200}>Part Number</Table.Th>
-            <Table.Th>Allowed Machines</Table.Th>
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {groupedCapabilities.map(([part, machines]) => (
-            <Table.Tr key={part}>
-              <Table.Td>
-                <Text fw={700} size="sm">{part}</Text>
-              </Table.Td>
-              <Table.Td>
-                <Group gap="xs">
-                  {machines.sort().map(m => (
-                     <Badge 
-                       key={m} 
-                       variant="light" 
-                       color="indigo"
-                       rightSection={
-                         <ActionIcon 
-                           size="xs" 
-                           color="indigo" 
-                           variant="transparent" 
-                           onClick={() => handleDelete(part, m)}
-                         >
-                           <IconTrash size={10} />
-                         </ActionIcon>
-                       }
-                     >
-                       {m}
-                     </Badge>
-                  ))}
-                </Group>
-              </Table.Td>
+      <ScrollArea h={400} mt="md">
+        <Table stickyHeader stickyHeaderOffset={0} striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="sm">
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th w={200}>Part Number</Table.Th>
+              <Table.Th>Allowed Machines</Table.Th>
             </Table.Tr>
-          ))}
-          {groupedCapabilities.length === 0 && (
-            <Table.Tr key="empty-state">
-              <Table.Td colSpan={2}><Text ta="center" c="dimmed">No routing constraints defined.</Text></Table.Td>
-            </Table.Tr>
-          )}
-        </Table.Tbody>
-      </Table>
+          </Table.Thead>
+          <Table.Tbody>
+            {groupedCapabilities.map(([part, machines]) => (
+              <Table.Tr key={part}>
+                <Table.Td>
+                  <Text fw={700} size="sm">{part}</Text>
+                </Table.Td>
+                <Table.Td>
+                  <Group gap="xs">
+                    {machines.sort().map(m => (
+                       <Badge 
+                         key={m} 
+                         variant="light" 
+                         color="indigo"
+                         rightSection={
+                           <ActionIcon 
+                             size="xs" 
+                             color="indigo" 
+                             variant="transparent" 
+                             onClick={() => handleDelete(part, m)}
+                           >
+                             <IconTrash size={10} />
+                           </ActionIcon>
+                         }
+                       >
+                         {m}
+                       </Badge>
+                    ))}
+                  </Group>
+                </Table.Td>
+              </Table.Tr>
+            ))}
+            {groupedCapabilities.length === 0 && (
+              <Table.Tr key="empty-state">
+                <Table.Td colSpan={2}><Text ta="center" c="dimmed">No routing constraints defined.</Text></Table.Td>
+              </Table.Tr>
+            )}
+          </Table.Tbody>
+        </Table>
+      </ScrollArea>
     </Stack>
   );
 }

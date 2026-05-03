@@ -84,9 +84,9 @@ pub async fn calculate_demand_distribution(
     struct ValidSlot {
         row_id: String,
         day: String,
-        #[allow(dead_code)]
+        //#[allow(dead_code)]
         day_idx: usize,
-        #[allow(dead_code)]
+        //#[allow(dead_code)]
         shift: String,
         capacity: f64,
         base_assignment: i32,
@@ -231,7 +231,7 @@ pub async fn get_all_week_assignments(
     week_id: String,
 ) -> Result<Vec<ScheduledTask>, String> {
     let mut client = create_client(&connection_string).await?;
-    
+
     let query = "
         SELECT 
             MachineID, 
@@ -243,15 +243,37 @@ pub async fn get_all_week_assignments(
         FROM dbo.EquipmentSchedule 
         WHERE WeekIdentifier = @p1";
 
-    let stream = client.query(query, &[&week_id]).await.map_err(|e| e.to_string())?;
-    let rows = stream.into_first_result().await.map_err(|e| e.to_string())?;
+    let stream = client
+        .query(query, &[&week_id])
+        .await
+        .map_err(|e| e.to_string())?;
+    let rows = stream
+        .into_first_result()
+        .await
+        .map_err(|e| e.to_string())?;
 
     let mut assignments = Vec::new();
     for row in rows {
-        let machine_id = row.get::<&str, _>("MachineID").unwrap_or_default().trim().to_string();
-        let date = row.get::<&str, _>("Date").unwrap_or_default().trim().to_string();
-        let shift = row.get::<&str, _>("Shift").unwrap_or_default().trim().to_string();
-        let part_id = row.get::<&str, _>("PartNumber").unwrap_or_default().trim().to_string();
+        let machine_id = row
+            .get::<&str, _>("MachineID")
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        let date = row
+            .get::<&str, _>("Date")
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        let shift = row
+            .get::<&str, _>("Shift")
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        let part_id = row
+            .get::<&str, _>("PartNumber")
+            .unwrap_or_default()
+            .trim()
+            .to_string();
         let qty = get_i32_robust(&row, "Qty").unwrap_or(0);
         let run_sequence = get_i32_robust(&row, "RunSequence");
 
@@ -312,7 +334,10 @@ pub async fn get_machine_utilization(
         .map_err(|e| e.to_string())?;
 
     let mut capacities: HashMap<String, HashMap<String, HashMap<String, f64>>> = HashMap::new();
-    println!("DEBUG: Loading capacities for {} / {}", process_name, week_id);
+    println!(
+        "DEBUG: Loading capacities for {} / {}",
+        process_name, week_id
+    );
     for row in rows {
         let m_id = row
             .get::<&str, _>("MachineID")
@@ -331,7 +356,10 @@ pub async fn get_machine_utilization(
             .trim()
             .to_string();
         let hours = get_f64_robust(&row, "HoursAvailable").unwrap_or(0.0);
-        println!("  Row: {} | {} ({}) | Shift {} | Hours={}", m_id, date_str, day_name, shift, hours);
+        println!(
+            "  Row: {} | {} ({}) | Shift {} | Hours={}",
+            m_id, date_str, day_name, shift, hours
+        );
         capacities
             .entry(m_id)
             .or_default()
@@ -339,7 +367,10 @@ pub async fn get_machine_utilization(
             .or_default()
             .insert(shift, hours);
     }
-    println!("DEBUG: Finished loading capacities. Machines found: {:?}", capacities.keys().collect::<Vec<_>>());
+    println!(
+        "DEBUG: Finished loading capacities. Machines found: {:?}",
+        capacities.keys().collect::<Vec<_>>()
+    );
 
     // 2. Load Part Info (Processing Time, Batch Size, SequenceNumber)
     let part_info_query = "
@@ -792,12 +823,18 @@ fn calculate_optimal_schedule(mut request: ScheduleRequest) -> ScheduleResponse 
 
     println!("═══ AUTO-SCHEDULE ENGINE ═══");
     println!("  Backlog items: {}", request.backlog_items.len());
-    println!("  Capabilities map keys: {:?}", capabilities_map.keys().collect::<Vec<_>>());
+    println!(
+        "  Capabilities map keys: {:?}",
+        capabilities_map.keys().collect::<Vec<_>>()
+    );
     println!("  Machine states: {} entries", machine_states_map.len());
     println!("  Available dates: {:?}", available_dates);
     for (key, state) in &machine_states_map {
         if state.total_capacity_hours > 0.0 {
-            println!("  [CAPACITY] {:?} => {:.1}h, util={:.1}%", key, state.total_capacity_hours, state.current_utilization_pct);
+            println!(
+                "  [CAPACITY] {:?} => {:.1}h, util={:.1}%",
+                key, state.total_capacity_hours, state.current_utilization_pct
+            );
         }
     }
 
@@ -827,7 +864,10 @@ fn calculate_optimal_schedule(mut request: ScheduleRequest) -> ScheduleResponse 
     // 4. Loop through sorted backlog items
     for mut item in request.backlog_items {
         let mut fully_scheduled = false;
-        println!("  ── Item: {} part={} qty={} shift={}", item.id, item.part_id, item.quantity, item.shift);
+        println!(
+            "  ── Item: {} part={} qty={} shift={}",
+            item.id, item.part_id, item.quantity, item.shift
+        );
         if let Some(eligible_caps) = capabilities_map.get(&item.part_id) {
             println!("    Found {} capabilities", eligible_caps.len());
             // Allow scheduling on any available date within the week to maximize capacity utilization
@@ -835,127 +875,134 @@ fn calculate_optimal_schedule(mut request: ScheduleRequest) -> ScheduleResponse 
             println!("    Valid dates: {:?}", valid_dates);
 
             // Try scheduling across available forward-looking dates
-                for current_date in valid_dates {
+            for current_date in valid_dates {
+                if fully_scheduled {
+                    break;
+                }
+
+                // SHIFT FLEXIBILITY: Try the requested shift first, then fall back to others
+                let mut shifts_to_try = vec![item.shift.clone()];
+                for s in &["A", "B", "C", "D"] {
+                    let s_str = s.to_string();
+                    if s_str != item.shift && !shifts_to_try.contains(&s_str) {
+                        shifts_to_try.push(s_str);
+                    }
+                }
+
+                for shift_to_check in shifts_to_try {
                     if fully_scheduled {
                         break;
                     }
 
-                    // SHIFT FLEXIBILITY: Try the requested shift first, then fall back to others
-                    let mut shifts_to_try = vec![item.shift.clone()];
-                    for s in &["A", "B", "C", "D"] {
-                        let s_str = s.to_string();
-                        if s_str != item.shift && !shifts_to_try.contains(&s_str) {
-                            shifts_to_try.push(s_str);
-                        }
-                    }
-
-                    for shift_to_check in shifts_to_try {
-                        if fully_scheduled {
-                            break;
-                        }
-
-                        // Sequence Constraint Check
-                        if let (Some(seq), Some(part_tasks)) =
-                            (item.sequence_number, assignments_by_part.get(&item.part_id))
-                        {
-                            // Find any assignment for an earlier sequence that is scheduled at or after our target slot
-                            let conflict = part_tasks.iter().any(|t| {
-                                if let Some(t_seq) = t.sequence_number {
-                                    if t_seq < seq {
-                                        // An EARLIER operation exists. It MUST be completed BEFORE this one starts.
-                                        // So we cannot schedule this one if it's NOT after that one.
-                                        !is_before(&t.date, &t.shift, current_date, &shift_to_check)
-                                    } else if t_seq > seq {
-                                        // A LATER operation exists. We MUST complete this one BEFORE that one starts.
-                                        !is_before(current_date, &shift_to_check, &t.date, &t.shift)
-                                    } else {
-                                        false
-                                    }
+                    // Sequence Constraint Check
+                    if let (Some(seq), Some(part_tasks)) =
+                        (item.sequence_number, assignments_by_part.get(&item.part_id))
+                    {
+                        // Find any assignment for an earlier sequence that is scheduled at or after our target slot
+                        let conflict = part_tasks.iter().any(|t| {
+                            if let Some(t_seq) = t.sequence_number {
+                                if t_seq < seq {
+                                    // An EARLIER operation exists. It MUST be completed BEFORE this one starts.
+                                    // So we cannot schedule this one if it's NOT after that one.
+                                    !is_before(&t.date, &t.shift, current_date, &shift_to_check)
+                                } else if t_seq > seq {
+                                    // A LATER operation exists. We MUST complete this one BEFORE that one starts.
+                                    !is_before(current_date, &shift_to_check, &t.date, &t.shift)
                                 } else {
                                     false
                                 }
-                            });
-                            if conflict {
-                                continue; // Skip this shift for this item as it violates sequencing
+                            } else {
+                                false
                             }
+                        });
+                        if conflict {
+                            continue; // Skip this shift for this item as it violates sequencing
                         }
+                    }
 
-                        for cap in eligible_caps {
-                            if cap.parts_per_hour <= 0.0 || item.quantity == 0 {
-                                continue;
-                            }
-
-                            // Look up specific Machine + Date + Shift capacity
-                            let key = (
-                                cap.machine_id.clone(),
-                                current_date.clone(),
-                                shift_to_check.clone(),
-                            );
-                            if let Some(machine) = machine_states_map.get_mut(&key) {
-                                println!("      [HIT] {:?} cap={:.1}h util={:.1}%", key, machine.total_capacity_hours, machine.current_utilization_pct);
-                        if machine.total_capacity_hours <= 0.0
-                            || machine.current_utilization_pct >= machine.max_utilization_pct
-                        {
+                    for cap in eligible_caps {
+                        if cap.parts_per_hour <= 0.0 || item.quantity == 0 {
                             continue;
                         }
 
-                        // Calculate how many hours we can still assign to this machine shift
-                        let remaining_pct =
-                            machine.max_utilization_pct - machine.current_utilization_pct;
-                        let remaining_hours =
-                            (remaining_pct / 100.0) * machine.total_capacity_hours;
+                        // Look up specific Machine + Date + Shift capacity
+                        let key = (
+                            cap.machine_id.clone(),
+                            current_date.clone(),
+                            shift_to_check.clone(),
+                        );
+                        if let Some(machine) = machine_states_map.get_mut(&key) {
+                            println!(
+                                "      [HIT] {:?} cap={:.1}h util={:.1}%",
+                                key, machine.total_capacity_hours, machine.current_utilization_pct
+                            );
+                            if machine.total_capacity_hours <= 0.0
+                                || machine.current_utilization_pct >= machine.max_utilization_pct
+                            {
+                                continue;
+                            }
 
-                        // Calculate how many parts can fit into the remaining hours
-                        let max_parts_fit = (remaining_hours * cap.parts_per_hour).floor() as u32;
-                        let parts_to_schedule = std::cmp::min(item.quantity, max_parts_fit);
+                            // Calculate how many hours we can still assign to this machine shift
+                            let remaining_pct =
+                                machine.max_utilization_pct - machine.current_utilization_pct;
+                            let remaining_hours =
+                                (remaining_pct / 100.0) * machine.total_capacity_hours;
 
-                        if parts_to_schedule > 0 {
-                            // 5. Calculate estimated hours
-                            let estimated_hours = parts_to_schedule as f64 / cap.parts_per_hour;
+                            // Calculate how many parts can fit into the remaining hours
+                            let max_parts_fit =
+                                (remaining_hours * cap.parts_per_hour).floor() as u32;
+                            let parts_to_schedule = std::cmp::min(item.quantity, max_parts_fit);
 
-                            // 6. Calculate utilization impact percentage
-                            let utilization_impact =
-                                (estimated_hours / machine.total_capacity_hours) * 100.0;
+                            if parts_to_schedule > 0 {
+                                // 5. Calculate estimated hours
+                                let estimated_hours = parts_to_schedule as f64 / cap.parts_per_hour;
 
-                            // 7. Assign part to machine shift
-                            machine.current_utilization_pct += utilization_impact;
+                                // 6. Calculate utilization impact percentage
+                                let utilization_impact =
+                                    (estimated_hours / machine.total_capacity_hours) * 100.0;
 
-                            let new_task = ScheduledTask {
-                                backlog_item_id: item.id.clone(),
-                                part_id: item.part_id.clone(),
-                                machine_id: machine.machine_id.clone(),
-                                date: machine.date.clone(),
-                                shift: machine.shift.clone(),
-                                quantity: parts_to_schedule,
-                                estimated_hours,
-                                added_utilization_pct: utilization_impact,
-                                sequence_number: item.sequence_number,
-                            };
+                                // 7. Assign part to machine shift
+                                machine.current_utilization_pct += utilization_impact;
 
-                            newly_scheduled.push(new_task.clone());
-                            // Add to temporary tracker to prevent self-conflict in later items
-                            assignments_by_part
-                                .entry(item.part_id.clone())
-                                .or_default()
-                                .push(new_task);
+                                let new_task = ScheduledTask {
+                                    backlog_item_id: item.id.clone(),
+                                    part_id: item.part_id.clone(),
+                                    machine_id: machine.machine_id.clone(),
+                                    date: machine.date.clone(),
+                                    shift: machine.shift.clone(),
+                                    quantity: parts_to_schedule,
+                                    estimated_hours,
+                                    added_utilization_pct: utilization_impact,
+                                    sequence_number: item.sequence_number,
+                                };
 
-                            item.quantity -= parts_to_schedule;
+                                newly_scheduled.push(new_task.clone());
+                                // Add to temporary tracker to prevent self-conflict in later items
+                                assignments_by_part
+                                    .entry(item.part_id.clone())
+                                    .or_default()
+                                    .push(new_task);
 
-                            if item.quantity == 0 {
-                                fully_scheduled = true;
-                                break;
+                                item.quantity -= parts_to_schedule;
+
+                                if item.quantity == 0 {
+                                    fully_scheduled = true;
+                                    break;
+                                }
                             }
                         }
                     }
                 }
             }
+        } else {
+            println!("    ✗ NO CAPABILITY FOUND for part_id={}", item.part_id);
         }
-    } else {
-        println!("    ✗ NO CAPABILITY FOUND for part_id={}", item.part_id);
-    }
 
         if !fully_scheduled && item.quantity > 0 {
-            println!("    → UNSCHEDULED: {} remaining qty={}", item.part_id, item.quantity);
+            println!(
+                "    → UNSCHEDULED: {} remaining qty={}",
+                item.part_id, item.quantity
+            );
             remaining_backlog.push(item);
         } else {
             println!("    → FULLY SCHEDULED: {}", item.part_id);

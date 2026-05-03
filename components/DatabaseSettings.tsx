@@ -127,6 +127,7 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
   
   const [routingFilterProcess, setRoutingFilterProcess] = useState<string | null>(null);
   const [routingFilterParts, setRoutingFilterParts] = useState<string[]>([]);
+  const [reasonCodeProcessFilter, setReasonCodeProcessFilter] = useState<string | null>(null);
   const [processTabFilter, setProcessTabFilter] = useState<string | null>(null);
   const [initialLocatorMappings, setInitialLocatorMappings] = useState<string>("");
   const [initialProcessInfos, setInitialProcessInfos] = useState<string>("");
@@ -267,7 +268,10 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
         setInitialProcesses(JSON.stringify(data));
         setDeletedProcesses([]);
       } else if (tab === "reasonCode") {
-        const data = await invoke<ReasonCodeData[]>("get_reason_codes_preview", { connectionString: activeConnStr });
+        const data = await invoke<ReasonCodeData[]>("get_reason_codes_preview", { 
+          connectionString: activeConnStr,
+          processFilter: reasonCodeProcessFilter
+        });
         setReasonCodes(data);
         setInitialReasonCodes(JSON.stringify(data));
         setDeletedReasonCodes([]);
@@ -287,12 +291,12 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
     } finally {
       setIsLoadingData(false);
     }
-  }, [connectionString, selectedWeek, selectedProcess, routingFilterProcess, routingFilterParts, processTabFilter]);
+  }, [connectionString, selectedWeek, selectedProcess, routingFilterProcess, routingFilterParts, reasonCodeProcessFilter, processTabFilter]);
 
   useEffect(() => {
     // This handles tab changes and filter changes.
     fetchData(activeTab);
-  }, [activeTab, selectedWeek, selectedProcess, routingFilterProcess, routingFilterParts, processTabFilter, fetchData]);
+  }, [activeTab, selectedWeek, selectedProcess, routingFilterProcess, routingFilterParts, reasonCodeProcessFilter, processTabFilter, fetchData]);
 
 
   const handleSaveSettings = async () => {
@@ -785,7 +789,7 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
     if (activeTab === "locatorMapping") {
       return (
         <ScrollArea h={400} mt="md">
-          <Table striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="xs">
+          <Table stickyHeader stickyHeaderOffset={0} striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="xs">
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>WIP Locator</Table.Th>
@@ -970,7 +974,7 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
     if (activeTab === "dailyRate") {
       return (
         <ScrollArea h={400} mt="md">
-          <Table striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="xs">
+          <Table stickyHeader stickyHeaderOffset={0} striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="xs">
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Part Number</Table.Th>
@@ -1037,7 +1041,7 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
     if (activeTab === "process") {
       return (
         <ScrollArea h={400} mt="md">
-          <Table striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="xs">
+          <Table stickyHeader stickyHeaderOffset={0} striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="xs">
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Process Name</Table.Th>
@@ -1087,7 +1091,7 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
     if (activeTab === "reasonCode") {
       return (
         <ScrollArea h={400} mt="md">
-          <Table striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="xs">
+          <Table stickyHeader stickyHeaderOffset={0} striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="xs">
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Process</Table.Th>
@@ -1137,7 +1141,7 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
     if (activeTab === "partRouting") {
       return (
         <ScrollArea h={400} mt="md">
-          <Table striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="xs">
+          <Table stickyHeader stickyHeaderOffset={0} striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="xs">
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Part Number</Table.Th>
@@ -1500,7 +1504,24 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
             </Tabs.Panel>
 
             <Tabs.Panel value="reasonCode">
-              {renderTable()}
+              <Stack gap="md" mt="md">
+                <Group grow>
+                  <Select
+                    label="Filter by Process"
+                    placeholder="All Processes"
+                    data={globalProcesses}
+                    value={reasonCodeProcessFilter}
+                    onChange={setReasonCodeProcessFilter}
+                    clearable
+                    searchable
+                    leftSection={<IconTable size={14} />}
+                  />
+                  <Box style={{ alignSelf: 'flex-end' }}>
+                     <Text size="xs" c="dimmed">Showing {reasonCodes.length} records</Text>
+                  </Box>
+                </Group>
+                {renderTable()}
+              </Stack>
             </Tabs.Panel>
 
             <Tabs.Panel value="partRouting">
