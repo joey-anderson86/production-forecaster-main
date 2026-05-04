@@ -48,6 +48,125 @@ This application is built using a modern desktop stack, bridging a highly respon
 
 ---
 
+## 📊 Database Schema
+
+Production Manager utilizes an MSSQL database for all persistent data. The schema is designed for SARGability and efficient index utilization to support real-time scheduling and analytics.
+
+### Diagram
+
+```mermaid
+erDiagram
+    ItemMaster ||--o{ PartRoutings : "has"
+    ItemMaster ||--o{ DailyRate : "has"
+    ItemMaster ||--o{ DeliveryData : "tracked in"
+    ItemMaster ||--o{ PartMachineCapability : "has"
+    ItemMaster ||--o{ PipelineData : "present in"
+    
+    Process ||--o{ ReasonCode : "has"
+    Process ||--o{ PartRoutings : "used in"
+    Process ||--o{ ProcessInfo : "configured in"
+    Process ||--o{ EquipmentSchedule : "scheduled on"
+    
+    ReasonCode ||--o{ DeliveryData : "explains loss"
+    
+    LocatorMapping ||--o{ PipelineData : "maps to"
+
+    ItemMaster {
+        string PartNumber PK
+        string PartName
+    }
+
+    PartRoutings {
+        int RoutingID PK
+        string PartNumber FK
+        string ProcessName
+        int SequenceNumber
+        float ProcessingTimeMins
+        int BatchSize
+        int TransitShifts
+    }
+
+    DailyRate {
+        string PartNumber PK
+        int Week PK
+        int Year PK
+        int Qty
+    }
+
+    Process {
+        string ProcessName PK
+        string MachineID PK
+    }
+
+    ReasonCode {
+        string ProcessName PK
+        string ReasonCode PK
+    }
+
+    ProcessInfo {
+        int ProcessInfoID PK
+        string ProcessName
+        date Date
+        string Shift
+        string MachineID
+        float HoursAvailable
+        string WeekIdentifier
+    }
+
+    DeliveryData {
+        int DeliveryDataID PK
+        date Date
+        string Department FK
+        string PartNumber FK
+        string Shift
+        string WeekIdentifier
+        int Target
+        int Actual
+        string ReasonCode FK
+        bit IsMRPGenerated
+    }
+
+    LocatorMapping {
+        string WIPLocator PK
+        string ProcessName
+        int DaysFromShipment
+    }
+
+    EquipmentSchedule {
+        int ScheduleID PK
+        string WeekIdentifier
+        string Department
+        string MachineID
+        date Date
+        string Shift
+        string PartNumber
+        int Qty
+        int RunSequence
+        bit IsMRPGenerated
+    }
+
+    PipelineData {
+        int PipelineDataID PK
+        date Date
+        string Customer
+        string PartNumber FK
+        string WIPLocator FK
+        int Qty
+    }
+```
+
+### Table Initialization
+
+To set up the required tables in your SQL Server instance:
+
+1. **Core Schema**: Execute the [database_schema.sql](file:///c:/Users/joeya/OneDrive/Desktop/production-forecaster-main/production-forecaster-main/database_schema.sql) script to establish the primary Item Master and Part Routing structures.
+2. **Dashboard & Scheduler Tables**: Execute the [schema_updates.sql](file:///c:/Users/joeya/OneDrive/Desktop/production-forecaster-main/production-forecaster-main/schema_updates.sql) script to create the necessary tables for delivery tracking, capacity management, and scheduling.
+
+> [!NOTE]
+> Ensure you have an active MSSQL database and the necessary permissions to create tables and indexes.
+
+---
+
 ## 🚀 Getting Started
 
 Follow these instructions to run the application locally in development mode.
