@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "production-forecaster",
+  "productName": "production-manager",
   "version": "0.1.0",
-  "identifier": "com.production-forecaster.app",
+  "identifier": "com.production-manager.app",
   "build": {
     "frontendDist": "../out",
     "devUrl": "http://localhost:3000",
