@@ -1,5 +1,5 @@
 {
   "name": "Production Manager",
-  "description": "Forecast production timelines by mapping Work-in-Progress (WIP) locators to days from planned shipment, using daily rate data.",
+  "description": "A comprehensive manufacturing planning and intelligence tool",
   "requestFramePermissions": []
 }
