@@ -237,5 +237,5 @@ The application operates using a dual-role access model to protect sensitive pla
 
 ## 📝 License
 
-Pending
+MIT
 
