@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { DragDropContext, Droppable, Draggable, DropResult, DroppableProvided, DraggableProvided, DraggableStateSnapshot, DroppableStateSnapshot } from '@hello-pangea/dnd';
-import { Portal, Box, Paper, Text, Group, Stack, ScrollArea, Tooltip, HoverCard, Title, Badge, Select, ActionIcon, Divider, Loader, Center, Button, Popover, NumberInput, Flex, MultiSelect, Modal, TextInput, ActionIcon as MantineActionIcon, Menu } from '@mantine/core';
+import { DragDropContext, Droppable, DropResult } from '@hello-pangea/dnd';
+import { Box, Paper, Text, Group, Stack, ScrollArea, Badge, Select, Divider, Loader, Center, Button, Flex, MultiSelect, Modal, TextInput, NumberInput } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconAlertTriangle, IconClock, IconBox, IconBolt, IconFileExport, IconFilterOff, IconArrowsSplit } from '@tabler/icons-react';
+import { IconAlertTriangle, IconBox, IconBolt, IconFilterOff, IconArrowsSplit } from '@tabler/icons-react';
 import { invoke } from '@tauri-apps/api/core';
 import { load } from '@tauri-apps/plugin-store';
 import { DAYS_OF_WEEK, DayOfWeek, isWorkingDay, getWeekDates, getCurrentWeekId } from '@/lib/dateUtils';
@@ -12,6 +12,11 @@ import { useScorecardStore } from '@/lib/scorecardStore';
 import { useProcessStore } from '@/lib/processStore';
 import { useSchedulerStore } from '@/lib/schedulerStore';
 import { JobAssignment, BacklogItem, PartMachineCapability, MachineState, JobBlock, ShiftSchedule, MachineSchedule, SchedulerState, SchedulerMeta } from '@/lib/types';
+import { produce } from 'immer';
+
+import JobCard from './scheduler/JobCard';
+import SchedulerHeader from './scheduler/SchedulerHeader';
+import { useAutoScheduler } from '@/hooks/useAutoScheduler';
 
 // --- Interfaces ---
 
@@ -48,30 +53,7 @@ const SHIFT_COLORS_BG: Record<string, string> = {
   'D': 'violet.0'
 };
 
-function copyState(state: SchedulerState): SchedulerState {
-  const newMachines: Record<string, MachineSchedule> = {};
-  for (const [mId, mInfo] of Object.entries(state.Machines)) {
-    const newSchedule: Record<string, Record<string, ShiftSchedule>> = {};
-    for (const [day, dayShifts] of Object.entries(mInfo.Schedule)) {
-      newSchedule[day] = {};
-      for (const [shift, shiftData] of Object.entries(dayShifts)) {
-        newSchedule[day][shift] = {
-          Jobs: [...shiftData.Jobs],
-          CapacityHrs: shiftData.CapacityHrs,
-          TotalAssignedHours: shiftData.TotalAssignedHours
-        };
-      }
-    }
-    newMachines[mId] = {
-      ...mInfo,
-      Schedule: newSchedule
-    };
-  }
-  return {
-    Unassigned: [...state.Unassigned],
-    Machines: newMachines
-  };
-}
+
 
 function calculateTotalHours(jobs: JobBlock[]): number {
   return jobs.reduce((sum, job) => sum + ((job.TargetQty * job.ProcessingTimeMins) / 60), 0);
@@ -94,277 +76,6 @@ function revertToOriginalPlan(job: JobBlock): JobBlock {
     Id: idParts.join('|')
   };
 }
-
-// --- Draggable Job Card Component ---
-const JobCard = ({
-  job,
-  index,
-  weekDates,
-  columnIndex,
-  shiftSettings,
-  onUpdateQty,
-  onPreviewChange,
-  onSplitJob
-}: {
-  job: JobBlock;
-  index: number;
-  weekDates: Date[];
-  columnIndex: number; // -1 for unassigned, 0-6 for Mon-Sun
-  shiftSettings: Record<string, string>;
-  onUpdateQty?: (jobId: string, newQty: number) => void;
-  onPreviewChange?: (jobId: string, newQty: number | null) => void;
-  onSplitJob?: (jobId: string) => void;
-}) => {
-  const [editQty, setEditQty] = useState<number>(job.TargetQty);
-  const [opened, setOpened] = useState(false);
-  const [contextMenuOpened, setContextMenuOpened] = useState(false);
-
-  // Update local editQty if the job's TargetQty changes externally
-  useEffect(() => {
-    setEditQty(job.TargetQty);
-  }, [job.TargetQty]);
-
-  const shiftColor = SHIFT_COLORS[job.Shift] || 'gray.5';
-  const processingHrs = ((editQty * (job.ProcessingTimeMins || 0)) / 60).toFixed(1);
-
-
-  const jobDateStr = job.Id.split('|')[2];
-  
-  const isMoved = job.OriginalDate && job.OriginalShift && (jobDateStr !== job.OriginalDate || job.Shift !== job.OriginalShift);
-  
-  let isEarly = false;
-  let isShortfall = false;
-
-  if (isMoved && job.OriginalDate && job.OriginalShift) {
-    const SHIFT_ORDER = ['A', 'B', 'C', 'D'];
-    if (jobDateStr < job.OriginalDate) {
-      isEarly = true;
-    } else if (jobDateStr > job.OriginalDate) {
-      isShortfall = true;
-    } else {
-      // Same date, check shift
-      const currIdx = SHIFT_ORDER.indexOf(job.Shift);
-      const origIdx = SHIFT_ORDER.indexOf(job.OriginalShift);
-      if (currIdx < origIdx) isEarly = true;
-      else if (currIdx > origIdx) isShortfall = true;
-    }
-  }
-
-  let moveLabel = '';
-  if (isMoved) moveLabel = `Originally: SH ${job.OriginalShift} on ${job.OriginalDate}`;
-
-  return (
-    <Draggable draggableId={job.Id} index={index}>
-      {(provided: DraggableProvided, snapshot: DraggableStateSnapshot) => {
-        const card = (
-          <HoverCard position="right" shadow="md" withinPortal openDelay={200} disabled={snapshot.isDragging}>
-            <HoverCard.Target>
-              <div
-                ref={provided.innerRef}
-                {...provided.draggableProps}
-                {...provided.dragHandleProps}
-                style={{
-                  ...provided.draggableProps.style,
-                  marginBottom: 8,
-                  zIndex: snapshot.isDragging ? 9999 : 1,
-                  cursor: 'grab',
-                }}
-              >
-                <Menu opened={contextMenuOpened} onChange={setContextMenuOpened} shadow="md" width={200} withinPortal>
-                  <Menu.Target>
-                    <Paper
-                      shadow={snapshot.isDragging ? "xl" : "xs"}
-                      p={8}
-                      withBorder
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        setContextMenuOpened(true);
-                      }}
-                      style={{
-                        backgroundColor: snapshot.isDragging 
-                          ? 'var(--mantine-color-indigo-0)' 
-                          : (isShortfall ? 'var(--mantine-color-red-0)' : 'white'),
-                        opacity: snapshot.isDragging ? 0.9 : 1,
-                        borderRadius: '6px',
-                        borderLeftWidth: '3px',
-                        borderLeftStyle: 'solid',
-                        borderLeftColor: isShortfall 
-                          ? 'var(--mantine-color-red-6)' 
-                          : `var(--mantine-color-${shiftColor.replace('.', '-')})`,
-                        // Maintain width when dragging in Portal
-                        width: snapshot.isDragging ? '220px' : '100%',
-                      }}
-                    >
-                      <Stack gap={4}>
-                        <Stack gap={2}>
-                          <Text 
-                            fw={800} 
-                            style={{ fontSize: '13px', lineHeight: 1.2 }} 
-                            truncate="end"
-                            c={isShortfall ? 'red.8' : undefined}
-                          >
-                            {job.PartNumber}
-                          </Text>
-                          
-                          <Stack gap={4} align="flex-start">
-                            {isShortfall && (
-                              <Tooltip label="Scheduled after original plan" withinPortal position="top">
-                                <Badge size="xs" color="red" variant="filled" fullWidth styles={{ root: { fontSize: '10px', padding: '0 4px', height: 18, fontWeight: 800, justifyContent: 'flex-start' } }}>
-                                  SHORTFALL
-                                </Badge>
-                              </Tooltip>
-                            )}
-                            {isEarly && (
-                              <Tooltip label="Scheduled before original plan" withinPortal position="top">
-                                <Badge size="xs" color="green" variant="filled" fullWidth styles={{ root: { fontSize: '10px', padding: '0 4px', height: 18, fontWeight: 800, justifyContent: 'flex-start' } }}>
-                                  EARLY
-                                </Badge>
-                              </Tooltip>
-                            )}
-                            {isMoved && (
-                              <Tooltip label={moveLabel} withinPortal position="top">
-                                <Badge size="xs" color="orange" variant="filled" fullWidth styles={{ root: { fontSize: '10px', padding: '0 4px', height: 18, fontWeight: 800, justifyContent: 'flex-start' } }}>
-                                  MOVED
-                                </Badge>
-                              </Tooltip>
-                            )}
-                          </Stack>
-                        </Stack>
-
-                        <Group gap={4} wrap="nowrap" align="center">
-                          <Badge
-                            size="xs"
-                            variant="filled"
-                            color={shiftColor.split('.')[0]}
-                            styles={{ root: { height: 18, padding: '0 6px', fontSize: '11px', fontWeight: 800 } }}
-                          >
-                            {job.Shift}
-                          </Badge>
-
-                          <Popover
-                            opened={opened}
-                            onChange={(o) => {
-                              setOpened(o);
-                              if (!o) {
-                                onPreviewChange?.(job.Id, null);
-                                setEditQty(job.TargetQty);
-                              }
-                            }}
-                            position="bottom"
-                            withArrow
-                            shadow="md"
-                            withinPortal
-                            trapFocus={false}
-                          >
-                            <Popover.Target>
-                              <Badge
-                                size="xs"
-                                variant="light"
-                                color="gray"
-                                onClick={(e) => { e.stopPropagation(); setOpened(o => !o); }}
-                                style={{ cursor: 'pointer', height: 18, fontSize: '11px', fontWeight: 800 }}
-                              >
-                                {job.TargetQty.toLocaleString()}
-                              </Badge>
-                            </Popover.Target>
-                            <Popover.Dropdown p={8} onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
-                              <Stack gap={8}>
-                                <Text size="10px" fw={700}>Adjust Quantity</Text>
-                                <Group gap={4} wrap="nowrap">
-                                  <Box style={{ width: 80 }}>
-                                    <NumberInput
-                                      size="xs"
-                                      value={editQty}
-                                      onChange={(val) => {
-                                        const num = Number(val);
-                                        setEditQty(num);
-                                        onPreviewChange?.(job.Id, num);
-                                      }}
-                                      min={1}
-                                      step={1}
-                                      styles={{ input: { fontSize: '10px', height: 24, minHeight: 24 } }}
-                                    />
-                                  </Box>
-                                  <Button
-                                    size="compact-xs"
-                                    variant="filled"
-                                    color="indigo"
-                                    onClick={() => {
-                                      onUpdateQty?.(job.Id, editQty);
-                                      setOpened(false);
-                                    }}
-                                  >
-                                    Update
-                                  </Button>
-                                </Group>
-                                <Text size="8px" c="dimmed">Current Card: {job.TargetQty}</Text>
-                              </Stack>
-                            </Popover.Dropdown>
-                          </Popover>
-                        </Group>
-
-                        <Group gap={3} wrap="nowrap">
-                          <IconClock size={12} color="var(--mantine-color-gray-6)" />
-                          <Text size="11px" fw={700} c="indigo.7" style={{ letterSpacing: '0.01em' }}>
-                            {processingHrs}h
-                          </Text>
-                        </Group>
-                      </Stack>
-                    </Paper>
-                  </Menu.Target>
-                  <Menu.Dropdown>
-                    <Menu.Label>Card Actions</Menu.Label>
-                    <Menu.Item 
-                      leftSection={<IconArrowsSplit size={14} />} 
-                      onClick={() => onSplitJob?.(job.Id)}
-                    >
-                      Split into Batches
-                    </Menu.Item>
-                  </Menu.Dropdown>
-                </Menu>
-              </div>
-            </HoverCard.Target>
-            <HoverCard.Dropdown p="sm">
-              <Stack gap="xs">
-                <Text size="sm" fw={700} style={{ borderBottom: '1px solid var(--mantine-color-gray-2)', paddingBottom: 4 }}>
-                  Job Details
-                </Text>
-                <Group justify="space-between" mt={4}>
-                  <Text size="xs" c="dimmed">Part Number:</Text>
-                  <Text size="xs" fw={600}>{job.PartNumber}</Text>
-                </Group>
-                <Group justify="space-between">
-                  <Text size="xs" c="dimmed">Planned Date:</Text>
-                  <Text size="xs" fw={600}>{job.OriginalDate || jobDateStr}</Text>
-                </Group>
-                <Group justify="space-between">
-                  <Text size="xs" c="dimmed">Target Qty:</Text>
-                  <Text size="xs" fw={600}>{job.TargetQty}</Text>
-                </Group>
-                <Group justify="space-between">
-                  <Text size="xs" c="dimmed">Processing Hrs:</Text>
-                  <Text size="xs" fw={600}>{processingHrs} hrs</Text>
-                </Group>
-                {job.StandardBatchSize && (
-                  <Group justify="space-between">
-                    <Text size="xs" c="dimmed">Batch Size:</Text>
-                    <Text size="xs" fw={600}>{job.StandardBatchSize}</Text>
-                  </Group>
-                )}
-              </Stack>
-            </HoverCard.Dropdown>
-          </HoverCard>
-        );
-
-        if (snapshot.isDragging) {
-          return <Portal>{card}</Portal>;
-        }
-        return card;
-      }}
-    </Draggable>
-  );
-};
-
 
 interface EquipmentSchedulerProps {
   initialState?: SchedulerState;
@@ -693,195 +404,172 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
   const handleUpdateJobQty = useCallback((jobId: string, newQty: number) => {
     setData(prev => {
       if (!prev) return null;
-      const newState = copyState(prev);
+      return produce(prev, draft => {
+        let foundJob: JobBlock | null = null;
+        let machineId: string | undefined;
+        let day: string | undefined;
+        let shift: string | undefined;
 
-      let foundJob: JobBlock | null = null;
-      let machineId: string | undefined;
-      let day: string | undefined;
-      let shift: string | undefined;
-
-      // Find job in Unassigned
-      const uIdx = newState.Unassigned.findIndex(j => j.Id === jobId);
-      if (uIdx !== -1) {
-        foundJob = newState.Unassigned[uIdx];
-      } else {
-        // Search Machines
-        outer: for (const [mId, mInfo] of Object.entries(newState.Machines)) {
-          for (const [dKey, dShifts] of Object.entries(mInfo.Schedule)) {
-            for (const [sKey, sData] of Object.entries(dShifts)) {
-              const jIdx = sData.Jobs.findIndex(j => j.Id === jobId);
-              if (jIdx !== -1) {
-                foundJob = sData.Jobs[jIdx];
-                machineId = mId;
-                day = dKey;
-                shift = sKey;
-                break outer;
+        const uIdx = draft.Unassigned.findIndex(j => j.Id === jobId);
+        if (uIdx !== -1) {
+          foundJob = draft.Unassigned[uIdx];
+        } else {
+          outer: for (const [mId, mInfo] of Object.entries(draft.Machines)) {
+            for (const [dKey, dShifts] of Object.entries(mInfo.Schedule)) {
+              for (const [sKey, sData] of Object.entries(dShifts)) {
+                const jIdx = sData.Jobs.findIndex(j => j.Id === jobId);
+                if (jIdx !== -1) {
+                  foundJob = sData.Jobs[jIdx];
+                  machineId = mId;
+                  day = dKey;
+                  shift = sKey;
+                  break outer;
+                }
               }
             }
           }
         }
-      }
 
-      if (!foundJob) return prev;
+        if (!foundJob) return;
 
-      const oldQty = foundJob.TargetQty;
+        const oldQty = foundJob.TargetQty;
 
-      // Helper to split a quantity into batch-sized cards
-      const createBatchCards = (job: JobBlock, totalQtyToSplit: number): JobBlock[] => {
-        const batchSize = job.StandardBatchSize || totalQtyToSplit;
-        const numFullBatches = Math.floor(totalQtyToSplit / batchSize);
-        const remainder = totalQtyToSplit % batchSize;
-        const batchCards: JobBlock[] = [];
-        
-        for (let i = 0; i < numFullBatches; i++) {
-          let batchCard: JobBlock = {
-            ...job,
-            Id: `${job.Id}|split|${i}|${Date.now()}`,
-            TargetQty: batchSize,
-            MaxQty: batchSize,
-            IsBatchSplit: true
-          };
-          if (machineId) batchCard = revertToOriginalPlan(batchCard);
-          batchCards.push(batchCard);
+        const createBatchCards = (job: JobBlock, totalQtyToSplit: number): JobBlock[] => {
+          const batchSize = job.StandardBatchSize || totalQtyToSplit;
+          const numFullBatches = Math.floor(totalQtyToSplit / batchSize);
+          const remainder = totalQtyToSplit % batchSize;
+          const batchCards: JobBlock[] = [];
+          
+          for (let i = 0; i < numFullBatches; i++) {
+            let batchCard: JobBlock = {
+              ...job,
+              Id: `${job.Id}|split|${i}|${Date.now()}`,
+              TargetQty: batchSize,
+              MaxQty: batchSize,
+              IsBatchSplit: true
+            };
+            if (machineId) batchCard = revertToOriginalPlan(batchCard);
+            batchCards.push(batchCard);
+          }
+          
+          if (remainder > 0) {
+            let remCard: JobBlock = {
+              ...job,
+              Id: `${job.Id}|split|rem|${Date.now()}`,
+              TargetQty: remainder,
+              MaxQty: remainder,
+              IsBatchSplit: true
+            };
+            if (machineId) remCard = revertToOriginalPlan(remCard);
+            batchCards.push(remCard);
+          }
+          
+          return batchCards;
+        };
+
+        if (newQty < oldQty) {
+          foundJob.TargetQty = newQty;
+          foundJob.IsBatchSplit = true;
+
+          if (machineId && day && shift) {
+            const sData = draft.Machines[machineId].Schedule[day][shift];
+            sData.TotalAssignedHours = calculateTotalHours(sData.Jobs);
+          }
+
+          const remainderQty = oldQty - newQty;
+          const newBatchCards = createBatchCards(foundJob, remainderQty);
+          draft.Unassigned.push(...newBatchCards);
+          draft.Unassigned = consolidateJobsList(draft.Unassigned);
+
+        } else if (newQty > oldQty) {
+          const additionalQty = newQty - oldQty;
+          const newBatchCards = createBatchCards(foundJob, additionalQty);
+          draft.Unassigned.push(...newBatchCards);
+          draft.Unassigned = consolidateJobsList(draft.Unassigned);
+          
+          if (machineId && day && shift) {
+             const sData = draft.Machines[machineId].Schedule[day][shift];
+             sData.TotalAssignedHours = calculateTotalHours(sData.Jobs);
+          }
         }
-        
-        if (remainder > 0) {
-          let remCard: JobBlock = {
-            ...job,
-            Id: `${job.Id}|split|rem|${Date.now()}`,
-            TargetQty: remainder,
-            MaxQty: remainder,
-            IsBatchSplit: true
-          };
-          if (machineId) remCard = revertToOriginalPlan(remCard);
-          batchCards.push(remCard);
-        }
-        
-        return batchCards;
-      };
-
-      if (newQty < oldQty) {
-        // Decrease -> Update current card and split remainder into batches in backlog
-        const updatedJob = { ...foundJob, TargetQty: newQty, IsBatchSplit: true };
-        if (uIdx !== -1) {
-          newState.Unassigned[uIdx] = updatedJob;
-        } else if (machineId && day && shift) {
-          const sData = newState.Machines[machineId].Schedule[day][shift];
-          const jIdx = sData.Jobs.findIndex(j => j.Id === jobId);
-          if (jIdx !== -1) sData.Jobs[jIdx] = updatedJob;
-          sData.TotalAssignedHours = calculateTotalHours(sData.Jobs);
-        }
-
-        const remainderQty = oldQty - newQty;
-        const newBatchCards = createBatchCards(foundJob, remainderQty);
-        newState.Unassigned.push(...newBatchCards);
-        newState.Unassigned = consolidateJobsList(newState.Unassigned);
-
-      } else if (newQty > oldQty) {
-        // Increase -> Keep current card as is, and split additional qty into batches in backlog
-        const additionalQty = newQty - oldQty;
-        const newBatchCards = createBatchCards(foundJob, additionalQty);
-        newState.Unassigned.push(...newBatchCards);
-        newState.Unassigned = consolidateJobsList(newState.Unassigned);
-        
-        // Ensure the machine load is still correct (no change to current card on machine)
-        if (machineId && day && shift) {
-           const sData = newState.Machines[machineId].Schedule[day][shift];
-           sData.TotalAssignedHours = calculateTotalHours(sData.Jobs);
-        }
-      }
-
-      setPreviewData(null); // Clear preview after update
-      return newState;
+      });
     });
+    setPreviewData(null);
     setDirty(true);
-  }, [setData, setDirty]);
+  }, [setData, setDirty, consolidateJobsList]);
 
   const handleSplitJob = useCallback((jobId: string, numBatches: number) => {
     setData(prev => {
       if (!prev) return null;
-      const newState = copyState(prev);
+      return produce(prev, draft => {
+        let targetJob: JobBlock | null = null;
+        let sourceList: JobBlock[] | null = null;
+        let jobIdx = -1;
+        let machineId: string | undefined;
+        let day: string | undefined;
+        let shift: string | undefined;
 
-      let targetJob: JobBlock | null = null;
-      let sourceList: JobBlock[] | null = null;
-      let jobIdx = -1;
-      let machineId: string | undefined;
-      let day: string | undefined;
-      let shift: string | undefined;
-
-      // Find job in Unassigned
-      jobIdx = newState.Unassigned.findIndex(j => j.Id === jobId);
-      if (jobIdx !== -1) {
-        targetJob = newState.Unassigned[jobIdx];
-        sourceList = newState.Unassigned;
-      } else {
-        // Search Machines
-        outer: for (const [mId, mInfo] of Object.entries(newState.Machines)) {
-          for (const [dKey, dShifts] of Object.entries(mInfo.Schedule)) {
-            for (const [sKey, sData] of Object.entries(dShifts)) {
-              const jIdx = sData.Jobs.findIndex(j => j.Id === jobId);
-              if (jIdx !== -1) {
-                targetJob = sData.Jobs[jIdx];
-                sourceList = sData.Jobs;
-                jobIdx = jIdx;
-                machineId = mId;
-                day = dKey;
-                shift = sKey;
-                break outer;
+        jobIdx = draft.Unassigned.findIndex(j => j.Id === jobId);
+        if (jobIdx !== -1) {
+          targetJob = draft.Unassigned[jobIdx];
+          sourceList = draft.Unassigned;
+        } else {
+          outer: for (const [mId, mInfo] of Object.entries(draft.Machines)) {
+            for (const [dKey, dShifts] of Object.entries(mInfo.Schedule)) {
+              for (const [sKey, sData] of Object.entries(dShifts)) {
+                const jIdx = sData.Jobs.findIndex(j => j.Id === jobId);
+                if (jIdx !== -1) {
+                  targetJob = sData.Jobs[jIdx];
+                  sourceList = sData.Jobs;
+                  jobIdx = jIdx;
+                  machineId = mId;
+                  day = dKey;
+                  shift = sKey;
+                  break outer;
+                }
               }
             }
           }
         }
-      }
 
-      if (!targetJob || !sourceList || jobIdx === -1) return prev;
+        if (!targetJob || !sourceList || jobIdx === -1) return;
 
-      const totalQty = targetJob.TargetQty;
-      const baseQty = Math.floor(totalQty / numBatches);
-      const remainder = totalQty % numBatches;
+        const totalQty = targetJob.TargetQty;
+        const baseQty = Math.floor(totalQty / numBatches);
+        const remainder = totalQty % numBatches;
 
-      if (baseQty <= 0 && totalQty > 0 && numBatches > totalQty) {
-        notifications.show({
-          title: 'Cannot Split',
-          message: `Cannot split ${totalQty} into ${numBatches} batches (base quantity would be 0).`,
-          color: 'red'
-        });
-        return prev;
-      }
+        if (baseQty <= 0 && totalQty > 0 && numBatches > totalQty) {
+          notifications.show({
+            title: 'Cannot Split',
+            message: `Cannot split ${totalQty} into ${numBatches} batches.`,
+            color: 'red'
+          });
+          return;
+        }
 
-      const newJobs: JobBlock[] = [];
-      for (let i = 0; i < numBatches; i++) {
-        let qty = baseQty;
-        if (i < remainder) qty += 1;
-        
-        if (qty <= 0) continue;
+        const newJobs: JobBlock[] = [];
+        for (let i = 0; i < numBatches; i++) {
+          let qty = baseQty;
+          if (i < remainder) qty += 1;
+          
+          if (qty <= 0) continue;
 
-        newJobs.push({
-          ...targetJob,
-          Id: `${targetJob.Id}|split|${i}|${Date.now()}`,
-          TargetQty: qty,
-          MaxQty: qty,
-          IsBatchSplit: true
-        });
-      }
+          newJobs.push({
+            ...targetJob,
+            Id: `${targetJob.Id}|split|${i}|${Date.now()}`,
+            TargetQty: qty,
+            MaxQty: qty,
+            IsBatchSplit: true
+          });
+        }
 
-      // Replace the original job with the new ones
-      sourceList.splice(jobIdx, 1, ...newJobs);
+        sourceList.splice(jobIdx, 1, ...newJobs);
 
-      // If it was on a machine, update the machine's assigned hours
-      if (machineId && day && shift) {
-        const sData = newState.Machines[machineId].Schedule[day][shift];
-        sData.TotalAssignedHours = calculateTotalHours(sData.Jobs);
-      } else {
-        // If in backlog, consolidate (though splitting usually means we want them separate, 
-        // consolidateJobsList might merge them back if they have same metadata)
-        // Actually, we WANT them separate if the user split them.
-        // consolidateJobsList merges based on PartNumber, Shift, Date, etc.
-        // We might need to adjust consolidateJobsList to NOT merge if IsBatchSplit is true?
-        // Or just don't consolidate after a manual split.
-      }
-
-      return newState;
+        if (machineId && day && shift) {
+          const sData = draft.Machines[machineId].Schedule[day][shift];
+          sData.TotalAssignedHours = calculateTotalHours(sData.Jobs);
+        }
+      });
     });
     setDirty(true);
     setSplitModalOpened(false);
@@ -919,135 +607,123 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
 
     setData(prev => {
       if (!prev) return null;
-      const newState = copyState(prev);
-
-      let movedJob: JobBlock;
-      // 1. Remove from source
-      if (source.droppableId === 'unassigned') {
-        movedJob = newState.Unassigned[source.index];
-        newState.Unassigned.splice(source.index, 1);
-      } else {
-        const [sourceMachine, sourceDay, sourceShift] = source.droppableId.split('|');
-        const shiftData = newState.Machines[sourceMachine].Schedule[sourceDay][sourceShift];
-        movedJob = shiftData.Jobs[source.index];
-        shiftData.Jobs.splice(source.index, 1);
-        shiftData.TotalAssignedHours = calculateTotalHours(shiftData.Jobs);
-      }
-
-      // 2. Add to destination
-      if (destination.droppableId === 'unassigned') {
-        // Reset badges: Revert current state to match original plan
-        movedJob = revertToOriginalPlan(movedJob);
-
-        const filteredUnassigned = newState.Unassigned
-          .map((job, idx) => ({ job, idx }))
-          .filter(({ job }) => {
-            if (backlogDay === 'All') return true;
-            const jobDateStr = job.Id.split('|')[2];
-            const dayIdx = weekDates.findIndex(d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` === jobDateStr);
-            return DAYS_OF_WEEK[dayIdx] === backlogDay;
-          });
-
-        if (filteredUnassigned.length > 0 && destination.index < filteredUnassigned.length) {
-          const targetIndex = filteredUnassigned[destination.index].idx;
-          newState.Unassigned.splice(targetIndex, 0, movedJob);
+      return produce(prev, draft => {
+        let movedJob: JobBlock;
+        if (source.droppableId === 'unassigned') {
+          movedJob = draft.Unassigned[source.index];
+          draft.Unassigned.splice(source.index, 1);
         } else {
-          // If list is empty or dropping at the end, just push or append
-          newState.Unassigned.push(movedJob);
+          const [sourceMachine, sourceDay, sourceShift] = source.droppableId.split('|');
+          const shiftData = draft.Machines[sourceMachine].Schedule[sourceDay][sourceShift];
+          movedJob = shiftData.Jobs[source.index];
+          shiftData.Jobs.splice(source.index, 1);
+          shiftData.TotalAssignedHours = calculateTotalHours(shiftData.Jobs);
         }
-        newState.Unassigned = consolidateJobsList(newState.Unassigned);
-      } else {
-        const [destMachine, destDay, destShift] = destination.droppableId.split('|');
 
-        // UPDATE METADATA IMMUTABLY
-        const dayIdx = DAYS_OF_WEEK.indexOf(destDay as DayOfWeek);
-        const d = weekDates[dayIdx];
-        const newDateStr = d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : '';
+        if (destination.droppableId === 'unassigned') {
+          movedJob = revertToOriginalPlan(movedJob);
 
-        const idParts = movedJob.Id.split('|');
-        if (idParts.length >= 3) idParts[2] = newDateStr;
-        const newId = idParts.join('|');
-
-        movedJob = {
-          ...movedJob,
-          Shift: destShift,
-          Id: newId
-        };
-
-        // Safety: ensure keys exist (should be populated by backend)
-        if (!newState.Machines[destMachine].Schedule[destDay]) {
-          newState.Machines[destMachine].Schedule[destDay] = {};
-        }
-        if (!newState.Machines[destMachine].Schedule[destDay][destShift]) {
-          newState.Machines[destMachine].Schedule[destDay][destShift] = {
-            Jobs: [],
-            CapacityHrs: newState.Machines[destMachine].DailyCapacityHrs || 0,
-            TotalAssignedHours: 0
-          };
-        }
-        const shiftData = newState.Machines[destMachine].Schedule[destDay][destShift];
-
-        // AUTO-SPLIT LOGIC
-        const availableHours = shiftData.CapacityHrs - shiftData.TotalAssignedHours;
-        const neededHours = (movedJob.TargetQty * movedJob.ProcessingTimeMins) / 60;
-
-        if (neededHours > availableHours) {
-          const qtyThatFits = Math.floor((availableHours * 60) / movedJob.ProcessingTimeMins);
-
-          if (qtyThatFits > 0) {
-            const originalQty = movedJob.TargetQty;
-            const leftoverQty = originalQty - qtyThatFits;
-
-            movedJob.TargetQty = qtyThatFits;
-            movedJob.MaxQty = qtyThatFits;
-
-            const remainderJob: JobBlock = revertToOriginalPlan({
-              ...movedJob,
-              Id: `${movedJob.Id}|split|${Date.now()}`,
-              TargetQty: leftoverQty,
-              MaxQty: leftoverQty,
-              IsBatchSplit: true,
-              IsOverflow: true,
-              OriginalDate: movedJob.OriginalDate,
-              OriginalShift: movedJob.OriginalShift
+          const filteredUnassigned = draft.Unassigned
+            .map((job, idx) => ({ job, idx }))
+            .filter(({ job }) => {
+              if (backlogDay === 'All') return true;
+              const jobDateStr = job.Id.split('|')[2];
+              const dayIdx = weekDates.findIndex(d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` === jobDateStr);
+              return DAYS_OF_WEEK[dayIdx] === backlogDay;
             });
 
-            newState.Unassigned.push(remainderJob);
-            newState.Unassigned = consolidateJobsList(newState.Unassigned);
+          if (filteredUnassigned.length > 0 && destination.index < filteredUnassigned.length) {
+            const targetIndex = filteredUnassigned[destination.index].idx;
+            draft.Unassigned.splice(targetIndex, 0, movedJob);
           } else {
-            newState.Unassigned.push(revertToOriginalPlan(movedJob));
-            newState.Unassigned = consolidateJobsList(newState.Unassigned);
-            setTimeout(() => {
-              notifications.show({ title: 'Shift Full: Card returned to backlog', message: 'Not enough capacity to place this job.', color: 'yellow' });
-            }, 0);
-            return newState;
+            draft.Unassigned.push(movedJob);
           }
-        }
-
-        // AUTO-CONSOLIDATION (MERGE)
-        // Check if a card with the exact same part number already exists in this machine/shift
-        const existingJobIdx = shiftData.Jobs.findIndex(j =>
-          j.PartNumber.trim().toLowerCase() === movedJob.PartNumber.trim().toLowerCase() &&
-          j.OriginalDate === movedJob.OriginalDate &&
-          j.OriginalShift === movedJob.OriginalShift
-        );
-
-        if (existingJobIdx !== -1) {
-          const existingJob = shiftData.Jobs[existingJobIdx];
-          shiftData.Jobs[existingJobIdx] = {
-            ...existingJob,
-            TargetQty: existingJob.TargetQty + movedJob.TargetQty,
-            MaxQty: (existingJob.MaxQty || 0) + (movedJob.MaxQty || movedJob.TargetQty)
-          };
+          draft.Unassigned = consolidateJobsList(draft.Unassigned);
         } else {
-          // Standard move: insert at the specified index
-          shiftData.Jobs.splice(destination.index, 0, movedJob);
+          const [destMachine, destDay, destShift] = destination.droppableId.split('|');
+
+          const dayIdx = DAYS_OF_WEEK.indexOf(destDay as DayOfWeek);
+          const d = weekDates[dayIdx];
+          const newDateStr = d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : '';
+
+          const idParts = movedJob.Id.split('|');
+          if (idParts.length >= 3) idParts[2] = newDateStr;
+          const newId = idParts.join('|');
+
+          movedJob = {
+            ...movedJob,
+            Shift: destShift,
+            Id: newId
+          };
+
+          if (!draft.Machines[destMachine].Schedule[destDay]) {
+            draft.Machines[destMachine].Schedule[destDay] = {};
+          }
+          if (!draft.Machines[destMachine].Schedule[destDay][destShift]) {
+            draft.Machines[destMachine].Schedule[destDay][destShift] = {
+              Jobs: [],
+              CapacityHrs: draft.Machines[destMachine].DailyCapacityHrs || 0,
+              TotalAssignedHours: 0
+            };
+          }
+          const shiftData = draft.Machines[destMachine].Schedule[destDay][destShift];
+
+          const availableHours = shiftData.CapacityHrs - shiftData.TotalAssignedHours;
+          const neededHours = (movedJob.TargetQty * movedJob.ProcessingTimeMins) / 60;
+
+          if (neededHours > availableHours) {
+            const qtyThatFits = Math.floor((availableHours * 60) / movedJob.ProcessingTimeMins);
+
+            if (qtyThatFits > 0) {
+              const originalQty = movedJob.TargetQty;
+              const leftoverQty = originalQty - qtyThatFits;
+
+              movedJob.TargetQty = qtyThatFits;
+              movedJob.MaxQty = qtyThatFits;
+
+              const remainderJob: JobBlock = revertToOriginalPlan({
+                ...movedJob,
+                Id: `${movedJob.Id}|split|${Date.now()}`,
+                TargetQty: leftoverQty,
+                MaxQty: leftoverQty,
+                IsBatchSplit: true,
+                IsOverflow: true,
+                OriginalDate: movedJob.OriginalDate,
+                OriginalShift: movedJob.OriginalShift
+              });
+
+              draft.Unassigned.push(remainderJob);
+              draft.Unassigned = consolidateJobsList(draft.Unassigned);
+            } else {
+              draft.Unassigned.push(revertToOriginalPlan(movedJob));
+              draft.Unassigned = consolidateJobsList(draft.Unassigned);
+              setTimeout(() => {
+                notifications.show({ title: 'Shift Full: Card returned to backlog', message: 'Not enough capacity to place this job.', color: 'yellow' });
+              }, 0);
+              return;
+            }
+          }
+
+          const existingJobIdx = shiftData.Jobs.findIndex(j =>
+            j.PartNumber.trim().toLowerCase() === movedJob.PartNumber.trim().toLowerCase() &&
+            j.OriginalDate === movedJob.OriginalDate &&
+            j.OriginalShift === movedJob.OriginalShift
+          );
+
+          if (existingJobIdx !== -1) {
+            const existingJob = shiftData.Jobs[existingJobIdx];
+            shiftData.Jobs[existingJobIdx] = {
+              ...existingJob,
+              TargetQty: existingJob.TargetQty + movedJob.TargetQty,
+              MaxQty: (existingJob.MaxQty || 0) + (movedJob.MaxQty || movedJob.TargetQty)
+            };
+          } else {
+            shiftData.Jobs.splice(destination.index, 0, movedJob);
+          }
+
+          shiftData.TotalAssignedHours = calculateTotalHours(shiftData.Jobs);
         }
-
-        shiftData.TotalAssignedHours = calculateTotalHours(shiftData.Jobs);
-      }
-
-      return newState;
+      });
     });
 
     setDirty(true);
@@ -1200,343 +876,50 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
     }
   }, [data, daysWithShifts, processName, currentWeekId]);
 
-  const [isAutoScheduling, setIsAutoScheduling] = useState(false);
-  const { autoScheduleOperations } = useProcessStore();
+  const { isAutoScheduling, handleAutoSchedule } = useAutoScheduler(
+    currentWeekId,
+    processName,
+    setData,
+    setDirty,
+    calculateTotalHours,
+    consolidateJobsList,
+    weekDates
+  );
 
-  const handleAutoSchedule = async () => {
-    if (!data || !meta || !meta.PartMachineMap) return;
-    setIsAutoScheduling(true);
-    try {
-      const store = await load("store.json", { autoSave: false, defaults: {} });
-      const connectionString = await store.get<string>("db_connection_string");
-      if (!connectionString) throw new Error("Connection string not found");
+  const handlePreviewChange = useCallback((id: string, qty: number | null) => {
+    if (qty === null) setPreviewData(null);
+    else setPreviewData({ jobId: id, qty });
+  }, []);
 
-      const backlogItems: any[] = data.Unassigned.map((job, idx) => ({
-        id: job.Id,
-        partId: job.PartNumber.trim().toUpperCase(),
-        quantity: job.TargetQty,
-        priority: 1000 - idx,
-        shift: job.OriginalShift || job.Shift || 'A',
-        originalDate: job.OriginalDate || job.Id.split('|')[2],
-        sequenceNumber: job.SequenceNumber
-      }));
-
-      const capabilities: PartMachineCapability[] = [];
-      data.Unassigned.forEach(job => {
-        const normalizedJobPart = job.PartNumber.trim().toUpperCase();
-        const machinesKey = Object.keys(meta?.PartMachineMap || {}).find(k => k.trim().toUpperCase() === normalizedJobPart);
-        let machines = machinesKey && meta?.PartMachineMap ? meta.PartMachineMap[machinesKey] : [];
-
-        if ((!machines || machines.length === 0) && processName && meta?.ProcessHierarchy?.[processName]) {
-            machines = meta.ProcessHierarchy[processName];
-        }
-
-        const pTime = job.ProcessingTimeMins > 0 ? job.ProcessingTimeMins : 1.0; 
-
-        machines.forEach(mId => {
-          capabilities.push({
-            partId: job.PartNumber.trim().toUpperCase(),
-            machineId: mId.trim().toUpperCase(),
-            partsPerHour: 60.0 / pTime
-          });
-        });
-      });
-
-      const machineStatesMap: Record<string, MachineState> = {};
-      console.group('🔍 Machine States Construction');
-      Object.entries(data.Machines).forEach(([mId, mInfo]) => {
-        console.log(`Machine: ${mId}, Schedule days:`, Object.keys(mInfo.Schedule));
-        Object.entries(mInfo.Schedule).forEach(([day, dayShifts]) => {
-          // get the date string for the day
-          const dayIdx = DAYS_OF_WEEK.indexOf(day as DayOfWeek);
-          const dateObj = weekDates[dayIdx];
-          const dateStr = dateObj ? `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}` : day;
-
-          Object.entries(dayShifts).forEach(([sId, sData]) => {
-            console.log(`  ${day} (${dateStr}) Shift ${sId}: CapacityHrs=${sData.CapacityHrs}, TotalAssigned=${sData.TotalAssignedHours}`);
-            // Trust the database capacity as the source of truth for shift availability.
-            // ProcessInfo already has HoursAvailable=0 for non-working shifts.
-            // Do NOT apply Panama isWorkingDay here — anchor dates can drift from the actual capacity data.
-            if (sData.CapacityHrs <= 0) return;
-
-            const key = `${mId.trim().toUpperCase()}|${dateStr}|${sId}`;
-            if (!machineStatesMap[key]) {
-              machineStatesMap[key] = {
-                machineId: mId.trim().toUpperCase(),
-                date: dateStr,
-                shift: sId,
-                totalCapacityHours: 0,
-                currentUtilizationPct: 0,
-                maxUtilizationPct: 100.0
-              };
-            }
-            machineStatesMap[key].totalCapacityHours += sData.CapacityHrs;
-            // Temporary storage of assigned hours to calculate pct later
-            (machineStatesMap[key] as any).tempAssigned = ((machineStatesMap[key] as any).tempAssigned || 0) + sData.TotalAssignedHours;
-          });
-        });
-      });
-      console.log('Final machineStatesMap keys:', Object.keys(machineStatesMap));
-      console.groupEnd();
-
-      // Finalize pct
-      const machineStates = Object.values(machineStatesMap).map(ms => ({
-        ...ms,
-        currentUtilizationPct: ms.totalCapacityHours > 0 ? ((ms as any).tempAssigned / ms.totalCapacityHours) * 100.0 : 0
-      }));
-
-      // ── DIAGNOSTIC LOGGING ──
-      console.group('🔧 Auto-Schedule Debug');
-      console.log('Backlog Items:', backlogItems.length, backlogItems);
-      console.log('Capabilities:', capabilities.length, capabilities);
-      console.log('Machine States:', machineStates.length, machineStates);
-      console.groupEnd();
-
-      // 1. Fetch all existing assignments for the week to enforce sequencing
-      const existingAssignments = await invoke('get_all_week_assignments', { 
-        connectionString, 
-        weekId: currentWeekId 
-      });
-
-      // 2. Directly invoke auto_schedule with enhanced data
-      const response = await invoke<any>('auto_schedule', { 
-        request: {
-          backlogItems,
-          capabilities,
-          machineStates,
-          existingAssignments
-        }
-      });
-
-      console.group('🔧 Auto-Schedule Response');
-      console.log('Newly Scheduled:', response.newlyScheduled?.length, response.newlyScheduled);
-      console.log('Remaining Backlog:', response.remainingBacklog?.length, response.remainingBacklog);
-      console.groupEnd();
-
-      setData(prev => {
-        if (!prev) return null;
-        const newState = copyState(prev);
-
-        newState.Unassigned = prev.Unassigned.filter(job => 
-          response.remainingBacklog.some((b: { id: string }) => b.id === job.Id)
-        );
-
-        console.log(' Newly Scheduled:', response.newlyScheduled.length, response.newlyScheduled);
-        
-        response.newlyScheduled.forEach((task: { backlogItemId: string; quantity: number; machineId: string; date: string; shift: string }) => {
-          const originalJob = prev.Unassigned.find(j => j.Id === task.backlogItemId);
-          if (!originalJob) {
-            console.warn(`Original job not found for backlogItemId: ${task.backlogItemId}`);
-            return;
-          }
-
-          const mIdNorm = task.machineId.trim().toUpperCase();
-          const mInfo = newState.Machines[mIdNorm];
-          if (!mInfo) {
-            console.error(`Machine not found in state: ${task.machineId} (Normalized: ${mIdNorm})`);
-            return;
-          }
-
-          const targetDayIdx = weekDates.findIndex(d => {
-            const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-            return ds === task.date;
-          });
-
-          if (targetDayIdx === -1) {
-            console.error(`Day not found for date: ${task.date}`);
-            return;
-          }
-
-          const dayStr = DAYS_OF_WEEK[targetDayIdx];
-          console.log(`  Assigning ${originalJob.PartNumber} to ${mIdNorm} on ${dayStr} ${task.shift}`);
-
-          // Ensure the day and shift slot exist in the UI state
-          if (!mInfo.Schedule[dayStr]) {
-            mInfo.Schedule[dayStr] = {};
-          }
-          if (!mInfo.Schedule[dayStr][task.shift]) {
-            mInfo.Schedule[dayStr][task.shift] = {
-              Jobs: [],
-              CapacityHrs: 0,
-              TotalAssignedHours: 0
-            };
-          }
-
-          const shiftData = mInfo.Schedule[dayStr][task.shift];
-
-          // Trust the Rust engine's scheduling decision — place directly without re-checking capacity
-          const jobToAdd = {
-            ...originalJob,
-            Id: `${originalJob.Id}|${task.machineId}|${dayStr}|${task.shift}|${Date.now()}`,
-            TargetQty: task.quantity,
-            Shift: task.shift
-          };
-
-          shiftData.Jobs.push(jobToAdd);
-          shiftData.TotalAssignedHours = calculateTotalHours(shiftData.Jobs);
-        });
-        
-        // Consolidate backlog to merge fragments while keeping shortfalls separate
-        newState.Unassigned = consolidateJobsList(newState.Unassigned);
-
-        // Consolidate shifts
-        Object.values(newState.Machines).forEach(m => {
-          Object.values(m.Schedule).forEach(day => {
-            Object.values(day).forEach(shift => {
-               const consolidatedJobs: any[] = [];
-               shift.Jobs.forEach(job => {
-                 const existing = consolidatedJobs.find(j => 
-                   !j.IsBatchSplit && !job.IsBatchSplit &&
-                   j.PartNumber === job.PartNumber &&
-                   j.OriginalDate === job.OriginalDate &&
-                   j.OriginalShift === job.OriginalShift
-                 );
-                 if (existing) {
-                    existing.TargetQty += job.TargetQty;
-                 } else {
-                    consolidatedJobs.push(job);
-                 }
-               });
-               shift.Jobs = consolidatedJobs;
-               shift.TotalAssignedHours = calculateTotalHours(shift.Jobs);
-            });
-          });
-        });
-
-        return newState;
-      });
-
-      notifications.show({ 
-        title: 'Auto-Scheduling Complete', 
-        message: `Successfully scheduled ${response.newlyScheduled.length} operations. ${response.remainingBacklog.length} parts remain in the backlog.`, 
-        color: 'green' 
-      });
-
-      setDirty(true);
-    } catch (e: any) {
-       notifications.show({ title: 'Auto-Scheduling Failed', message: e.toString(), color: 'red' });
-    } finally {
-      setIsAutoScheduling(false);
-    }
-  };
-
+  const handleSplitJobInit = useCallback((id: string) => {
+    setJobToSplitId(id);
+    setSplitModalOpened(true);
+  }, []);
 
   return (
     <Box p={0} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <Box mb="md">
-        <Group justify="end">
-
-          <Group gap="xl">
-            <Group gap="xs">
-              <Stack gap={0} align="flex-end">
-                <Text size="xs" fw={700} c="dimmed">TARGET WEEK</Text>
-                <Select
-                  data={meta?.ActiveWeeks || [currentWeekId]}
-                  value={currentWeekId}
-                  onChange={(val) => val && setCurrentWeekId(val)}
-                  size="xs"
-                  variant="filled"
-                  style={{ width: 140 }}
-                  styles={{ input: { fontWeight: 800 } }}
-                />
-              </Stack>
-              <Stack gap={0} align="flex-end">
-                <Text size="xs" fw={700} c="dimmed">PROCESS AREA</Text>
-                <Select
-                  data={processes}
-                  value={processName}
-                  onChange={(val) => val && setProcessName(val)}
-                  size="xs"
-                  variant="filled"
-                  style={{ width: 180 }}
-                  styles={{ input: { fontWeight: 800 } }}
-                />
-              </Stack>
-            </Group>
-
-            <Divider orientation="vertical" />
-
-            <Group gap="xs">
-              <Stack gap={0} align="flex-end">
-                <Text size="12px" fw={800} c="dimmed">LINE LOAD</Text>
-                <Group gap={6}>
-                  <Text size="lg" fw={900} c="indigo.9">{aggregateStats.totalLoad.toFixed(1)}h</Text>
-                  <Text size="xs" c="dimmed" fw={700}>/ {aggregateStats.totalCapacity.toFixed(0)}h</Text>
-                </Group>
-              </Stack>
-              <Stack gap={2} w={120}>
-                <Group justify="space-between" gap={0}>
-                  <Text size="12px" fw={800} c="indigo.7">UTILIZATION</Text>
-                  <Text size="12px" fw={800} c={aggregateStats.utilization > 100 ? 'red.7' : 'indigo.7'}>
-                    {aggregateStats.utilization.toFixed(1)}%
-                  </Text>
-                </Group>
-                <Box style={{ height: 6, borderRadius: 3, backgroundColor: 'var(--mantine-color-gray-2)', overflow: 'hidden' }}>
-                  <Box style={{
-                    height: '100%',
-                    width: `${Math.min(aggregateStats.utilization, 100)}%`,
-                    backgroundColor: aggregateStats.utilization > 100 ? 'var(--mantine-color-red-6)' : 'var(--mantine-color-indigo-6)',
-                    transition: 'width 0.3s'
-                  }} />
-                </Box>
-              </Stack>
-            </Group>
-
-            <Group gap="xs">
-              <Button
-                variant="light"
-                color="indigo"
-                size="sm"
-                onClick={handleGenerateChangeover}
-                leftSection={<IconFileExport size={16} />}
-              >
-                Generate Changeover Schedule
-              </Button>
-              <Button
-                variant="light"
-                color="blue"
-                size="sm"
-                disabled={isSubmitting || isAutoScheduling || !data?.Unassigned.length}
-                loading={isAutoScheduling}
-                onClick={handleAutoSchedule}
-                leftSection={<IconBolt size={16} />}
-              >
-                Auto-Schedule
-              </Button>
-              <Button 
-                variant="light" 
-                color="gray" 
-                size="sm" 
-                disabled={isSubmitting || isClearing || (!dirty && !hasScheduledJobs)} 
-                onClick={() => setClearModalOpened(true)}
-              >
-                Reset Schedule
-              </Button>
-              <Button variant="filled" color="indigo" size="sm" disabled={!dirty || isSubmitting} loading={isSubmitting} onClick={handleSubmit} leftSection={<IconBolt size={16} />}>Submit Schedule</Button>
-              <Button 
-                variant="outline" 
-                color="teal" 
-                size="sm" 
-                disabled={!wasSubmitted || isSubmitting} 
-                onClick={async () => {
-                   try {
-                     const store = await load("store.json", { autoSave: false, defaults: {} });
-                     const connectionString = await store.get<string>("db_connection_string");
-                     if (!connectionString) return;
-                     const data: any[] = await invoke('get_schedule_comparison', { connectionString, weekId: currentWeekId, department: processName });
-                     setComparisonData(data);
-                     setComparisonModalOpened(true);
-                   } catch (e: any) {
-                     notifications.show({ title: 'Failed to fetch comparison', message: e.toString(), color: 'red' });
-                   }
-                }}
-              >
-                Compare to Original Plan
-              </Button>
-            </Group>
-          </Group>
-        </Group>
-      </Box>
+      <SchedulerHeader 
+        currentWeekId={currentWeekId}
+        setCurrentWeekId={setCurrentWeekId}
+        processName={processName}
+        setProcessName={setProcessName}
+        processes={processes}
+        meta={meta}
+        aggregateStats={aggregateStats}
+        dataUnassignedLength={data?.Unassigned.length || 0}
+        isSubmitting={isSubmitting}
+        isAutoScheduling={isAutoScheduling}
+        isClearing={isClearing}
+        hasScheduledJobs={hasScheduledJobs}
+        dirty={dirty}
+        wasSubmitted={wasSubmitted}
+        handleGenerateChangeover={handleGenerateChangeover}
+        handleAutoSchedule={handleAutoSchedule}
+        handleSubmit={handleSubmit}
+        setClearModalOpened={setClearModalOpened}
+        setComparisonModalOpened={setComparisonModalOpened}
+        setComparisonData={setComparisonData}
+      />
 
       <DragDropContext onDragEnd={onDragEnd} onDragStart={onDragStart}>
         {loading || !data ? (
@@ -1616,14 +999,8 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                             columnIndex={-1}
                             shiftSettings={shiftSettings}
                             onUpdateQty={handleUpdateJobQty}
-                            onPreviewChange={(id, qty) => {
-                              if (qty === null) setPreviewData(null);
-                              else setPreviewData({ jobId: id, qty });
-                            }}
-                            onSplitJob={(id) => {
-                              setJobToSplitId(id);
-                              setSplitModalOpened(true);
-                            }}
+                            onPreviewChange={handlePreviewChange}
+                            onSplitJob={handleSplitJobInit}
                           />
                         ))}
                       {provided.placeholder}
@@ -1812,14 +1189,8 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                                                         columnIndex={d.dateIdx}
                                                         shiftSettings={shiftSettings}
                                                         onUpdateQty={handleUpdateJobQty}
-                                                        onPreviewChange={(id, qty) => {
-                                                          if (qty === null) setPreviewData(null);
-                                                          else setPreviewData({ jobId: id, qty });
-                                                        }}
-                                                        onSplitJob={(id) => {
-                                                          setJobToSplitId(id);
-                                                          setSplitModalOpened(true);
-                                                        }}
+                                                        onPreviewChange={handlePreviewChange}
+                            onSplitJob={handleSplitJobInit}
                                                       />
                                                     ))}
                                                     {provided.placeholder}
