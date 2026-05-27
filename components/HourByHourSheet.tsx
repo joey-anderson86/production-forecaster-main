@@ -1,90 +1,105 @@
-import { Table, Title, Text, Group, Box, Divider } from '@mantine/core';
-
-interface HourByHourSheetProps {
+interface TrackingSheetPart {
   partNumber: string;
-  machineId: string;
-  shiftTarget: number;
-  shiftHours?: number; // Default to 8
+  partName?: string;
+  target: number;
+}
+
+interface ProductionTrackingSheetProps {
+  department: string;
   date: string;
   shift: string;
+  parts: TrackingSheetPart[];
 }
 
 export function HourByHourSheet({
-  partNumber,
-  machineId,
-  shiftTarget,
-  shiftHours = 8,
+  department,
   date,
-  shift
-}: HourByHourSheetProps) {
-  // Calculate the hourly run rate
-  const hourlyTarget = Math.ceil(shiftTarget / shiftHours);
-
-  // Generate the rows for the shift
-  const rows = Array.from({ length: shiftHours }).map((_, index) => {
-    const currentHour = index + 1;
-    const cumulativeTarget = Math.min(hourlyTarget * currentHour, shiftTarget);
-
-    return (
-      <Table.Tr key={currentHour}>
-        <Table.Td>{currentHour}</Table.Td>
-        <Table.Td>{hourlyTarget}</Table.Td>
-        <Table.Td>{cumulativeTarget}</Table.Td>
-        <Table.Td>{/* Blank for Operator to write Actual */}</Table.Td>
-        <Table.Td>{/* Blank for Operator to write Cumulative Actual */}</Table.Td>
-        <Table.Td>{/* Blank for +/- Variance */}</Table.Td>
-        <Table.Td>{/* Blank for Reason Codes/Downtime Comments */}</Table.Td>
-      </Table.Tr>
-    );
-  });
+  shift,
+  parts = []
+}: ProductionTrackingSheetProps) {
+  // Ensure we have at least some rows to write on if parts list is empty,
+  // or add a few blank rows at the bottom for unplanned parts.
+  const displayParts = [...parts];
+  const blankRowsCount = Math.max(8 - displayParts.length, 3); // always provide at least 3 blank rows, up to 8 total rows minimum
+  
+  for (let i = 0; i < blankRowsCount; i++) {
+    displayParts.push({
+      partNumber: '',
+      partName: '',
+      target: 0
+    });
+  }
 
   return (
-    <Box className="print-only-sheet" p="xl" style={{ backgroundColor: 'white', color: 'black' }}>
-      <Group justify="space-between" align="flex-end" mb="md">
+    <div className="print-only-sheet" style={{ 
+      backgroundColor: 'white', 
+      color: 'black', 
+      fontFamily: 'system-ui, -apple-system, sans-serif',
+      padding: '10px 15px',
+      boxSizing: 'border-box'
+    }}>
+      {/* Compact Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
         <div>
-          <Title order={2}>Production Tracking Sheet</Title>
-          <Text c="dimmed">Hour-by-Hour Operator Log</Text>
+          <h2 style={{ fontSize: '18px', fontWeight: 800, margin: 0, color: '#000', letterSpacing: '-0.3px' }}>
+            Production Tracking Sheet
+          </h2>
+          <p style={{ fontSize: '11px', color: '#495057', margin: '2px 0 0 0' }}>Floor Supervisor Log</p>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <Text fw={700}>Date: {date}</Text>
-          <Text fw={700}>Shift: {shift}</Text>
+        <div style={{ display: 'flex', gap: '15px', fontSize: '11px', color: '#000' }}>
+          <div><strong>Date:</strong> {date}</div>
+          <div><strong>Shift:</strong> {shift}</div>
+          <div><strong>Department:</strong> {department}</div>
         </div>
-      </Group>
-      
-      <Divider mb="md" />
+      </div>
 
-      <Group justify="space-between" mb="xl">
-        <Text><strong>Part Number:</strong> {partNumber}</Text>
-        <Text><strong>Machine:</strong> {machineId}</Text>
-        <Text><strong>Total Shift Target:</strong> {shiftTarget} pcs</Text>
-        <Text><strong>Run Rate:</strong> {hourlyTarget} pcs/hr</Text>
-      </Group>
+      <hr style={{ border: '0', borderTop: '1px solid #dee2e6', marginBottom: '12px' }} />
 
-      <Table withTableBorder withColumnBorders>
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th>Hour</Table.Th>
-            <Table.Th>Hr Target</Table.Th>
-            <Table.Th>Cum. Target</Table.Th>
-            <Table.Th>Hr Actual</Table.Th>
-            <Table.Th>Cum. Actual</Table.Th>
-            <Table.Th>Variance (+/-)</Table.Th>
-            <Table.Th>Downtime Notes / Reason Codes</Table.Th>
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {rows}
-          {/* Add a totals row at the bottom */}
-           <Table.Tr style={{ fontWeight: 'bold', backgroundColor: '#f8f9fa' }}>
-            <Table.Td colSpan={2}>SHIFT TOTALS</Table.Td>
-            <Table.Td>{shiftTarget}</Table.Td>
-            <Table.Td></Table.Td>
-            <Table.Td></Table.Td>
-            <Table.Td></Table.Td>
-            <Table.Td></Table.Td>
-          </Table.Tr>
-        </Table.Tbody>
-      </Table>
-    </Box>
+      <table style={{ 
+        width: '100%', 
+        borderCollapse: 'collapse', 
+        border: '2px solid #000', 
+        color: '#000',
+        fontSize: '12px'
+      }}>
+        <thead>
+          <tr style={{ backgroundColor: '#f1f3f5', borderBottom: '2px solid #000' }}>
+            <th style={{ width: '25%', padding: '6px 8px', border: '1px solid #000', textAlign: 'left', fontWeight: 700, color: '#000' }}>Part Number / Description</th>
+            <th style={{ width: '10%', padding: '6px 8px', border: '1px solid #000', textAlign: 'center', fontWeight: 700, color: '#000' }}>Target Qty</th>
+            <th style={{ width: '12%', padding: '6px 8px', border: '1px solid #000', textAlign: 'center', fontWeight: 700, color: '#000' }}>Start of Shift Avail.</th>
+            <th style={{ width: '10%', padding: '6px 8px', border: '1px solid #000', textAlign: 'center', fontWeight: 700, color: '#000' }}>Actual Qty</th>
+            <th style={{ width: '43%', padding: '6px 8px', border: '1px solid #000', textAlign: 'left', fontWeight: 700, color: '#000' }}>Notes / Comments</th>
+          </tr>
+        </thead>
+        <tbody>
+          {displayParts.map((part, index) => (
+            <tr key={index} style={{ height: '42px', borderBottom: '1px solid #000' }}>
+              <td style={{ padding: '4px 8px', border: '1px solid #000', verticalAlign: 'middle', color: '#000' }}>
+                <div style={{ fontWeight: part.partNumber ? 700 : 400, fontSize: '12px' }}>
+                  {part.partNumber || <span style={{ color: '#adb5bd', fontStyle: 'italic', fontSize: '11px' }}>[ Write-in Part ]</span>}
+                </div>
+                {part.partName && (
+                  <div style={{ fontSize: '10px', color: '#495057', marginTop: '1px', lineHeight: '1.1' }}>
+                    {part.partName}
+                  </div>
+                )}
+              </td>
+              <td style={{ padding: '4px 8px', border: '1px solid #000', verticalAlign: 'middle', textAlign: 'center', fontWeight: 700, color: '#000' }}>
+                {part.partNumber ? part.target : ''}
+              </td>
+              <td style={{ border: '1px solid #000' }}></td>
+              <td style={{ border: '1px solid #000' }}></td>
+              <td style={{ border: '1px solid #000' }}></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* Signature and footer section */}
+      <div style={{ marginTop: '20px', fontSize: '10px', color: '#495057', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>Generated by Production Manager</div>
+        <div style={{ fontWeight: 600 }}>Supervisor Signature: ___________________________</div>
+      </div>
+    </div>
   );
 }

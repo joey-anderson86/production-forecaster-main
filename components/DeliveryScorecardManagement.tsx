@@ -22,7 +22,7 @@ import WeeklyPlanTable from './WeeklyPlanTable';
 import { notifications } from '@mantine/notifications';
 import { modals } from '@mantine/modals';
 import Papa from 'papaparse';
-import { getISODateForDay, getCurrentWeekId, generateWeekLabel, getWeekDates, formatISODate } from '@/lib/dateUtils';
+import { getISODateForDay, getCurrentWeekId, generateWeekLabel, getWeekDates, formatISODate, isWorkingDay } from '@/lib/dateUtils';
 import { useProcessStore } from '@/lib/processStore';
 import { generateSmartCopy } from '@/lib/copyUtils';
 import { useProductionDisplayUnit } from '@/hooks/useProductionDisplayUnit';
@@ -176,18 +176,51 @@ export default function DeliveryScorecardManagement() {
         const sourceWeek = store.departments[activeTab].Weeks[copySourceWeekId];
         if (!sourceWeek) throw new Error("Source week not found");
 
+        let targetProcessInfo: any[] = [];
+        if (connectionString) {
+          const { invoke } = await import('@tauri-apps/api/core');
+          targetProcessInfo = await invoke<any[]>("get_process_info", { 
+            connectionString, 
+            process: activeTab,
+            weekIdentifier: newWeekId.trim()
+          });
+        }
+
+        const getCapacityForShiftAndDay = (dayIdx: number, shift: string) => {
+          const weekDates = getWeekDates(newWeekId.trim());
+          const targetDate = weekDates[dayIdx];
+          const anchorDate = store.shiftSettings[shift];
+          const isWorking = targetDate && anchorDate ? isWorkingDay(targetDate, anchorDate) : true;
+          
+          if (!isWorking) {
+            return 0;
+          }
+
+          // If targetProcessInfo has records, use them (properly using PascalCase properties)
+          if (targetProcessInfo && targetProcessInfo.length > 0) {
+            const dateStr = formatISODate(targetDate);
+            return targetProcessInfo
+              .filter(p => p.ProcessName === activeTab && p.Date === dateStr && p.Shift === shift)
+              .reduce((sum, p) => sum + (p.HoursAvailable || 0), 0);
+          }
+
+          // Fallback: estimate capacity from the source week's processInfo (properly using PascalCase properties)
+          const dailySums: Record<string, number> = {};
+          processInfo.forEach(p => {
+            if (p.ProcessName === activeTab && p.Shift === shift && (p.HoursAvailable || 0) > 0) {
+              dailySums[p.Date] = (dailySums[p.Date] || 0) + p.HoursAvailable;
+            }
+          });
+          const values = Object.values(dailySums);
+          return values.length > 0 ? Math.max(...values) : 0;
+        };
+
         const { dbRecordsToUpsert } = await generateSmartCopy(
           sourceWeek,
           newWeekId.trim(),
           store.shiftSettings,
           activeTab,
-          (dayIdx, shift) => {
-            const weekDates = getWeekDates(newWeekId.trim());
-            const dateStr = formatISODate(weekDates[dayIdx]);
-            return processInfo
-              .filter(p => p.process === activeTab && p.date === dateStr && p.shift === shift)
-              .reduce((sum, p) => sum + (p.hoursAvailable || 0), 0);
-          },
+          getCapacityForShiftAndDay,
           partInfo
         );
 

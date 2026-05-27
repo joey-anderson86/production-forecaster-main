@@ -24,6 +24,7 @@ import {
   useMantineTheme,
   useComputedColorScheme,
   rgba,
+  Portal,
 } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { useLocalStorage } from '@mantine/hooks';
@@ -518,7 +519,7 @@ export function ShiftProductionEntryModal({
         body: { padding: '0 24px 24px 24px' },
       }}
     >
-      <Stack gap="lg" mt="sm">
+      <Stack gap="lg" mt="sm" className="no-print">
         {/* ─── Step 1: Selectors ─── */}
         <Card withBorder radius="md" p="md" bg={isDark ? 'dark.6' : 'white'}>
           <Text size="xs" fw={700} c={isDark ? 'dark.2' : 'gray.6'} tt="uppercase" mb="sm">
@@ -857,7 +858,7 @@ export function ShiftProductionEntryModal({
                 onClick={handlePrint}
                 disabled={entries.length === 0}
               >
-                Print Tracking Sheets
+                Print Tracking Sheet
               </Button>
               <Button
                 onClick={handleSubmit}
@@ -869,24 +870,26 @@ export function ShiftProductionEntryModal({
                 Submit Production Data
               </Button>
             </Group>
-            
-            {/* Render hidden tracking sheets for all entries */}
-            <Box className="print-sheets-container">
-              {entries.map((entry) => (
-                <HourByHourSheet
-                  key={entry.id}
-                  partNumber={entry.partNumber}
-                  machineId={selectedDept || 'UNSPECIFIED'}
-                  shiftTarget={entry.target}
-                  date={selectedDate ? dayjs(selectedDate).format('YYYY-MM-DD') : ''}
-                  shift={selectedShift || ''}
-                  shiftHours={8}
-                />
-              ))}
-            </Box>
           </>
         )}
       </Stack>
+
+      {planLoaded && (
+        <Portal>
+          <Box className="print-sheets-container">
+            <HourByHourSheet
+              department={selectedDept || 'UNSPECIFIED'}
+              date={selectedDate ? dayjs(selectedDate).format('YYYY-MM-DD') : ''}
+              shift={selectedShift || ''}
+              parts={entries.map((entry) => ({
+                partNumber: entry.partNumber,
+                partName: entry.partName,
+                target: entry.target,
+              }))}
+            />
+          </Box>
+        </Portal>
+      )}
     </Modal>
   );
 }

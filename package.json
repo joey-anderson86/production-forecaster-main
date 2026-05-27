@@ -1,6 +1,6 @@
 {
-  "name": "ai-studio-applet",
-  "version": "0.1.0",
+  "name": "production-manager",
+  "version": "0.1.1",
   "private": true,
   "license": "MIT",
   "scripts": {
