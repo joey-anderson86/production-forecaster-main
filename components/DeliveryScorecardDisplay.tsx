@@ -11,7 +11,7 @@ import {
   IconPlus, IconChevronDown, IconChevronRight, IconSearch, IconArrowsSort, 
   IconSortAscending, IconSortDescending, IconChartBar, IconTarget, IconRefresh,
   IconChevronsDown, IconChevronsUp, IconActivity, IconCalendar,
-  IconLayoutSidebarRight, IconLayoutBottombar, IconDatabaseX, IconArrowRight, IconArrowsMaximize
+  IconLayoutSidebarRight, IconLayoutBottombar, IconDatabaseX, IconArrowRight, IconArrowsMaximize, IconTimeline
 } from '@tabler/icons-react';
 import { useGlobalWeek } from './WeekContext';
 import { EditEntryModal } from './EditEntryModal';
@@ -19,6 +19,7 @@ import { ShiftProductionEntryModal } from './ShiftProductionEntryModal';
 import { DeliveryLossPareto } from './DeliveryLossPareto';
 import { ShiftAttainmentChart } from './ShiftAttainmentChart';
 import { PartAttainmentChart } from './PartAttainmentChart';
+import { ShiftPerformanceOverTimeChart } from './ShiftPerformanceOverTimeChart';
 import { notifications } from '@mantine/notifications';
 import { DAYS_OF_WEEK, getTodayNumeric, getWeekDates, isWorkingDay, parseISOLocal, generateWeekLabel } from '@/lib/dateUtils';
 import { useProcessStore } from '@/lib/processStore';
@@ -952,6 +953,7 @@ export default function DeliveryScorecardDisplay() {
                   <Tabs.Tab value="pareto" leftSection={<IconChartBar size={16} />}>Loss Pareto</Tabs.Tab>
                   <Tabs.Tab value="attainment" leftSection={<IconTarget size={16} />}>Shift Attainment</Tabs.Tab>
                   <Tabs.Tab value="part-attainment" leftSection={<IconTarget size={16} />}>Capped Attainment</Tabs.Tab>
+                  <Tabs.Tab value="shift-time" leftSection={<IconTimeline size={16} />}>Shift Performance Over Time</Tabs.Tab>
                 </Tabs.List>
                 
                 <Tooltip label="Maximize Plots" withArrow position="left">
@@ -991,6 +993,14 @@ export default function DeliveryScorecardDisplay() {
                   compact={isWidescreen}
                 />
               </Tabs.Panel>
+
+              <Tabs.Panel value="shift-time">
+                <ShiftPerformanceOverTimeChart 
+                  weeksData={activeDepartment.Weeks}
+                  departmentName={activeTab}
+                  compact={isWidescreen}
+                />
+              </Tabs.Panel>
             </Tabs>
           )}
 
@@ -1022,6 +1032,7 @@ export default function DeliveryScorecardDisplay() {
                   <Tabs.Tab value="pareto" leftSection={<IconChartBar size={16} />}>Loss Pareto</Tabs.Tab>
                   <Tabs.Tab value="attainment" leftSection={<IconTarget size={16} />}>Shift Attainment</Tabs.Tab>
                   <Tabs.Tab value="part-attainment" leftSection={<IconTarget size={16} />}>Capped Attainment</Tabs.Tab>
+                  <Tabs.Tab value="shift-time" leftSection={<IconTimeline size={16} />}>Shift Performance Over Time</Tabs.Tab>
                 </Tabs.List>
 
                 <Tabs.Panel value="pareto">
@@ -1047,6 +1058,15 @@ export default function DeliveryScorecardDisplay() {
                 <Tabs.Panel value="part-attainment">
                   <PartAttainmentChart 
                     weekData={activeWeek}
+                    departmentName={activeTab}
+                    compact={false}
+                    height={750}
+                  />
+                </Tabs.Panel>
+
+                <Tabs.Panel value="shift-time">
+                  <ShiftPerformanceOverTimeChart 
+                    weeksData={activeDepartment.Weeks}
                     departmentName={activeTab}
                     compact={false}
                     height={750}
