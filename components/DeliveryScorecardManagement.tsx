@@ -306,13 +306,16 @@ export default function DeliveryScorecardManagement() {
   };
 
 
-  const autoSaveTimeoutsRef = useRef<Record<string, NodeJS.Timeout>>({});
+  const pendingSavesRef = useRef<Record<string, { timeoutId: any, saveFunc: () => void }>>({});
 
-  // Cleanup effect for pending saves
+  // Cleanup and flush timeouts on unmount
   useEffect(() => {
-    const currentTimeouts = autoSaveTimeoutsRef.current;
     return () => {
-      Object.values(currentTimeouts).forEach(clearTimeout);
+      Object.values(pendingSavesRef.current).forEach(({ timeoutId, saveFunc }) => {
+        clearTimeout(timeoutId);
+        saveFunc();
+      });
+      pendingSavesRef.current = {};
     };
   }, []);
 
@@ -332,15 +335,15 @@ export default function DeliveryScorecardManagement() {
 
     // 3. Debounced Save to DB (Per-cell basis to prevent race conditions during rapid entry)
     const cellKey = `${rowId}-${day}`;
-    if (autoSaveTimeoutsRef.current[cellKey]) {
-      clearTimeout(autoSaveTimeoutsRef.current[cellKey]);
+    if (pendingSavesRef.current[cellKey]) {
+      clearTimeout(pendingSavesRef.current[cellKey].timeoutId);
     }
     
-    autoSaveTimeoutsRef.current[cellKey] = setTimeout(async () => {
+    const saveFunc = async () => {
       if (!connectionString) return;
       try {
         await store.saveRecordToDb(connectionString, activeTab, selectedWeekId, rowId, day);
-        delete autoSaveTimeoutsRef.current[cellKey];
+        delete pendingSavesRef.current[cellKey];
       } catch (err: any) {
         notifications.show({
           title: 'Auto-save Failed',
@@ -349,7 +352,10 @@ export default function DeliveryScorecardManagement() {
           autoClose: 5000
         });
       }
-    }, 750);
+    };
+
+    const timeoutId = setTimeout(saveFunc, 750);
+    pendingSavesRef.current[cellKey] = { timeoutId, saveFunc };
   };
 
   const handleBatchUpdateRecords = (updates: { rowId: string, day: DayOfWeek, field: 'Target' | 'Actual', value: number | null }[]) => {

@@ -582,12 +582,15 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
   }, [fetchMeta, meta]);
 
   useEffect(() => {
-    if (!data) {
+    // Refresh data when the tab is mounted or parameters change, 
+    // unless the user has unsaved changes (dirty).
+    if (!data || !dirty) {
       fetchUtilization();
     } else {
       setLoading(false);
     }
-  }, [fetchUtilization, data]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchUtilization]);
 
   const onDragStart = useCallback((initial: any) => {
     if (!data) return;

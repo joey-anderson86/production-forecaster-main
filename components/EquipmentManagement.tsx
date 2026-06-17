@@ -533,14 +533,16 @@ export function EquipmentManagement() {
   const [connectionString, setConnectionString] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const autoSaveTimeoutsRef = useRef<Record<string, any>>({});
+  const pendingSavesRef = useRef<Record<string, { timeoutId: any, saveFunc: () => void }>>({});
 
-  // Cleanup timeouts on unmount
+  // Cleanup and flush timeouts on unmount
   useEffect(() => {
     return () => {
-      Object.keys(autoSaveTimeoutsRef.current).forEach(key => {
-        clearTimeout(autoSaveTimeoutsRef.current[key]);
+      Object.values(pendingSavesRef.current).forEach(({ timeoutId, saveFunc }) => {
+        clearTimeout(timeoutId);
+        saveFunc();
       });
+      pendingSavesRef.current = {};
     };
   }, []);
 
@@ -667,11 +669,11 @@ export function EquipmentManagement() {
     if (!connectionString || !activeTab || !selectedWeek) return;
 
     const cellKey = `${MachineID}-${shift}-${day}`;
-    if (autoSaveTimeoutsRef.current[cellKey]) {
-      clearTimeout(autoSaveTimeoutsRef.current[cellKey]);
+    if (pendingSavesRef.current[cellKey]) {
+      clearTimeout(pendingSavesRef.current[cellKey].timeoutId);
     }
 
-    autoSaveTimeoutsRef.current[cellKey] = setTimeout(async () => {
+    const saveFunc = async () => {
       try {
         const dayIdx = DAYS_OF_WEEK.indexOf(day);
         const date = weekDates[dayIdx];
@@ -692,12 +694,15 @@ export function EquipmentManagement() {
         });
 
         console.log(`Auto-saved capacity for ${MachineID} on ${day}`);
-        delete autoSaveTimeoutsRef.current[cellKey];
+        delete pendingSavesRef.current[cellKey];
       } catch (err) {
         console.error('Auto-save failed:', err);
         setFetchError('Failed to auto-save change to database');
       }
-    }, 750);
+    };
+
+    const timeoutId = setTimeout(saveFunc, 750);
+    pendingSavesRef.current[cellKey] = { timeoutId, saveFunc };
   };
 
   const handleAddEquipment = async (MachineID: string) => {
@@ -1089,8 +1094,8 @@ export function EquipmentManagement() {
                               radius="xl"
                               w="100%"
                             />
-                            <Text size="10px" fw={700} c="dimmed">
-                              {scheduled.toFixed(1)}h / {available.toFixed(1)}h
+                            <Text size="10px" fw={700} c="dimmed" style={{ whiteSpace: 'nowrap' }}>
+                              Cap: {scheduled.toFixed(1)}h / Max: {available.toFixed(1)}h
                             </Text>
                           </Stack>
                         </HoverCard.Target>

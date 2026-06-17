@@ -884,7 +884,7 @@ export default function WeeklyPlanTable({
                               w="100%"
                             />
                             <Text size="10px" fw={700} c="dimmed" style={{ whiteSpace: 'nowrap' }}>
-                              {load.toFixed(1)}h / {metric.totalCapacity.toFixed(1)}h
+                              Load: {load.toFixed(1)}h / Cap: {metric.totalCapacity.toFixed(1)}h
                             </Text>
                           </Stack>
                         </Box>
