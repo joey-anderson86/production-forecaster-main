@@ -25,6 +25,7 @@ import { DAYS_OF_WEEK, getTodayNumeric, getWeekDates, isWorkingDay, parseISOLoca
 import { useProcessStore } from '@/lib/processStore';
 import { useProductionDisplayUnit } from '@/hooks/useProductionDisplayUnit';
 import { useAttainmentMath } from '@/lib/hooks/useAttainmentMath';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 
 
 
@@ -132,6 +133,8 @@ export default function DeliveryScorecardDisplay() {
     if (!connectionString) return;
     await store.fetchFromDb(connectionString);
   };
+
+  useAutoRefresh(handleFetchFromDb, 300000);
 
   const requestSort = (key: keyof GroupedPartScorecard) => {
     let direction: 'asc' | 'desc' = 'asc';
@@ -980,7 +983,8 @@ export default function DeliveryScorecardDisplay() {
 
               <Tabs.Panel value="attainment">
                 <ShiftAttainmentChart 
-                  weekData={activeWeek}
+                  weeksData={activeDepartment.Weeks}
+                  currentWeekId={activeWeek?.WeekId}
                   departmentName={activeTab}
                   compact={isWidescreen}
                 />
@@ -1048,7 +1052,8 @@ export default function DeliveryScorecardDisplay() {
 
                 <Tabs.Panel value="attainment">
                   <ShiftAttainmentChart 
-                    weekData={activeWeek}
+                    weeksData={activeDepartment.Weeks}
+                    currentWeekId={activeWeek?.WeekId}
                     departmentName={activeTab}
                     compact={false}
                     height={750}

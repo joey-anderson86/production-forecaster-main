@@ -26,6 +26,7 @@ import { getISODateForDay, getCurrentWeekId, generateWeekLabel, getWeekDates, fo
 import { useProcessStore } from '@/lib/processStore';
 import { generateSmartCopy } from '@/lib/copyUtils';
 import { useProductionDisplayUnit } from '@/hooks/useProductionDisplayUnit';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 
 
 
@@ -428,6 +429,8 @@ export default function DeliveryScorecardManagement() {
     await store.fetchFromDb(connectionString);
     notifications.show({ title: 'Refreshed', message: 'Data loaded from MSSQL', color: 'blue', icon: <IconRefresh size={18} /> });
   };
+
+  useAutoRefresh(handleFetchFromDb, 300000);
 
   const handleExportTemplate = () => {
     const csvData = [

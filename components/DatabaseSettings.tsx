@@ -50,6 +50,7 @@ import { getCurrentWeekId, parseISOLocal, generateWeekLabel, formatISODate } fro
 import { useProcessStore } from "@/lib/processStore";
 import { useScorecardStore } from "@/lib/scorecardStore";
 import { PartMachineCapabilityManagement } from "./PartMachineCapabilityManagement";
+import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 
 
 
@@ -300,6 +301,12 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
     setScrollTop(0); // Reset scroll on tab change to prevent out-of-bounds in virtualized tables
     fetchData(activeTab);
   }, [activeTab, selectedWeek, selectedProcess, routingFilterProcess, routingFilterParts, reasonCodeProcessFilter, processTabFilter, fetchData]);
+
+  useAutoRefresh(() => {
+    if (!hasChanges) {
+      fetchData(activeTab);
+    }
+  }, 300000);
 
 
   const handleSaveSettings = async () => {

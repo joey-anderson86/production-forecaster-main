@@ -233,6 +233,7 @@ export function ShiftPerformanceOverTimeChart({ weeksData, departmentName, compa
                 valueFormatter={(value) => `${value}%`}
                 withTooltip
                 tooltipProps={{
+                  cursor: { fill: 'var(--mantine-color-blue-0)', opacity: 0.6 },
                   content: ({ active, payload, label }) => {
                     if (active && payload && payload.length) {
                       return (

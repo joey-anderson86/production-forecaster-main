@@ -98,8 +98,8 @@ const JobCard = ({
                       }}
                       style={{
                         backgroundColor: snapshot.isDragging 
-                          ? 'var(--mantine-color-indigo-0)' 
-                          : (isShortfall ? 'var(--mantine-color-red-0)' : 'white'),
+                          ? 'light-dark(var(--mantine-color-indigo-0), var(--mantine-color-indigo-9))' 
+                          : (isShortfall ? 'light-dark(var(--mantine-color-red-0), rgba(224, 49, 49, 0.2))' : 'light-dark(white, var(--mantine-color-dark-6))'),
                         opacity: snapshot.isDragging ? 0.9 : 1,
                         borderRadius: '6px',
                         borderLeftWidth: '3px',

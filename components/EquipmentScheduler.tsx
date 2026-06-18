@@ -17,6 +17,7 @@ import { produce } from 'immer';
 import JobCard from './scheduler/JobCard';
 import SchedulerHeader from './scheduler/SchedulerHeader';
 import { useAutoScheduler } from '@/hooks/useAutoScheduler';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 
 // --- Interfaces ---
 
@@ -592,6 +593,12 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchUtilization]);
 
+  useAutoRefresh(() => {
+    if (!dirty) {
+      fetchUtilization();
+    }
+  }, 300000);
+
   const onDragStart = useCallback((initial: any) => {
     if (!data) return;
     const partNumber = findJobPartNumber(initial.draggableId, data);
@@ -932,13 +939,13 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
             
             {/* LEFT PANE: Backlog */}
             <Paper withBorder w={350} style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: '12px' }}>
-              <Box p="md" style={{ borderBottom: '2px solid var(--mantine-color-gray-3)', backgroundColor: 'var(--mantine-color-gray-0)' }}>
+              <Box p="md" style={{ borderBottom: '2px solid var(--mantine-color-gray-3)', backgroundColor: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))' }}>
                 <Stack gap="xs">
                   <Group justify="space-between">
                     <Group gap={8}><IconBox size={20} color="var(--mantine-color-indigo-6)" /><Text fw={800} size="sm">Backlog</Text></Group>
                     <Badge color="indigo" variant="light">{data.Unassigned.length}</Badge>
                   </Group>
-                  <Select size="xs" data={['All', ...DAYS_OF_WEEK]} value={backlogDay} onChange={(val) => setBacklogDay(val as any)} label="Filter by planned day:" styles={{ label: { fontSize: '12px', fontWeight: 700, color: 'var(--mantine-color-gray-6)' } }} />
+                  <Select size="xs" data={['All', ...DAYS_OF_WEEK]} value={backlogDay} onChange={(val) => setBacklogDay(val as any)} label="Filter by planned day:" styles={{ label: { fontSize: '12px', fontWeight: 700, color: 'var(--mantine-color-dimmed)' } }} />
                   <Group grow gap="xs">
                     <Select 
                       size="xs" 
@@ -946,7 +953,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                       value={backlogShiftFilter || 'All'} 
                       onChange={(val) => setBacklogShiftFilter(val === 'All' ? null : val)} 
                       label="Shift:" 
-                      styles={{ label: { fontSize: '12px', fontWeight: 700, color: 'var(--mantine-color-gray-6)' } }} 
+                      styles={{ label: { fontSize: '12px', fontWeight: 700, color: 'var(--mantine-color-dimmed)' } }} 
                     />
                     <Box style={{ flexGrow: 2 }}>
                        <TextInput 
@@ -955,7 +962,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                         value={backlogPartFilter} 
                         onChange={(e) => setBacklogPartFilter(e.target.value)} 
                         label="Part Number:" 
-                        styles={{ label: { fontSize: '12px', fontWeight: 700, color: 'var(--mantine-color-gray-6)' } }} 
+                        styles={{ label: { fontSize: '12px', fontWeight: 700, color: 'var(--mantine-color-dimmed)' } }} 
                       />
                     </Box>
                   </Group>
@@ -970,7 +977,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                       p="md"
                       style={{
                         minHeight: '100%',
-                        backgroundColor: snapshot.isDraggingOver ? 'var(--mantine-color-indigo-0)' : 'white',
+                        backgroundColor: snapshot.isDraggingOver ? 'light-dark(var(--mantine-color-indigo-0), var(--mantine-color-indigo-9))' : 'light-dark(white, var(--mantine-color-dark-7))',
                         transition: 'background-color 0.2s ease'
                       }}
                     >
@@ -1014,8 +1021,8 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
             </Paper>
 
             {/* RIGHT PANE: Equipment Grid */}
-            <Paper withBorder style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: '12px', backgroundColor: 'white' }}>
-              <Box p="sm" style={{ borderBottom: '1px solid var(--mantine-color-gray-3)', backgroundColor: 'var(--mantine-color-gray-0)' }}>
+            <Paper withBorder style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: '12px', backgroundColor: 'light-dark(white, var(--mantine-color-dark-7))' }}>
+              <Box p="sm" style={{ borderBottom: '1px solid var(--mantine-color-gray-3)', backgroundColor: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))' }}>
                   <Stack gap="xs">
                     <Group grow gap="md">
                       <MultiSelect
@@ -1058,7 +1065,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                     position: 'sticky',
                     top: 0,
                     zIndex: 100,
-                    backgroundColor: 'var(--mantine-color-gray-0)',
+                    backgroundColor: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))',
                     borderBottom: '2px solid var(--mantine-color-gray-3)'
                   }}>
                     {/* Machine Column Header */}
@@ -1070,13 +1077,13 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                       position: 'sticky',
                       left: 0,
                       zIndex: 110,
-                      backgroundColor: 'var(--mantine-color-gray-0)'
+                      backgroundColor: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))'
                     }}><Text fw={700} c="dimmed" size="xs">MACHINE</Text></Box>
 
                     {/* Day Headers */}
                     {daysWithShifts.map((d) => (
                       <Box key={d.day} style={{ flex: '1 1 0px', minWidth: '0px', width: '0px', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--mantine-color-gray-3)' }}>
-                        <Box p="xs" style={{ borderBottom: '1px solid var(--mantine-color-gray-2)', textAlign: 'center', backgroundColor: 'var(--mantine-color-gray-1)' }}>
+                        <Box p="xs" style={{ borderBottom: '1px solid var(--mantine-color-gray-2)', textAlign: 'center', backgroundColor: 'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6))' }}>
                           <Text fw={800} size="xs">{d.day.toUpperCase()} ({d.dateStr})</Text>
                         </Box>
                         <Box style={{ display: 'flex' }}>
@@ -1099,7 +1106,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                       return (
                         <Box key={pName}>
                           <Box px="md" py="xs" style={{
-                            backgroundColor: 'var(--mantine-color-indigo-0)',
+                            backgroundColor: 'light-dark(var(--mantine-color-indigo-0), var(--mantine-color-dark-5))',
                             borderBottom: '1px solid var(--mantine-color-indigo-2)',
                             position: 'sticky',
                             left: 0,
@@ -1117,7 +1124,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                                   width: '140px',
                                   flexShrink: 0,
                                   borderRight: '2px solid var(--mantine-color-gray-3)',
-                                  backgroundColor: 'white',
+                                  backgroundColor: 'light-dark(white, var(--mantine-color-dark-7))',
                                   position: 'sticky',
                                   left: 0,
                                   zIndex: 10
@@ -1162,8 +1169,8 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                                                 transition: 'background-color 0.2s',
                                                 position: 'relative',
                                                 backgroundColor: !s.isWorking || (shiftData && shiftData.CapacityHrs === 0)
-                                                  ? 'var(--mantine-color-gray-1)'
-                                                  : snapshot.isDraggingOver ? 'var(--mantine-color-indigo-0)' : 'white',
+                                                  ? 'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6))'
+                                                  : snapshot.isDraggingOver ? 'light-dark(var(--mantine-color-indigo-0), var(--mantine-color-indigo-9))' : 'light-dark(white, var(--mantine-color-dark-7))',
                                                 backgroundImage: !s.isWorking || (shiftData && shiftData.CapacityHrs === 0)
                                                   ? 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(0,0,0,0.02) 10px, rgba(0,0,0,0.02) 20px)'
                                                   : undefined
@@ -1171,7 +1178,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                                             >
                                               {s.isWorking && (!shiftData || shiftData.CapacityHrs > 0) ? (
                                                 <>
-                                                  <Box p="6px" style={{ borderBottom: '1px solid var(--mantine-color-gray-1)', backgroundColor: isOver ? 'var(--mantine-color-red-0)' : 'transparent' }}>
+                                                  <Box p="6px" style={{ borderBottom: '1px solid var(--mantine-color-gray-1)', backgroundColor: isOver ? 'light-dark(var(--mantine-color-red-0), rgba(224, 49, 49, 0.2))' : 'transparent' }}>
                                                     <Group justify="space-between" gap={0} wrap="nowrap">
                                                       <Text size="11px" fw={800} c={isOver ? 'red.7' : (effectiveHours ? 'dark' : 'dimmed')}>
                                                         {effectiveHours.toFixed(1)}h
@@ -1280,8 +1287,8 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
             <Box style={{ minWidth: 'max-content' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                 <thead>
-                  <tr style={{ backgroundColor: 'var(--mantine-color-gray-0)' }}>
-                    <th style={{ padding: '10px', textAlign: 'left', border: '1px solid var(--mantine-color-gray-3)', position: 'sticky', left: 0, zIndex: 2, backgroundColor: 'var(--mantine-color-gray-0)' }}>Part Number</th>
+                  <tr style={{ backgroundColor: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))' }}>
+                    <th style={{ padding: '10px', textAlign: 'left', border: '1px solid var(--mantine-color-gray-3)', position: 'sticky', left: 0, zIndex: 2, backgroundColor: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))' }}>Part Number</th>
                     {Array.from(new Set(comparisonData.map(d => d.Date))).sort().map(date => (
                       <th key={date} style={{ padding: '10px', textAlign: 'center', border: '1px solid var(--mantine-color-gray-3)' }}>
                         {new Date(date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
@@ -1298,7 +1305,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                     
                     return (
                       <tr key={part}>
-                        <td style={{ padding: '8px', border: '1px solid var(--mantine-color-gray-3)', fontWeight: 700, position: 'sticky', left: 0, zIndex: 1, backgroundColor: 'white' }}>{part}</td>
+                        <td style={{ padding: '8px', border: '1px solid var(--mantine-color-gray-3)', fontWeight: 700, position: 'sticky', left: 0, zIndex: 1, backgroundColor: 'light-dark(white, var(--mantine-color-dark-7))' }}>{part}</td>
                         {dates.map(date => {
                           const entry = partData.find(d => d.Date === date);
                           const variance = entry ? entry.Variance : 0;
@@ -1309,7 +1316,7 @@ export default function EquipmentScheduler({ initialState, initialWeekId, initia
                             </td>
                           );
                         })}
-                        <td style={{ padding: '8px', border: '1px solid var(--mantine-color-gray-3)', textAlign: 'center', fontWeight: 800, backgroundColor: 'var(--mantine-color-gray-0)' }}>
+                        <td style={{ padding: '8px', border: '1px solid var(--mantine-color-gray-3)', textAlign: 'center', fontWeight: 800, backgroundColor: 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))' }}>
                           {rowTotalVar === 0 ? '-' : rowTotalVar.toLocaleString()}
                         </td>
                       </tr>

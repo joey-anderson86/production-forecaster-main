@@ -59,6 +59,7 @@ import { useProcessStore } from '@/lib/processStore';
 import { invoke } from '@tauri-apps/api/core';
 import { load } from '@tauri-apps/plugin-store';
 import { useAvailableMachines } from '@/hooks/useAvailableMachines';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 
 // --- TypeScript Interfaces ---
 
@@ -626,6 +627,9 @@ export function EquipmentManagement() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Auto-refresh every 5 minutes
+  useAutoRefresh(fetchData, 300000);
 
   const toggleMachine = (id: string) => {
     const next = new Set(expandedMachines);
