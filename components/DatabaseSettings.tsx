@@ -24,6 +24,7 @@ import {
   Divider,
   MultiSelect,
   Autocomplete,
+  Switch,
 } from "@mantine/core";
 import { DatePickerInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
@@ -110,6 +111,8 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
   const [connectionString, setConnectionString] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
+  const [autoRefreshIntervalMins, setAutoRefreshIntervalMins] = useState(5);
 
   // Preview States
   const [activeTab, setActiveTab] = useState<string | null>("process");
@@ -202,6 +205,12 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
       try {
         const store = await load("store.json", { autoSave: false, defaults: {} });
         const val = await store.get<string>("db_connection_string");
+        
+        const arEnabled = await store.get<boolean>("auto_refresh_enabled");
+        const arInterval = await store.get<number>("auto_refresh_interval_mins");
+        if (typeof arEnabled === 'boolean') setAutoRefreshEnabled(arEnabled);
+        if (typeof arInterval === 'number') setAutoRefreshIntervalMins(arInterval);
+
         if (val) {
           setConnectionString(val);
           
@@ -314,6 +323,8 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
     try {
       const store = await load("store.json", { autoSave: false, defaults: {} });
       await store.set("db_connection_string", connectionString);
+      await store.set("auto_refresh_enabled", autoRefreshEnabled);
+      await store.set("auto_refresh_interval_mins", autoRefreshIntervalMins);
       await store.set("shiftSettings", shiftSettings);
       await store.save();
       notifications.show({
@@ -1419,6 +1430,24 @@ export function DatabaseSettings({ roleMode }: { roleMode?: 'supervisor' | 'plan
             required
             leftSection={<IconSearch size={16} />}
           />
+
+          <Group align="flex-end" gap="xl">
+            <Switch
+              label="Enable Auto-Refresh"
+              checked={autoRefreshEnabled}
+              onChange={(e) => setAutoRefreshEnabled(e.currentTarget.checked)}
+              size="md"
+              mb={8}
+            />
+            <NumberInput
+              label="Refresh Interval (minutes)"
+              value={autoRefreshIntervalMins}
+              onChange={(val) => setAutoRefreshIntervalMins(Number(val) || 5)}
+              min={1}
+              disabled={!autoRefreshEnabled}
+              style={{ flex: 1 }}
+            />
+          </Group>
 
           <Group justify="flex-end" mt="md">
             <Button variant="default" onClick={handleTestConnection} loading={isTesting} leftSection={<IconRefresh size={16} />}>

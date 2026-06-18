@@ -3,7 +3,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { 
   Card, Text, Title, Group, Badge, Stack, Box, useMantineTheme, 
-  Paper, Center, ThemeIcon, Popover, Button, ScrollArea, Checkbox, Chip, SegmentedControl
+  Paper, Center, ThemeIcon, Popover, Button, ScrollArea, Checkbox, Chip, SegmentedControl, Switch
 } from '@mantine/core';
 import { BarChart, LineChart } from '@mantine/charts';
 import { IconTimeline, IconDatabaseX, IconChevronDown, IconChartBar, IconChartLine } from '@tabler/icons-react';
@@ -42,10 +42,14 @@ export function ShiftPerformanceOverTimeChart({ weeksData, departmentName, compa
   const [selectedShifts, setSelectedShifts] = useState<string[]>(allShifts);
   const [chartType, setChartType] = useState<'bar' | 'line'>('bar');
 
+  type TimeInterval = 'day' | 'week' | 'month';
+  const [interval, setInterval] = useState<TimeInterval>('day');
+  const [combineShifts, setCombineShifts] = useState(false);
+
   const chartData = useMemo(() => {
     if (selectedWeeks.length === 0 || selectedShifts.length === 0) return [];
 
-    const statsByDate: Record<string, Record<string, { cappedActual: number; totalTarget: number }>> = {};
+    const statsByInterval: Record<string, Record<string, { cappedActual: number; totalTarget: number }>> = {};
 
     selectedWeeks.forEach(weekId => {
       const week = weeksData[weekId];
@@ -61,39 +65,72 @@ export function ShiftPerformanceOverTimeChart({ weeksData, departmentName, compa
           const dateStr = record.Date;
 
           if (dateStr && actual !== null && actual !== undefined && target > 0) {
-            if (!statsByDate[dateStr]) {
-              statsByDate[dateStr] = {};
-            }
-            if (!statsByDate[dateStr][shift]) {
-              statsByDate[dateStr][shift] = { cappedActual: 0, totalTarget: 0 };
+            let intervalKey = dateStr;
+            if (interval === 'week') {
+              intervalKey = weekId;
+            } else if (interval === 'month') {
+              intervalKey = dateStr.substring(0, 7);
             }
 
-            statsByDate[dateStr][shift].cappedActual += Math.min(actual, target);
-            statsByDate[dateStr][shift].totalTarget += target;
+            if (!statsByInterval[intervalKey]) {
+              statsByInterval[intervalKey] = {};
+            }
+            if (!statsByInterval[intervalKey][shift]) {
+              statsByInterval[intervalKey][shift] = { cappedActual: 0, totalTarget: 0 };
+            }
+
+            statsByInterval[intervalKey][shift].cappedActual += Math.min(actual, target);
+            statsByInterval[intervalKey][shift].totalTarget += target;
           }
         });
       });
     });
 
-    const dates = Object.keys(statsByDate).sort();
+    const intervalKeys = Object.keys(statsByInterval).sort();
 
-    return dates.map(dateStr => {
-      const dataPoint: any = { date: dateStr };
-      const parsedDate = parseISOLocal(dateStr);
-      dataPoint.displayDate = parsedDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    return intervalKeys.map(key => {
+      const dataPoint: any = { date: key };
+      
+      if (interval === 'day') {
+        const parsedDate = parseISOLocal(key);
+        dataPoint.displayDate = parsedDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      } else if (interval === 'month') {
+        const parsedDate = parseISOLocal(key + '-01');
+        dataPoint.displayDate = parsedDate.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+      } else {
+        const week = weeksData[key];
+        dataPoint.displayDate = week ? week.WeekLabel : key;
+      }
 
-      selectedShifts.forEach(shift => {
-        const stats = statsByDate[dateStr][shift];
-        if (stats && stats.totalTarget > 0) {
-          dataPoint[shift] = parseFloat(((stats.cappedActual / stats.totalTarget) * 100).toFixed(1));
+      if (combineShifts) {
+        let totalActual = 0;
+        let totalTarget = 0;
+        selectedShifts.forEach(shift => {
+          const stats = statsByInterval[key][shift];
+          if (stats) {
+            totalActual += stats.cappedActual;
+            totalTarget += stats.totalTarget;
+          }
+        });
+        if (totalTarget > 0) {
+          dataPoint['Combined'] = parseFloat(((totalActual / totalTarget) * 100).toFixed(1));
         } else {
-          dataPoint[shift] = null;
+          dataPoint['Combined'] = null;
         }
-      });
+      } else {
+        selectedShifts.forEach(shift => {
+          const stats = statsByInterval[key][shift];
+          if (stats && stats.totalTarget > 0) {
+            dataPoint[shift] = parseFloat(((stats.cappedActual / stats.totalTarget) * 100).toFixed(1));
+          } else {
+            dataPoint[shift] = null;
+          }
+        });
+      }
 
       return dataPoint;
     });
-  }, [selectedWeeks, selectedShifts, weeksData]);
+  }, [selectedWeeks, selectedShifts, weeksData, interval, combineShifts]);
 
   const shiftColors: Record<string, string> = {
     'A': 'indigo.6',
@@ -103,12 +140,19 @@ export function ShiftPerformanceOverTimeChart({ weeksData, departmentName, compa
   };
 
   const series = useMemo(() => {
+    if (combineShifts) {
+      return [{
+        name: 'Combined',
+        color: 'indigo.6',
+        label: 'Combined Attainment'
+      }];
+    }
     return selectedShifts.map(shift => ({
       name: shift,
       color: shiftColors[shift] || 'gray.6',
       label: `Shift ${shift}`
     }));
-  }, [selectedShifts]);
+  }, [selectedShifts, combineShifts]);
 
   if (!weeksData || Object.keys(weeksData).length === 0) {
     return (
@@ -141,7 +185,23 @@ export function ShiftPerformanceOverTimeChart({ weeksData, departmentName, compa
             </Text>
           </Box>
           
-          <Group gap="sm">
+          <Group gap="sm" align="center">
+            <SegmentedControl
+              size="xs"
+              data={[
+                { label: 'Day', value: 'day' },
+                { label: 'Week', value: 'week' },
+                { label: 'Month', value: 'month' },
+              ]}
+              value={interval}
+              onChange={(value) => setInterval(value as TimeInterval)}
+            />
+            <Switch
+              size="xs"
+              label="Combine Shifts"
+              checked={combineShifts}
+              onChange={(e) => setCombineShifts(e.currentTarget.checked)}
+            />
             <SegmentedControl
               size="xs"
               data={[
@@ -246,7 +306,7 @@ export function ShiftPerformanceOverTimeChart({ weeksData, departmentName, compa
                             <Group key={index} gap="xs" justify="space-between" mb={4}>
                               <Group gap="xs">
                                 <Box w={8} h={8} style={{ backgroundColor: entry.color, borderRadius: '50%' }} />
-                                <Text size="xs">Shift {entry.name}</Text>
+                                <Text size="xs">{entry.name === 'Combined' ? 'Combined Attainment' : `Shift ${entry.name}`}</Text>
                               </Group>
                               <Text size="xs" fw={700}>{entry.value}%</Text>
                             </Group>
@@ -294,7 +354,7 @@ export function ShiftPerformanceOverTimeChart({ weeksData, departmentName, compa
                             <Group key={index} gap="xs" justify="space-between" mb={4}>
                               <Group gap="xs">
                                 <Box w={8} h={8} style={{ backgroundColor: entry.color, borderRadius: '50%' }} />
-                                <Text size="xs">Shift {entry.name}</Text>
+                                <Text size="xs">{entry.name === 'Combined' ? 'Combined Attainment' : `Shift ${entry.name}`}</Text>
                               </Group>
                               <Text size="xs" fw={700}>{entry.value}%</Text>
                             </Group>

@@ -113,6 +113,14 @@ export default function DeliveryScorecardDisplay() {
         const val = await storeRes.get<string>("db_connection_string");
         setConnectionString(val || null);
         
+        const arEnabled = await storeRes.get<boolean>("auto_refresh_enabled");
+        const arInterval = await storeRes.get<number>("auto_refresh_interval_mins");
+        if (arEnabled === false) {
+          setAutoRefreshInterval(null);
+        } else {
+          setAutoRefreshInterval(arInterval ? arInterval * 60000 : 300000);
+        }
+        
         if (val) {
           const { invoke } = await import('@tauri-apps/api/core');
           const parts = await invoke<any[]>("get_part_info_preview", { 
@@ -134,7 +142,9 @@ export default function DeliveryScorecardDisplay() {
     await store.fetchFromDb(connectionString);
   };
 
-  useAutoRefresh(handleFetchFromDb, 300000);
+  const [autoRefreshInterval, setAutoRefreshInterval] = React.useState<number | null>(300000);
+
+  useAutoRefresh(handleFetchFromDb, autoRefreshInterval);
 
   const requestSort = (key: keyof GroupedPartScorecard) => {
     let direction: 'asc' | 'desc' = 'asc';
@@ -983,7 +993,7 @@ export default function DeliveryScorecardDisplay() {
 
               <Tabs.Panel value="attainment">
                 <ShiftAttainmentChart 
-                  weeksData={activeDepartment?.Weeks}
+                  weeksData={activeDepartment?.Weeks || {}}
                   currentWeekId={activeWeek?.WeekId}
                   departmentName={activeTab}
                   compact={isWidescreen}
@@ -1000,7 +1010,7 @@ export default function DeliveryScorecardDisplay() {
 
               <Tabs.Panel value="shift-time">
                 <ShiftPerformanceOverTimeChart 
-                  weeksData={activeDepartment?.Weeks}
+                  weeksData={activeDepartment?.Weeks || {}}
                   departmentName={activeTab}
                   compact={isWidescreen}
                 />
@@ -1052,7 +1062,7 @@ export default function DeliveryScorecardDisplay() {
 
                 <Tabs.Panel value="attainment">
                   <ShiftAttainmentChart 
-                    weeksData={activeDepartment?.Weeks}
+                    weeksData={activeDepartment?.Weeks || {}}
                     currentWeekId={activeWeek?.WeekId}
                     departmentName={activeTab}
                     compact={false}
@@ -1071,7 +1081,7 @@ export default function DeliveryScorecardDisplay() {
 
                 <Tabs.Panel value="shift-time">
                   <ShiftPerformanceOverTimeChart 
-                    weeksData={activeDepartment?.Weeks}
+                    weeksData={activeDepartment?.Weeks || {}}
                     departmentName={activeTab}
                     compact={false}
                     height={750}
