@@ -983,7 +983,7 @@ export default function DeliveryScorecardDisplay() {
 
               <Tabs.Panel value="attainment">
                 <ShiftAttainmentChart 
-                  weeksData={activeDepartment.Weeks}
+                  weeksData={activeDepartment?.Weeks}
                   currentWeekId={activeWeek?.WeekId}
                   departmentName={activeTab}
                   compact={isWidescreen}
@@ -1000,7 +1000,7 @@ export default function DeliveryScorecardDisplay() {
 
               <Tabs.Panel value="shift-time">
                 <ShiftPerformanceOverTimeChart 
-                  weeksData={activeDepartment.Weeks}
+                  weeksData={activeDepartment?.Weeks}
                   departmentName={activeTab}
                   compact={isWidescreen}
                 />
@@ -1052,7 +1052,7 @@ export default function DeliveryScorecardDisplay() {
 
                 <Tabs.Panel value="attainment">
                   <ShiftAttainmentChart 
-                    weeksData={activeDepartment.Weeks}
+                    weeksData={activeDepartment?.Weeks}
                     currentWeekId={activeWeek?.WeekId}
                     departmentName={activeTab}
                     compact={false}
@@ -1071,7 +1071,7 @@ export default function DeliveryScorecardDisplay() {
 
                 <Tabs.Panel value="shift-time">
                   <ShiftPerformanceOverTimeChart 
-                    weeksData={activeDepartment.Weeks}
+                    weeksData={activeDepartment?.Weeks}
                     departmentName={activeTab}
                     compact={false}
                     height={750}
